@@ -43,7 +43,7 @@ router.post("/create-user", upload.single("file"), async (req, res, next) => {
 
     const activationToken = createActivationToken(user);
 
-    const activationUrl = `http://localhost:3000/activation/${activationToken}`;
+    const activationUrl = `http://test.semamart.com/activation/${activationToken}`;
 
     // send email to user
     try {
@@ -69,7 +69,7 @@ const createActivationToken = (user) => {
   // why use create activatetoken?
   // to create a token for the user to activate their account  after they register
   return jwt.sign(user, process.env.ACTIVATION_SECRET, {
-    expiresIn: "5m",
+    expiresIn: "15m",
   });
 };
 
