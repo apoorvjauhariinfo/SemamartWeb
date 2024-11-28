@@ -50,7 +50,38 @@ const Checkout = () => {
 
             // update local storage with the updated orders array
             localStorage.setItem("latestOrder", JSON.stringify(orderData));
-            navigate("/payment");
+            const order = {
+                cart: orderData?.cart,
+                shippingAddress: orderData?.shippingAddress,
+                user: user && user,
+                totalPrice: orderData?.totalPrice,
+            };
+            // navigate("/payment");  /// Bypassed the Payment Methods 
+            const dummypaymenthandler = async () => {
+                const config = {
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                };
+                order.paymentInfo = {
+                    id: "paymentInfo.payer_id",
+                    status: "succeeded",
+                    type: "Paypal",
+                };
+        
+                await axios
+                    .post(`${server}/order/create-order`, order, config)
+                    .then((res) => {
+                        // setOpen(false);
+                        navigate("/order/success");
+                        toast.success("Order successful!");
+                        localStorage.setItem("cartItems", JSON.stringify([]));
+                        localStorage.setItem("latestOrder", JSON.stringify([]));
+                        // window.location.reload();
+                    });
+        
+            }
+            dummypaymenthandler();
         }
     };
 
