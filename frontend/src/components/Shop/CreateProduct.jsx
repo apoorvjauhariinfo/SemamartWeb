@@ -23,12 +23,20 @@ const CreateProduct = () => {
     const [stock, setStock] = useState();
     const [productType, setProductType] = useState("");
     const [sku, setSku] = useState("");
+    const [upsells, setUpsells] = useState("");
+    const [crosssells, setCrossSells] = useState("");
     const [stockStatus, setStockStatus] = useState("In Stock");
     const [enableStockManagement, setEnableStockManagement] = useState(false);
     const [allowSingleQuantity, setAllowSingleQuantity] = useState(false);
     const [taxStatus, setTaxStatus] = useState("Taxable");
-const [taxClass, setTaxClass] = useState("Standard");
-
+    const [taxClass, setTaxClass] = useState("Standard");
+    const [discountOptions, setDiscountOptions] = useState("");
+    const [rma, setRma] = useState("");
+    const [minmaxrule, setMinMacRule] = useState("");
+    const [productStatus, setProductStatus] = useState("");
+    const [visibiliy, setVisibility] = useState("Visible");
+    const [purchaseNote, setPurchaseNote] = useState("");
+    const [allowproductreviews, setAllowProductReviews] = useState("");
 
 
 
@@ -61,12 +69,29 @@ const [taxClass, setTaxClass] = useState("Standard");
             newForm.append("images", image);
         });
         newForm.append("name", name);
-        newForm.append("description", description);
-        newForm.append("category", category);
-        newForm.append("tags", tags);
+        newForm.append("productType", productType);
         newForm.append("originalPrice", originalPrice);
         newForm.append("discountPrice", discountPrice);
+        newForm.append("category", category);
+        newForm.append("tags", tags);
+        newForm.append("shortdescription", shortdescription);
+        newForm.append("description", description);
         newForm.append("stock", stock);
+        newForm.append("sku", sku);
+        newForm.append("stockStatus", stockStatus);
+        newForm.append("enableStockManagement", enableStockManagement);
+        newForm.append("allowSingleQuantity", allowSingleQuantity);
+        newForm.append("taxStatus", taxStatus);
+        newForm.append("taxClass", taxClass);
+        newForm.append("upsells", upsells);
+        newForm.append("crosssells", crosssells);
+        newForm.append("discountoptions", discountOptions);
+        newForm.append("rma", rma);
+        newForm.append("minmaxrule", minmaxrule);
+        newForm.append("productStatus", productStatus);
+        newForm.append("visibility", visibiliy);
+        newForm.append("purchaseNote", purchaseNote);
+        newForm.append("allowproductreviews", allowproductreviews);
         newForm.append("shopId", seller._id);
         dispatch(createProduct(newForm));
     };
@@ -176,7 +201,7 @@ const [taxClass, setTaxClass] = useState("Standard");
                         name="description"
                         value={shortdescription}
                         className="mt-2 appearance-none block w-full pt-2 px-3 border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                        onChange={(e) => setDescription(e.target.value)}
+                        onChange={(e) => setShortDescription(e.target.value)}
                         placeholder="Enter your product description..."
                     ></textarea>
                 </div>
@@ -202,6 +227,22 @@ const [taxClass, setTaxClass] = useState("Standard");
                 </div>
 
                 <br />
+                <div className="flex justify-between gap-4">
+                    <div className="w-1/2">
+                        <label className="pb-2">Stock Avalaible</label>
+                        <input
+                            type="number"
+                            name="stock"
+                            value={stock}
+                            className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            onChange={(e) => setStock(e.target.value)}
+                            placeholder="Enter your product stock avalaible..."
+                        />
+                    </div>
+
+                </div>
+                <br />
+
                 <div>
                     <label className="pb-2 font-bold">INVENTORY (Manage inventory for this product)</label>
                     <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
@@ -262,189 +303,207 @@ const [taxClass, setTaxClass] = useState("Standard");
                 </div>
                 <br />
                 {/* SHIPPING AND TAX Section */}
-    <label className="pb-2 font-bold mt-6 block">SHIPPING AND TAX (Manage shipping and tax for this product)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        {/* Row 1 */}
-        <div className="flex justify-between gap-4">
-            {/* Column 1 - Tax Status */}
-            <div className="w-1/2">
-                <label className="pb-2">Tax Status</label>
-                <select
-                    className="w-full mt-2 border h-[35px] rounded-[5px]"
-                    value={taxStatus} // Add a state variable for tax status
-                    onChange={(e) => setTaxStatus(e.target.value)} // Add corresponding state handler
-                >
-                    <option value="Taxable">Taxable</option>
-                    <option value="Not Taxable">Not Taxable</option>
-                </select>
-            </div>
+                <label className="pb-2 font-bold mt-6 block">SHIPPING AND TAX (Manage shipping and tax for this product)</label>
+                <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                    {/* Row 1 */}
+                    <div className="flex justify-between gap-4">
+                        {/* Column 1 - Tax Status */}
+                        <div className="w-1/2">
+                            <label className="pb-2">Tax Status</label>
+                            <select
+                                className="w-full mt-2 border h-[35px] rounded-[5px]"
+                                value={taxStatus} // Add a state variable for tax status
+                                onChange={(e) => setTaxStatus(e.target.value)} // Add corresponding state handler
+                            >
+                                <option value="Taxable">Taxable</option>
+                                <option value="Not Taxable">Not Taxable</option>
+                            </select>
+                        </div>
 
-            {/* Column 2 - Tax Class */}
-            <div className="w-1/2">
-                <label className="pb-2">Tax Class</label>
-                <select
-                    className="w-full mt-2 border h-[35px] rounded-[5px]"
-                    value={taxClass} // Add a state variable for tax class
-                    onChange={(e) => setTaxClass(e.target.value)} // Add corresponding state handler
-                >
-                    <option value="Standard">Standard</option>
-                    <option value="SubStandard">SubStandard</option>
-                    <option value="Lower">Lower</option>
-                </select>
-            </div>
-        </div>
-    </div>
+                        {/* Column 2 - Tax Class */}
+                        <div className="w-1/2">
+                            <label className="pb-2">Tax Class</label>
+                            <select
+                                className="w-full mt-2 border h-[35px] rounded-[5px]"
+                                value={taxClass} // Add a state variable for tax class
+                                onChange={(e) => setTaxClass(e.target.value)} // Add corresponding state handler
+                            >
+                                <option value="Standard">Standard</option>
+                                <option value="SubStandard">SubStandard</option>
+                                <option value="Lower">Lower</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
-    <div>
-    {/* LINKED PRODUCTS Section */}
-    <label className="pb-2 font-bold mt-6 block">LINKED PRODUCTS (See your linked products for upsell and cross-sells)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div className="flex justify-between gap-4">
-            {/* Column 1 - Upsells */}
-            <div className="w-1/2">
-                <label className="pb-2">Upsells</label>
-                <input
-                    type="text"
-                    name="upsells"
-                    className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Enter upsell products..."
-                />
-            </div>
-            {/* Column 2 - Cross-sells */}
-            <div className="w-1/2">
-                <label className="pb-2">Cross-sells</label>
-                <input
-                    type="text"
-                    name="crosssells"
-                    className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Enter cross-sell products..."
-                />
-            </div>
-        </div>
-    </div>
+                <div>
+                    {/* LINKED PRODUCTS Section */}
+                    <label className="pb-2 font-bold mt-6 block">LINKED PRODUCTS (See your linked products for upsell and cross-sells)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div className="flex justify-between gap-4">
+                            {/* Column 1 - Upsells */}
+                            <div className="w-1/2">
+                                <label className="pb-2">Upsells</label>
+                                <input
+                                    type="text"
+                                    name="upsells"
+                                    value={upsells} // Add a state variable for SKU
+                                    onChange={(e) => setUpsells(e.target.value)} // Add corresponding state handler
+                                    className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    placeholder="Enter upsell products..."
+                                />
+                            </div>
+                            {/* Column 2 - Cross-sells */}
+                            <div className="w-1/2">
+                                <label className="pb-2">Cross-sells</label>
+                                <input
+                                    type="text"
+                                    name="crosssells"
+                                    value={crosssells} // Add a state variable for SKU
+                                    onChange={(e) => setCrossSells(e.target.value)} // Add corresponding state handler
+                                    className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                    placeholder="Enter cross-sell products..."
+                                />
+                            </div>
+                        </div>
+                    </div>
 
-    {/* MANAGE ATTRIBUTES Section */}
-    <label className="pb-2 font-bold mt-6 block">MANAGE ATTRIBUTES (Manage attributes for this simple product)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div className="flex justify-between gap-4">
-            {/* Column 1 - Attribute Selector */}
-            <div className="w-1/3">
-                <label className="pb-2">Attributes</label>
-                <select
-                    className="w-full mt-2 border h-[35px] rounded-[5px]"
-                >
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                </select>
-            </div>
-            {/* Column 2 - Add Attribute Button */}
-            <div className="w-1/3 flex items-end">
-                <button className="w-full bg-blue-500 text-white h-[35px] rounded-[5px] hover:bg-blue-600">
-                    Add Attribute
-                </button>
-            </div>
-            {/* Column 3 - Save Attribute Button */}
-            <div className="w-1/3 flex items-end">
-                <button className="w-full bg-yellow-500 text-white h-[35px] rounded-[5px] hover:bg-yellow-600">
-                    Save Attribute
-                </button>
-            </div>
-        </div>
-    </div>
+                    {/* MANAGE ATTRIBUTES Section */}
+                    <label className="pb-2 font-bold mt-6 block">MANAGE ATTRIBUTES (Manage attributes for this simple product)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div className="flex justify-between gap-4">
+                            {/* Column 1 - Attribute Selector */}
+                            <div className="w-1/3">
+                                <label className="pb-2">Attributes</label>
+                                <select
+                                    className="w-full mt-2 border h-[35px] rounded-[5px]"
+                                >
+                                    <option value="1">1</option>
+                                    <option value="2">2</option>
+                                    <option value="3">3</option>
+                                </select>
+                            </div>
+                            {/* Column 2 - Add Attribute Button */}
+                            <div className="w-1/3 flex items-end">
+                                <button className="w-full bg-blue-500 text-white h-[35px] rounded-[5px] hover:bg-blue-600">
+                                    Add Attribute
+                                </button>
+                            </div>
+                            {/* Column 3 - Save Attribute Button */}
+                            <div className="w-1/3 flex items-end">
+                                <button className="w-full bg-yellow-500 text-white h-[35px] rounded-[5px] hover:bg-yellow-600">
+                                    Save Attribute
+                                </button>
+                            </div>
+                        </div>
+                    </div>
 
-    {/* DISCOUNT OPTIONS Section */}
-    <label className="pb-2 font-bold mt-6 block">DISCOUNT OPTIONS (Set your discount for this product)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div>
-            <input
-                type="checkbox"
-                id="enable-bulk-discount"
-            />
-            <label htmlFor="enable-bulk-discount" className="pl-2">
-                Enable bulk discount
-            </label>
-        </div>
-    </div>
+                    {/* DISCOUNT OPTIONS Section */}
+                    <label className="pb-2 font-bold mt-6 block">DISCOUNT OPTIONS (Set your discount for this product)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div>
+                            <input
+                                type="checkbox"
+                                id="enable-bulk-discount"
+                                checked={discountOptions}
+                                onChange={(e) => setDiscountOptions(e.target.checked)}
+                            />
+                            <label htmlFor="enable-bulk-discount" className="pl-2">
+                                Enable bulk discount
+                            </label>
+                        </div>
+                    </div>
 
-    {/* RMA OPTIONS Section */}
-    <label className="pb-2 font-bold mt-6 block">RMA OPTIONS (Set your return and warranty settings to override global settings)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div>
-            <input
-                type="checkbox"
-                id="override-rma-settings"
-            />
-            <label htmlFor="override-rma-settings" className="pl-2">
-                Override your default RMA settings for this product
-            </label>
-        </div>
-    </div>
-</div>
-<br />
-<div>
-    {/* MIN/MAX OPTIONS Section */}
-    <label className="pb-2 font-bold mt-6 block">MIN/MAX OPTIONS (Manage min/max options for this product)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div>
-            <input
-                type="checkbox"
-                id="enable-min-max-rule"
-            />
-            <label htmlFor="enable-min-max-rule" className="pl-2">
-                Enable Min Max Rule for this product
-            </label>
-        </div>
-    </div>
+                    {/* RMA OPTIONS Section */}
+                    <label className="pb-2 font-bold mt-6 block">RMA OPTIONS (Set your return and warranty settings to override global settings)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div>
+                            <input
+                                type="checkbox"
+                                id="override-rma-settings"
+                                checked={rma} // Add a state variable for single quantity allowance
+                                onChange={(e) => setRma(e.target.checked)}
+                            />
+                            <label htmlFor="override-rma-settings" className="pl-2">
+                                Override your default RMA settings for this product
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <br />
+                <div>
+                    {/* MIN/MAX OPTIONS Section */}
+                    <label className="pb-2 font-bold mt-6 block">MIN/MAX OPTIONS (Manage min/max options for this product)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div>
+                            <input
+                                type="checkbox"
+                                id="enable-min-max-rule"
+                                checked={minmaxrule} // Add a state variable for single quantity allowance
+                                onChange={(e) => setMinMacRule(e.target.checked)}
+                            />
+                            <label htmlFor="enable-min-max-rule" className="pl-2">
+                                Enable Min Max Rule for this product
+                            </label>
+                        </div>
+                    </div>
 
-    {/* OTHER OPTIONS Section */}
-    <label className="pb-2 font-bold mt-6 block">OTHER OPTIONS (Set your extra product options)</label>
-    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
-        <div className="flex justify-between gap-4">
-            {/* Row 1 - Product Status and Visibility */}
-            <div className="w-1/2">
-                <label className="pb-2">Product Status</label>
-                <select
-                    className="w-full mt-2 border h-[35px] rounded-[5px]"
-                >
-                    <option value="pending">Pending</option>
-                    <option value="success">Success</option>
-                </select>
-            </div>
-            <div className="w-1/2">
-                <label className="pb-2">Visibility</label>
-                <select
-                    className="w-full mt-2 border h-[35px] rounded-[5px]"
-                >
-                    <option value="visible">Visible</option>
-                    <option value="invisible">Invisible</option>
-                </select>
-            </div>
-        </div>
+                    {/* OTHER OPTIONS Section */}
+                    <label className="pb-2 font-bold mt-6 block">OTHER OPTIONS (Set your extra product options)</label>
+                    <div className="border border-gray-300 rounded-[5px] p-4 mt-2">
+                        <div className="flex justify-between gap-4">
+                            {/* Row 1 - Product Status and Visibility */}
+                            <div className="w-1/2">
+                                <label className="pb-2">Product Status</label>
+                                <select
+                                    className="w-full mt-2 border h-[35px] rounded-[5px]"
+                                    value={productStatus} // Add a state variable for tax class
+                                    onChange={(e) => setProductStatus(e.target.value)}
+                                >
+                                    <option value="pending">Pending</option>
+                                    <option value="success">Success</option>
+                                </select>
+                            </div>
+                            <div className="w-1/2">
+                                <label className="pb-2">Visibility</label>
+                                <select
+                                    className="w-full mt-2 border h-[35px] rounded-[5px]"
+                                    value={visibiliy} // Add a state variable for tax class
+                                    onChange={(e) => setVisibility(e.target.value)}
+                                >
+                                    <option value="visible">Visible</option>
+                                    <option value="invisible">Invisible</option>
+                                </select>
+                            </div>
+                        </div>
 
-        {/* Row 2 - Purchase Note */}
-        <div className="mt-4">
-            <label className="pb-2">Purchase Note</label>
-            <input
-                type="text"
-                name="purchaseNote"
-                className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                placeholder="Enter purchase note..."
-            />
-        </div>
+                        {/* Row 2 - Purchase Note */}
+                        <div className="mt-4">
+                            <label className="pb-2">Purchase Note</label>
+                            <input
+                                type="text"
+                                name="purchaseNote"
+                                value={purchaseNote} // Add a state variable for SKU
+                                onChange={(e) => setPurchaseNote(e.target.value)}
+                                className="mt-2 appearance-none block w-full px-3 h-[35px] border border-gray-300 rounded-[3px] placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                placeholder="Enter purchase note..."
+                            />
+                        </div>
 
-        {/* Row 3 - Enable Product Reviews */}
-        <div className="mt-4">
-            <input
-                type="checkbox"
-                id="enable-product-reviews"
-            />
-            <label htmlFor="enable-product-reviews" className="pl-2">
-                Enable Product Reviews
-            </label>
-        </div>
-    </div>
-</div>
+                        {/* Row 3 - Enable Product Reviews */}
+                        <div className="mt-4">
+                            <input
+                                type="checkbox"
+                                id="enable-product-reviews"
+                                checked={allowproductreviews} // Add a state variable for single quantity allowance
+                                onChange={(e) => setAllowProductReviews(e.target.checked)}
+                            />
+                            <label htmlFor="enable-product-reviews" className="pl-2">
+                                Enable Product Reviews
+                            </label>
+                        </div>
+                    </div>
+                </div>
 
                 <br />
                 <div>
