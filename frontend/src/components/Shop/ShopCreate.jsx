@@ -231,12 +231,13 @@ const ShopCreate = () => {
 
                         </div>
 
-                        <div className="border rounded-3xl flex">
+                        <div className=" ">
                             <label
                                 htmlFor="avatar"
                                 className="block text-sm font-medium text-gray-700"
-                            ></label>
-                            <div className=" flex items-center">
+                            >Upload Profile Picture<div className="inline text-red-700">*</div></label>
+                           
+                            <div className=" flex items-center border border-gray-300 rounded-3xl">
                                 <span className="inline-block h-8 w-8 rounded-full overflow-hidden">
                                     {avatar ? (
                                         <img
@@ -250,25 +251,25 @@ const ShopCreate = () => {
                                 </span>
                                 <label
                                     htmlFor="file-input"
-                                    className="ml-5 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                    className="ml-5 flex items-center justify-center px-4 py-2 rounded-md shadow-sm text-sm font-medium text-gray-700 "
                                 >
-                                    <span>Upload a file</span>
+                                    {/* <span>Upload</span> */}
                                     <input
                                         type="file"
                                         name="avatar"
                                         id="file-input"
                                         onChange={handleFileInputChange}
-                                        className="sr-only"
+                                        className="" 
                                     />
                                 </label>
                             </div>
                         </div>
-                        <div className="border rounded-3xl">
+                        <div className="">
                             <label
                                 htmlFor="avatar"
                                 className="block text-sm font-medium text-gray-700"
-                            ></label>
-                            <div className=" flex items-center">
+                            >Upload Banner</label>
+                            <div className=" flex items-center border rounded-3xl border-gray-300">
                                 <span className="inline-block h-8 w-8 rounded-full overflow-hidden">
                                     {avatar ? (
                                         <img
@@ -282,15 +283,15 @@ const ShopCreate = () => {
                                 </span>
                                 <label
                                     htmlFor="file-input"
-                                    className="ml-5 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                                    className="ml-5 flex items-center justify-center px-4 py-2   rounded-md shadow-sm text-sm font-medium text-gray-700 "
                                 >
-                                    <span>Upload a file</span>
+                                    {/* <span>Upload</span> */}
                                     <input
                                         type="file"
                                         name="avatar"
                                         id="file-input"
                                         onChange={handleFileInputChange}
-                                        className="sr-only"
+                                        // className="sr-only"
                                     />
                                 </label>
                             </div>
@@ -394,7 +395,7 @@ const ShopCreate = () => {
                             <Link to="/shop-login" className="text-blue-600 pl-2">
                                 Sign In
                             </Link>
-                        </div> */}
+                        </div> */}  
 
                     </form>
                 </div>
