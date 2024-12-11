@@ -3,9 +3,29 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const shopSchema = new mongoose.Schema({
-  name: {
+  firstName: {
+    type: String,
+    required: [true, "Please enter your first name!"],
+  },
+  lastName: {
+    type: String,
+    required: [true, "Please enter your lastName name!"],
+  },
+  businessName: {
     type: String,
     required: [true, "Please enter your shop name!"],
+  },
+  businessType: {
+    type: String,
+    required: [true, "Please enter your shop name!"],
+  },
+  gstNumber: {
+    type: String,
+    required: [true, "Please enter your shop name!"],
+  },
+  name: {
+    type: String,
+    // required: [true, "Please enter your shop name!"],
   },
   email: {
     type: String,
@@ -22,10 +42,10 @@ const shopSchema = new mongoose.Schema({
   },
   address: {
     type: String,
-    required: true,
+    // required: true,
   },
   phoneNumber: {
-    type: Number,
+    type: String,
     required: true,
   },
   role: {
@@ -34,11 +54,19 @@ const shopSchema = new mongoose.Schema({
   },
   avatar: {
     type: String,
+    // required: true,
+  },
+  profilePic: {
+    type: String,
     required: true,
+  },
+  banner: {
+    type: String,
+    // required: true,
   },
   zipCode: {
     type: Number,
-    required: true,
+    // required: true,
   },
   withdrawMethod: {
     type: Object,

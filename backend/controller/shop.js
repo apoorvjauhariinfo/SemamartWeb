@@ -13,59 +13,79 @@ const ErrorHandler = require("../utils/ErrorHandler");
 const sendShopToken = require("../utils/shopToken");
 
 // create shop
-router.post("/create-shop", upload.single("file"), async (req, res, next) => {
-  console.log(req.body);
-  try {
-    const { email } = req.body;
-    console.log(req.body);
-    const sellerEmail = await Shop.findOne({ email });
-
-    if (sellerEmail) {
-      const filename = req.file.filename;
-      const filePath = `uploads/${filename}`;
-      fs.unlink(filePath, (err) => {
-        if (err) {
-          console.log(err);
-          res.status(500).json({ message: "Error deleting file" });
-        }
-      });
-      return next(new ErrorHandler("User already exists", 400));
-    }
-
-    const filename = req.file.filename;
-    const fileUrl = path.join(filename);
-
-    const seller = {
-      name: req.body.name,
-      email: email,
-      password: req.body.password,
-      avatar: fileUrl,
-      address: req.body.address,
-      phoneNumber: req.body.phoneNumber,
-      zipCode: req.body.zipCode,
-    };
-
-    const activationToken = createActivationToken(seller);
-
-    const activationUrl = `http://test.semamart.com/seller/activation/${activationToken}`;
-
+router.post(
+  "/create-shop",
+  upload.fields([
+    { name: "profilePic" }, // Handles multiple images
+    { name: "banner" }, // Handles single thumbnail
+    // Handles single short video
+  ]),
+  async (req, res, next) => {
+    const x = await Shop.find();
+    console.log(x);
     try {
-      await sendMail({
-        email: seller.email,
-        subject: "Activate your Shop",
-        message: `Hello ${seller.name}, please click on the link to activate your shop: ${activationUrl}`,
-      });
-      res.status(201).json({
-        success: true,
-        message: `please check your email:- ${seller.email} to activate your shop!`,
-      });
+      const { email } = req.body;
+      // console.log(req.body);
+      const sellerEmail = await Shop.findOne({ email });
+
+      if (sellerEmail) {
+        const files = req.files;
+        
+        const filename = files["profilePic"]
+        ? files["profilePic"][0].filename
+        : null;
+        const filePath = `uploads/${filename}`;
+        fs.unlink(filePath, (err) => {
+          if (err) {
+            console.log(err);
+            res.status(500).json({ message: "Error deleting file" });
+          }
+        });
+        return next(new ErrorHandler("User already exists", 400));
+      }
+      const files = req.files;
+      const profilePic = files["profilePic"]
+        ? files["profilePic"][0].filename
+        : null;
+      const banner = files["banner"] ? files["banner"][0].filename : null;
+
+      // const fileUrl = path.join(filename);
+
+      const seller = {
+        firstName: req.body.firstName,
+        lastName: req.body.lastName,
+        businessName: req.body.businessName,
+        gstNumber: req.body.gstNumber,
+        businessType: req.body.businessType,
+        email: email,
+        password: req.body.password,
+        phoneNumber: req.body.phoneNumber,
+        profilePic: profilePic,
+        banner: banner,
+      };
+      
+      const activationToken = createActivationToken(seller);
+
+      const activationUrl = `http://test.semamart.com/seller/activation/${activationToken}`;
+
+      try {
+        await sendMail({
+          email: seller.email,
+          subject: "Activate your Shop",
+          message: `Hello ${seller.name}, please click on the link to activate your shop: ${activationUrl}`,
+        });
+        res.status(201).json({
+          success: true,
+          message: `please check your email:- ${seller.email} to activate your shop!`,
+        });
+      } catch (error) {
+        return next(new ErrorHandler(error.message, 500));
+      }
     } catch (error) {
-      return next(new ErrorHandler(error.message, 500));
+      return next(new ErrorHandler(error.message, 400));
     }
-  } catch (error) {
-    return next(new ErrorHandler(error.message, 400));
   }
-});
+);
 
 // create activation token
 const createActivationToken = (seller) => {
@@ -89,25 +109,42 @@ router.post(
       if (!newSeller) {
         return next(new ErrorHandler("Invalid token", 400));
       }
-      const { name, email, password, avatar, zipCode, address, phoneNumber } =
-        newSeller;
-
+      const {
+        firstName,
+        lastName,
+        email,
+        businessName,
+        gstNumber,
+        phoneNumber,
+        businessType,
+        password,
+        profilePic,
+        banner,
+      } = newSeller;
+      // console.log(newSeller);
+      
       let seller = await Shop.findOne({ email });
-
+      
       if (seller) {
+        
+        
         return next(new ErrorHandler("User already exists", 400));
       }
-
+      console.log(newSeller);  
       seller = await Shop.create({
-        name,
+        firstName,
+        lastName,
         email,
-        avatar,
-        password,
-        zipCode,
-        address,
+        businessName,
+        gstNumber,
         phoneNumber,
+        businessType,
+        password,
+        profilePic,
+        banner,
       });
-
+      
+      
       sendShopToken(seller, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
