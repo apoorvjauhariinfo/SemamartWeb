@@ -8,6 +8,11 @@ module.exports = {
       Poppins: ["Poppins", "sans-serif"],
     },
     extend: {
+      colors: {
+        customBlue: "#6EC1E5",
+        customGreen: "#61CE70",
+      },
+
       screens: {
         "1000px": "1050px",
         "1100px": "1110px",
