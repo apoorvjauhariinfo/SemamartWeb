@@ -10,7 +10,7 @@ module.exports = {
     extend: {
       colors: {
         customBlue: "#6EC1E5",
-        customGreen: "#61CE70",
+        customGreen: "#61ceb6",
       },
 
       screens: {

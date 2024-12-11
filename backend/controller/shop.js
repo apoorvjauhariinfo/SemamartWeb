@@ -14,8 +14,10 @@ const sendShopToken = require("../utils/shopToken");
 
 // create shop
 router.post("/create-shop", upload.single("file"), async (req, res, next) => {
+  console.log(req.body);
   try {
     const { email } = req.body;
+    console.log(req.body);
     const sellerEmail = await Shop.findOne({ email });
 
     if (sellerEmail) {

@@ -11,61 +11,118 @@ import LOGO from '../../Assests/SEMA-Favicon-Icon.png';
 const ShopCreate = () => {
 
     const navigate = useNavigate()
-    const [email, setEmail] = useState("");
-    const [name, setName] = useState("");
-    const [phoneNumber, setPhoneNumber] = useState();
-    const [address, setAddress] = useState("");
-    const [zipCode, setZipCode] = useState();
-    const [avatar, setAvatar] = useState();
-    const [password, setPassword] = useState("");
+    
     const [visible, setVisible] = useState(false);
+    const [formData,setFormData] = useState({
+        firstName:"",
+        lastName:"",
+        email:"",
+        businessName:"",
+        gstNumber:"",
+        phoneNumber:"",
+        businessType:"",
+        password:"",
+        confirmPassword:"",
 
+    });
+    const [banner,setBanner] = useState();
+    const [profilePic,setProfilePic] = useState();
+    const [check,setCheck] = useState(false);
+    const [passwordErrors, setPasswordErrors] = useState([]);
     const handleSubmit = async (e) => {
         e.preventDefault();
-
-        const config = { headers: { "Content-Type": "multipart/form-data" } };
-        // meaning of uper line is that we are creating a new object with the name of config and the value of config is {headers:{'Content-Type':'multipart/form-data'}}  
-
+        console.log("Form submission started");
+        if (!check) {
+            return window.alert("Checkbox is compulsory");
+        }
+        if (formData.password !== formData.confirmPassword) {
+            return window.alert("Passwords do not match");
+        }
+        if (passwordErrors.length > 0) {
+            return window.alert("Please fix the password issues.");
+          }
+        console.log("Form validation passed");
+    
         const newForm = new FormData();
-        // meaning of uper line is that we are creating a new form data object and we are sending it to the backend with the name of newForm and the value of newForm is new FormData()
-        newForm.append("file", avatar);
-        // meanin of newForm.append("file",avatar) is that we are sending a file to the backend with the name of file and the value of the file is avatar
-        newForm.append("name", name);
-        newForm.append("email", email);
-        newForm.append("password", password);
-        newForm.append("zipCode", zipCode);
-        newForm.append("address", address);
-        newForm.append("phoneNumber", phoneNumber);
-
-        axios
-            .post(`${server}/shop/create-shop`, newForm, config)
-            .then((res) => {
-                toast.success(res.data.message);
-                setName("");
-                setEmail("");
-                setPassword("");
-                setAvatar();
-                setZipCode();
-                setAddress("");
-                setPhoneNumber();
-
-            })
-
-            .catch((error) => {
-                toast.error(error.response.data.message);
+        newForm.append("firstName", formData.firstName);
+        newForm.append("lastName", formData.lastName);
+        newForm.append("email", formData.email);
+        newForm.append("businessName", formData.businessName);
+        newForm.append("gstNumber", formData.gstNumber);
+        newForm.append("phoneNumber", formData.phoneNumber);
+        newForm.append("businessType", formData.businessType);
+        newForm.append("password", formData.password);
+        newForm.append("banner", banner);
+        newForm.append("profilePic", profilePic);
+    
+        console.log("Form data prepared");
+    
+        try {
+            const res = await axios.post(`${server}/shop/create-shop`, newForm, {
+                headers: { "Content-Type": "multipart/form-data" },
             });
-        navigate("/shop-login")
-        window.location.reload();
-
-
-
+            console.log("API response:", res.data);
+            toast.success(res.data.message);
+            navigate("/shop-login");
+        } catch (error) {
+            console.error("API error:", error);
+            toast.error(error.response?.data?.message || "An error occurred");
+        }
+    };
+    const validatePassword = (password) => {
+        const errors = [];
+        if (password.length < 8) {
+          errors.push("Password must be at least 8 characters long.");
+        }
+        if (!/[A-Z]/.test(password)) {
+          errors.push("Password must include at least one uppercase letter.");
+        }
+        if (!/[a-z]/.test(password)) {
+          errors.push("Password must include at least one lowercase letter.");
+        }
+        if (!/[0-9]/.test(password)) {
+          errors.push("Password must include at least one number.");
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+          errors.push("Password must include at least one special character.");
+        }
+        return errors;
+      };
+      const handlePasswordChange = (e) => {
+        const password = e.target.value;
+        const errors = validatePassword(password);
+        setPasswordErrors(errors);
+        setFormData((prev) => ({
+          ...prev,
+          password,
+        }));
+      };
+    
+    const handleChange = (event) =>{
+        const {name,value} = event.target;
+        setFormData((prev)=>({
+            ...prev,
+            [name]:value
+            
+            
+        }));
+        // console.log(formData);
     }
-    // File upload
     const handleFileInputChange = (e) => {
         const file = e.target.files[0];
-        setAvatar(file);
+        const {name} = e.target;
+        console.log(name)
+        if(name=="banner")
+        {
+            setBanner(file);
+        }
+        else{
+            setProfilePic(file);
+        }
+        
+        
     };
-
+//    console.log("checked :",check);
     return (
         <div className='min-h-screen bg-gradient-to-b from-customBlue to-customGreen flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
             <div className='sm:mx-auto sm:w-full sm:max-w-md '>
@@ -91,11 +148,11 @@ const ShopCreate = () => {
                             </label>
                             <div className='mt-1 '>
                                 <input type="name"
-                                    name='name'
+                                    name='firstName'
                                     required
 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    value={formData.firstName}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -108,11 +165,11 @@ const ShopCreate = () => {
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='name'
+                                    name='lastName'
                                     required
 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    value={formData.lastName}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -124,12 +181,12 @@ const ShopCreate = () => {
                                 Email Address <div className="inline text-red-700">*</div>
                             </label>
                             <div className='mt-1'>
-                                <input type="name"
-                                    name='name'
+                                <input type="email"
+                                    name='email'
                                     required
 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    value={formData.email}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -144,11 +201,11 @@ const ShopCreate = () => {
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='name'
+                                    name='businessName'
                                     required
 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    value={formData.businessName}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -161,12 +218,12 @@ const ShopCreate = () => {
                                 GST Number <div className="inline text-red-700">*</div>
                             </label>
                             <div className='mt-1'>
-                                <input type="name"
-                                    name='name'
+                                <input type="text"
+                                    name='gstNumber'
                                     required
 
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    value={formData.gstNumber}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -184,11 +241,11 @@ const ShopCreate = () => {
                             <div className='mt-1 relative'>
                                 <input
                                     type="number"
-                                    name='phone-number'
+                                    name='phoneNumber'
                                     autoComplete='password'
                                     required
-                                    value={phoneNumber}
-                                    onChange={(e) => setPhoneNumber(e.target.value)}
+                                    value={formData.phoneNumber}
+                                    onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
@@ -205,14 +262,16 @@ const ShopCreate = () => {
                             </label>
                             <div className="relative mt-1">
                                 <select
-                                    name="options"
+                                    name="businessType"
                                     required
+                                    value={formData.businessType}
+                                    onChange={handleChange}
                                     className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm bg-white"
                                 >
                                     <option value="" disabled>Select an option</option>
-                                    <option value="option1">Distributor</option>
-                                    <option value="option2">Manufacturer</option>
-                                    <option value="option3">Reseller</option>
+                                    <option value="Distributor">Distributor</option>
+                                    <option value="Manufacturer">Manufacturer</option>
+                                    <option value="Reseller">Reseller</option>
                                 </select>
                                 <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none">
                                     <svg
@@ -239,10 +298,10 @@ const ShopCreate = () => {
                            
                             <div className=" flex items-center border border-gray-300 rounded-3xl">
                                 <span className="inline-block h-8 w-8 rounded-full overflow-hidden">
-                                    {avatar ? (
+                                    {profilePic ? (
                                         <img
-                                            src={URL.createObjectURL(avatar)}
-                                            alt="avatar"
+                                            src={URL.createObjectURL(profilePic)}
+                                            alt="profilePic"
                                             className="h-full w-full object-cover rounded-full"
                                         />
                                     ) : (
@@ -256,8 +315,9 @@ const ShopCreate = () => {
                                     {/* <span>Upload</span> */}
                                     <input
                                         type="file"
-                                        name="avatar"
+                                        name="profile"
                                         id="file-input"
+                                        required
                                         onChange={handleFileInputChange}
                                         className="" 
                                     />
@@ -271,10 +331,10 @@ const ShopCreate = () => {
                             >Upload Banner</label>
                             <div className=" flex items-center border rounded-3xl border-gray-300">
                                 <span className="inline-block h-8 w-8 rounded-full overflow-hidden">
-                                    {avatar ? (
+                                    {banner ? (
                                         <img
-                                            src={URL.createObjectURL(avatar)}
-                                            alt="avatar"
+                                            src={URL.createObjectURL(banner)}
+                                            alt="banner"
                                             className="h-full w-full object-cover rounded-full"
                                         />
                                     ) : (
@@ -288,7 +348,7 @@ const ShopCreate = () => {
                                     {/* <span>Upload</span> */}
                                     <input
                                         type="file"
-                                        name="avatar"
+                                        name="banner"
                                         id="file-input"
                                         onChange={handleFileInputChange}
                                         // className="sr-only"
@@ -299,37 +359,44 @@ const ShopCreate = () => {
 
                         {/* Password */}
                         <div>
-                            <label
-                                htmlFor="password"
-                                className="block text-sm font-medium text-gray-700"
-                            >
-                                Password<div className="inline text-red-700">*</div>
-                            </label>
-                            <div className="mt-1 relative">
-                                <input
-                                    type={visible ? "text" : "password"}
-                                    name="password"
-                                    autoComplete="current-password"
-                                    required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                />
-                                {visible ? (
-                                    <AiOutlineEye
-                                        className="absolute right-2 top-2 cursor-pointer"
-                                        size={25}
-                                        onClick={() => setVisible(false)}
-                                    />
-                                ) : (
-                                    <AiOutlineEyeInvisible
-                                        className="absolute right-2 top-2 cursor-pointer"
-                                        size={25}
-                                        onClick={() => setVisible(true)}
-                                    />
-                                )}
-                            </div>
-                        </div>
+            <label
+              htmlFor="password"
+              className="block text-sm font-medium text-gray-700"
+            >
+              Password <span className="text-red-700">*</span>
+            </label>
+            <div className="mt-1 relative">
+              <input
+                type={visible ? "text" : "password"}
+                name="password"
+                required
+                value={formData.password}
+                onChange={handlePasswordChange}
+                className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              />
+              {visible ? (
+                <AiOutlineEye
+                  className="absolute right-2 top-2 cursor-pointer"
+                  size={25}
+                  onClick={() => setVisible(false)}
+                />
+              ) : (
+                <AiOutlineEyeInvisible
+                  className="absolute right-2 top-2 cursor-pointer"
+                  size={25}
+                  onClick={() => setVisible(true)}
+                />
+              )}
+            </div>
+            {/* Password Error Messages */}
+            {passwordErrors.length > 0 && (
+              <ul className="mt-2 text-sm text-red-600">
+                {passwordErrors.map((error, index) => (
+                  <li key={index}>{error}</li>
+                ))}
+              </ul>
+            )}
+          </div>
                         <div>
                             <label
                                 htmlFor="password"
@@ -340,11 +407,11 @@ const ShopCreate = () => {
                             <div className="mt-1 relative">
                                 <input
                                     type={visible ? "text" : "password"}
-                                    name="password"
+                                    name="confirmPassword"
                                     autoComplete="current-password"
                                     required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    value={formData.confirmPassword}
+                                    onChange={handleChange}
                                     className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                 />
                                 {visible ? (
@@ -362,7 +429,20 @@ const ShopCreate = () => {
                                 )}
                             </div>
                         </div>
+                        <div className="flex items-center mt-4">
+                            <input
+                                type="checkbox"
+                                id="checkbox"
+                                name="checkbox"
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                onChange={()=>{setCheck((prev)=>!prev)}}
+                            />
+                            <label htmlFor="checkbox" className="ml-2 text-sm text-gray-700">
+                                I agree to allow SEMA Healthcare Pvt. Ltd. to charge platform fees as per industry standards.
 
+
+                            </label>
+                        </div>  
 
 
 
@@ -376,19 +456,7 @@ const ShopCreate = () => {
                                 Register
                             </button>
                         </div>
-                        <div className="flex items-center mt-4">
-                            <input
-                                type="checkbox"
-                                id="checkbox"
-                                name="checkbox"
-                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                            />
-                            <label htmlFor="checkbox" className="ml-2 text-sm text-gray-700">
-                                I agree to allow SEMA Healthcare Pvt. Ltd. to charge platform fees as per industry standards.
-
-
-                            </label>
-                        </div>
+                        
 
                         {/* <div className={`${styles.noramlFlex} w-full`} >
                             <h4>Already have an account?</h4>
