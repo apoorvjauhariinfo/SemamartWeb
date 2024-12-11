@@ -331,6 +331,8 @@ const ProductDetailsInfo = ({
         <>
           <p className="py-2 text-[18px] leading-8 pb-10 whitespace-pre-line  ">
             {data.description}
+            {data.purchaseNote}
+            {data.taxStatus}
           </p>
         </>
       ) : null}

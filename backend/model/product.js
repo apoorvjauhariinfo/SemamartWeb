@@ -6,6 +6,10 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please enter your product name!"],
   },
+  hsn: {
+    type: String,
+    required: [true, "Please enter product HSN Code"],
+  },
   productType: {
     type:String,
     require:[true, "Please enter your product type"],
@@ -81,15 +85,41 @@ const productSchema = new mongoose.Schema({
   allowproductreviews: {
     type: String,
   },
+  weight: {
+    type: String,
+  },
+  dimension: {
+    type: String,
+  },
+  manufacturerName: {
+    type: String,
+  },
+  email: {
+    type: String,
+  },
+  phone: {
+    type: String,
+  },
+  origin: {
+    type: String,
+  },
 
  
-  
+  thumbnail: {
+    type: String, // Stores the main image URL or path
+    // required: [true, "Please upload a thumbnail image!"],
+  },
  
   images: [
     {
       type: String,
     },
   ],
+
+  shortVideo: {
+    type: String, // Stores the video URL or file path
+    // required: [true, "Please upload a short video for the product!"],
+  },
 
   reviews: [
     {

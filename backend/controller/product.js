@@ -12,21 +12,36 @@ const fs = require("fs");
 // create product
 router.post(
   "/create-product",
-  upload.array("images"),
+  upload.fields([
+    { name: "images" }, // Handles multiple images
+    { name: "thumbnail" }, // Handles single thumbnail
+    { name: "shortVideo" }, // Handles single short video
+  ]),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const shopId = req.body.shopId;
       const shop = await Shop.findById(shopId);
+
       if (!shop) {
         return next(new ErrorHandler("Shop Id is invalid!", 400));
       } else {
+        // Extracting uploaded files
         const files = req.files;
-        const imageUrls = files.map((file) => `${file.filename}`);
 
-        const productData = req.body;
-        productData.images = imageUrls;
-        productData.shop = shop;
+        const imageUrls = files["images"] ? files["images"].map((file) => `${file.filename}`) : [];
+        const thumbnailUrl = files["thumbnail"] ? files["thumbnail"][0].filename : null;
+        const shortVideoUrl = files["shortVideo"] ? files["shortVideo"][0].filename : null;
 
+        // Build product data
+        const productData = {
+          ...req.body,
+          images: imageUrls,
+          thumbnail: thumbnailUrl,
+          shortVideo: shortVideoUrl,
+          shop: shop,
+        };
+
+        // Create and save product
         const product = await Product.create(productData);
 
         res.status(201).json({
@@ -35,10 +50,11 @@ router.post(
         });
       }
     } catch (error) {
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message || "Internal Server Error", 500));
     }
   })
 );
+
 
 // get all products of a shop
 router.get(
