@@ -16,17 +16,21 @@ const Signup = () => {
     const [formData, setFormData] = useState({
         firstName: "",
         lastName: "",
-        email: "",
-        businessName: "",
-        gstNumber: "",
         phoneNumber: "",
-        businessType: "",
+        email: "",
+        instituteName: "",
+        instituteAddress1: "",
+        instituteAddress2: "",
+        landmark :"",
+        pincode:"",
+        district:"",
+        state:"",
         password: "",
         confirmPassword: "",
 
-    });
-    const [banner, setBanner] = useState();
-    const [profilePic, setProfilePic] = useState();
+    }); 
+    // console.log(formData)
+   
     const [check, setCheck] = useState(false);
     const [passwordErrors, setPasswordErrors] = useState([]);
     const handleSubmit = async (e) => {
@@ -46,19 +50,22 @@ const Signup = () => {
         const newForm = new FormData();
         newForm.append("firstName", formData.firstName);
         newForm.append("lastName", formData.lastName);
-        newForm.append("email", formData.email);
-        newForm.append("businessName", formData.businessName);
-        newForm.append("gstNumber", formData.gstNumber);
         newForm.append("phoneNumber", formData.phoneNumber);
-        newForm.append("businessType", formData.businessType);
+        newForm.append("email", formData.email);
+        newForm.append("instituteName", formData.instituteName);
+        newForm.append("instituteAddress1", formData.instituteAddress1);
+        newForm.append("instituteAddress2", formData.instituteAddress2);
+        newForm.append("landmark", formData.landmark);
+        newForm.append("pincode", formData.pincode);
+        newForm.append("district", formData.district);
+        newForm.append("state", formData.state);
         newForm.append("password", formData.password);
-        newForm.append("banner", banner);
-        newForm.append("profilePic", profilePic);
+    
 
         console.log("Form data prepared");
 
         try {
-            const res = await axios.post(`${server}/shop/create-shop`, newForm, {
+            const res = await axios.post(`${server}/user/create-user`, newForm, {
                 headers: { "Content-Type": "multipart/form-data" },
             });
             console.log("API response:", res.data);
@@ -106,21 +113,9 @@ const Signup = () => {
 
 
         }));
-        // console.log(formData);
+        
     }
-    const handleFileInputChange = (e) => {
-        const file = e.target.files[0];
-        const { name } = e.target;
-        console.log(name)
-        if (name == "banner") {
-            setBanner(file);
-        }
-        else {
-            setProfilePic(file);
-        }
-
-
-    };
+    
     //    console.log("checked :",check);
     return (
         <div className='min-h-screen bg-gradient-to-b from-customBlue to-customGreen flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
@@ -183,7 +178,7 @@ placeholder='Last Name'
                             </label>
                             <div className='mt-1 relative'>
                                 <input
-                                    type="number"
+                                    type="tel"
                                     name='phoneNumber'
                                     autoComplete='password'
                                     required
@@ -222,10 +217,10 @@ placeholder='Email'
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='businessName'
+                                    name='instituteName'
                                     required
 placeholder='Institute Name'
-                                    value={formData.businessName}
+                                    value={formData.instituteName}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
@@ -240,19 +235,19 @@ placeholder='Institute Name'
                             </label>
                             <div className='mt-1'>
                                 <input type="text"
-                                    name='gstNumber'
+                                    name='instituteAddress1'
                                     required
 placeholder='Address line 1'
-                                    value={formData.gstNumber}
+                                    value={formData.instituteAddress1}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                                  <input type="text"
-                                    name='gstNumber'
-                                    required
+                                    name='instituteAddress2'
+                                    // required
 placeholder='Address line 2'
 
-                                    value={formData.gstNumber}
+                                    value={formData.instituteAddress2}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border mt-2 border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
@@ -267,10 +262,10 @@ placeholder='Address line 2'
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='businessName'
+                                    name='landmark'
                                     required
 placeholder='Landmark'
-                                    value={formData.businessName}
+                                    value={formData.landmark}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
@@ -284,10 +279,10 @@ placeholder='Landmark'
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='businessName'
+                                    name='pincode'
                                     required
 placeholder='⁠Pincode'
-                                    value={formData.businessName}
+                                    value={formData.pincode}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
@@ -301,10 +296,10 @@ placeholder='⁠Pincode'
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='businessName'
+                                    name='district'
                                     required
 placeholder='District'
-                                    value={formData.businessName}
+                                    value={formData.district}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
@@ -318,11 +313,11 @@ placeholder='District'
                             </label>
                             <div className='mt-1'>
                                 <input type="name"
-                                    name='businessName'
+                                    name='state'
                                     required
                                     placeholder='⁠State'
 
-                                    value={formData.businessName}
+                                    value={formData.state}
                                     onChange={handleChange}
                                     className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />

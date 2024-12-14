@@ -12,33 +12,66 @@ const { isAuthenticated, isAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.post("/create-user", upload.single("file"), async (req, res, next) => {
+router.post("/create-user",upload.none(),  async (req, res, next) => {
+//  console.log(req.body);
   try {
-    const { name, email, password } = req.body;
+    const { firstName,
+      lastName,
+      phoneNumber,
+      email,
+      instituteName,
+      instituteAddress1,
+      instituteAddress2,
+      landmark ,
+      pincode,
+      district,
+      state,
+      password,
+     } = req.body;
+     
     const userEmail = await User.findOne({ email });
-
+    
     if (userEmail) {
       // if user already exits account is not create and file is deleted
-      const filename = req.file.filename;
-      const filePath = `uploads/${filename}`;
-      fs.unlink(filePath, (err) => {
-        if (err) {
-          console.log(err);
-          res.status(500).json({ message: "Error deleting file" });
-        }
-      });
-
+      
+      
       return next(new ErrorHandler("User already exits", 400));
     }
 
-    const filename = req.file.filename;
-    const fileUrl = path.join(filename);
+    // user = await User.create({
+    //   firstName,
+    //   lastName,
+    //   phoneNumber,
+    //   email,
+    //   instituteName,
+    //   password,
+    //   addresses: [
+    //     {
+    //       instituteAddress1,
+    //       instituteAddress2,
+    //       landmark,
+    //       pincode,
+    //       district,
+    //       state,
+    //     },
+    //   ],
+    // });
+    // console.log(user);
+    // return res.status(200).json({user:user});
 
     const user = {
-      name: name,
-      email: email,
-      password: password,
-      avatar: fileUrl,
+      firstName,
+      lastName,
+      phoneNumber,
+      email,
+      instituteName,
+      instituteAddress1,
+      instituteAddress2,
+      landmark ,
+      pincode,
+      district,
+      state,
+      password,
     };
 
     const activationToken = createActivationToken(user);
@@ -87,19 +120,45 @@ router.post(
       if (!newUser) {
         return next(new ErrorHandler("Invalid token", 400));
       }
-      const { name, email, password, avatar } = newUser;
-
+      const { firstName,
+        lastName,
+        phoneNumber,
+        email,
+        instituteName,
+        instituteAddress1,
+        instituteAddress2,
+        landmark ,
+        pincode,
+        district,
+        state,
+        password } = newUser;
+      
+      
       let user = await User.findOne({ email });
 
       if (user) {
         return next(new ErrorHandler("User already exists", 400));
       }
       user = await User.create({
-        name,
+        firstName,
+        lastName,
+        phoneNumber,
         email,
-        avatar,
+        instituteName,
         password,
+        addresses: [
+          {
+            instituteAddress1,
+            instituteAddress2,
+            landmark,
+            pincode,
+            district,
+            state,
+          },
+        ],
       });
+      // console.log(user);
+      
       sendToken(user, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
