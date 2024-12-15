@@ -1,20 +1,18 @@
 const mongoose = require("mongoose");
+// const { productData } = require("../../frontend/src/static/data"); // wE DONT NEED STATIC DATA ANYMORE
 
 const productSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, "Please enter your product name!"],
   },
-  description: {
+  hsn: {
     type: String,
-    required: [true, "Please enter your product description!"],
+    required: [true, "Please enter product HSN Code"],
   },
-  category: {
-    type: String,
-    required: [true, "Please enter your product category!"],
-  },
-  tags: {
-    type: String,
+  productType: {
+    type:String,
+    require:[true, "Please enter your product type"],
   },
   originalPrice: {
     type: Number,
@@ -23,15 +21,105 @@ const productSchema = new mongoose.Schema({
     type: Number,
     required: [true, "Please enter your product price!"],
   },
+  category: {
+    type: String,
+    required: [true, "Please enter your product category!"],
+  },
+  tags: {
+    type: String,
+  },
+  shortdescription: {
+    type: String,
+    required: [true, "Please enter your product short description!"],
+  },
+  description: {
+    type: String,
+    required: [true, "Please enter your product description!"],
+  },
   stock: {
     type: Number,
     required: [true, "Please enter your product stock!"],
   },
+  sku: {
+    type: String,
+  },
+  stockStatus: {
+    type: String,
+  },
+  enableStockManagement: {
+    type: String,
+  },
+  allowSingleQuantity: {
+    type: String,
+  },
+  taxStatus: {
+    type: String,
+  },
+  taxClass: {
+    type: String,
+  },
+  upsells: {
+    type: String,
+  },
+  crosssells: {
+    type: String,
+  },
+  discountOptions: {
+    type: String,
+  },
+  rma: {
+    type: String,
+  },
+  minmaxrule: {
+    type: String,
+  },
+  productStatus: {
+    type: String,
+  },
+  visibility: {
+    type: String,
+  },
+  purchaseNote: {
+    type: String,
+  },
+  allowproductreviews: {
+    type: String,
+  },
+  weight: {
+    type: String,
+  },
+  dimension: {
+    type: String,
+  },
+  manufacturerName: {
+    type: String,
+  },
+  email: {
+    type: String,
+  },
+  phone: {
+    type: String,
+  },
+  origin: {
+    type: String,
+  },
+
+ 
+  thumbnail: {
+    type: String, // Stores the main image URL or path
+    // required: [true, "Please upload a thumbnail image!"],
+  },
+ 
   images: [
     {
       type: String,
     },
   ],
+
+  shortVideo: {
+    type: String, // Stores the video URL or file path
+    // required: [true, "Please upload a short video for the product!"],
+  },
 
   reviews: [
     {

@@ -3,41 +3,55 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const userSchema = new mongoose.Schema({
-  name: {
+  firstName: {
     type: String,
-    required: [true, "Please enter your name!"],
+    required: [true, "Please enter your firstName!"],
+  },
+  lastName: {
+    type: String,
+    required: [true, "Please enter your lastName!"],
   },
   email: {
     type: String,
     required: [true, "Please enter your email!"],
   },
+  phoneNumber: {
+    type: String,
+  },
+  instituteName: {
+    type: String,
+    required: [true, "Please enter your instituteName!"],
+  },
+  name: {
+    type: String,
+    // required: [true, "Please enter your name!"],
+  },
+  
   password: {
     type: String,
     required: [true, "Please enter your password"],
     minLength: [4, "Password should be greater than 4 characters"],
     select: false,
   },
-  phoneNumber: {
-    type: Number,
-  },
+  
   addresses: [
     {
-      country: {
+      state: {
         type: String,
       },
-      city: {
+      district: {
         type: String,
       },
-      address1: {
+      instituteAddress1: {
         type: String,
       },
-      address2: {
+      instituteAddress2: {
         type: String,
       },
-      zipCode: {
-        type: Number,
+      pincode: {
+        type: String,
       },
-      addressType: {
+      landmark: {
         type: String,
       },
     },
@@ -48,7 +62,7 @@ const userSchema = new mongoose.Schema({
   },
   avatar: {
     type: String,
-    required: true,
+    // required: true,
   },
   createdAt: {
     type: Date,

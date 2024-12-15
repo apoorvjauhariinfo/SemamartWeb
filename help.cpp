@@ -1,0 +1,13 @@
+firstName,
+        lastName,
+        phoneNumber,
+        email,
+        instituteName,
+        instituteAddress1,
+        instituteAddress2,
+        landmark ,
+        pincode,
+        district,
+        state,
+        password:,
+       

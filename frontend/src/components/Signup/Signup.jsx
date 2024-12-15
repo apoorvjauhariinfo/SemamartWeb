@@ -2,122 +2,349 @@ import React, { useState } from 'react'
 import { AiOutlineEye, AiOutlineEyeInvisible } from "react-icons/ai";
 import styles from "../../styles/styles";
 import { Link, useNavigate } from "react-router-dom";
-import { RxAvatar } from "react-icons/rx";
 import axios from "axios";
 import { server } from "../../server";
 import { toast } from "react-toastify";
-
-
+import { RxAvatar } from 'react-icons/rx';
+import LOGO from '../../Assests/SEMA-Favicon-Icon.png';
+import { IoIosLock } from "react-icons/io";
 const Signup = () => {
 
-    const [email, setEmail] = useState("");
-    const [name, setName] = useState("");
-    const [password, setPassword] = useState("");
+    const navigate = useNavigate()
+
     const [visible, setVisible] = useState(false);
-    const [avatar, setAvatar] = useState(null);
+    const [formData, setFormData] = useState({
+        firstName: "",
+        lastName: "",
+        phoneNumber: "",
+        email: "",
+        instituteName: "",
+        instituteAddress1: "",
+        instituteAddress2: "",
+        landmark :"",
+        pincode:"",
+        district:"",
+        state:"",
+        password: "",
+        confirmPassword: "",
 
-    // const navigate = useNavigate()
-
-    // fule upload
-    const handleFileInputChange = (e) => {
-        const file = e.target.files[0];
-        setAvatar(file);
-    }
-
-    const handleSubmit = (e) => {
+    }); 
+    // console.log(formData)
+   
+    const [check, setCheck] = useState(false);
+    const [passwordErrors, setPasswordErrors] = useState([]);
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const config = { headers: { "Content-Type": "multipart/form-data" } };
-        // meaning of uper line is that we are creating a new object with the name of config and the value of config is {headers:{'Content-Type':'multipart/form-data'}}  
+        console.log("Form submission started");
+        if (!check) {
+            return window.alert("Checkbox is compulsory");
+        }
+        if (formData.password !== formData.confirmPassword) {
+            return window.alert("Passwords do not match");
+        }
+        if (passwordErrors.length > 0) {
+            return window.alert("Please fix the password issues.");
+        }
+        console.log("Form validation passed");
 
         const newForm = new FormData();
-        // meaning of uper line is that we are creating a new form data object and we are sending it to the backend with the name of newForm and the value of newForm is new FormData()
-        newForm.append("file", avatar);
-        // meanin of newForm.append("file",avatar) is that we are sending a file to the backend with the name of file and the value of the file is avatar
-        newForm.append("name", name);
-        newForm.append("email", email);
-        newForm.append("password", password)
+        newForm.append("firstName", formData.firstName);
+        newForm.append("lastName", formData.lastName);
+        newForm.append("phoneNumber", formData.phoneNumber);
+        newForm.append("email", formData.email);
+        newForm.append("instituteName", formData.instituteName);
+        newForm.append("instituteAddress1", formData.instituteAddress1);
+        newForm.append("instituteAddress2", formData.instituteAddress2);
+        newForm.append("landmark", formData.landmark);
+        newForm.append("pincode", formData.pincode);
+        newForm.append("district", formData.district);
+        newForm.append("state", formData.state);
+        newForm.append("password", formData.password);
+    
+
+        console.log("Form data prepared");
+
+        try {
+            const res = await axios.post(`${server}/user/create-user`, newForm, {
+                headers: { "Content-Type": "multipart/form-data" },
+            });
+            console.log("API response:", res.data);
+            toast.success(res.data.message);
+            navigate("/shop-login");
+        } catch (error) {
+            console.error("API error:", error);
+            toast.error(error.response?.data?.message || "An error occurred");
+        }
+    };
+    const validatePassword = (password) => {
+        const errors = [];
+        if (password.length < 8) {
+            errors.push("Password must be at least 8 characters long.");
+        }
+        if (!/[A-Z]/.test(password)) {
+            errors.push("Password must include at least one uppercase letter.");
+        }
+        if (!/[a-z]/.test(password)) {
+            errors.push("Password must include at least one lowercase letter.");
+        }
+        if (!/[0-9]/.test(password)) {
+            errors.push("Password must include at least one number.");
+        }
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            errors.push("Password must include at least one special character.");
+        }
+        return errors;
+    };
+    const handlePasswordChange = (e) => {
+        const password = e.target.value;
+        const errors = validatePassword(password);
+        setPasswordErrors(errors);
+        setFormData((prev) => ({
+            ...prev,
+            password,
+        }));
+    };
+
+    const handleChange = (event) => {
+        const { name, value } = event.target;
+        setFormData((prev) => ({
+            ...prev,
+            [name]: value
 
 
-        axios
-            .post(`${server}/user/create-user`, newForm, config)
-            .then((res) => {
-                toast.success(res.data.message);
-                setName("");
-                setEmail("");
-                setPassword("");
-                setAvatar();
-            }).catch((error) => {
-                toast.error(error.response.data.message);
-            })
+        }));
+        
     }
-
+    
+    //    console.log("checked :",check);
     return (
-        <div className='min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
-            <div className='sm:mx-auto sm:w-full sm:max-w-md'>
-                <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    Register as new user
+        <div className='min-h-screen bg-gradient-to-b from-customBlue to-customGreen flex flex-col justify-center py-12 sm:px-6 lg:px-8'>
+            <div className='sm:mx-auto sm:w-full sm:max-w-md '>
+
+                <div className="flex justify-center text-center  items-center   text-white">
+                    <div className='flex justify-center shadow-2xl  rounded-full bg-white w-1/2'>
+                        <button className='m-3 text-white bg-cyan-600 font-bold  px-4 py-2 rounded-3xl '>Log In</button>
+                        <button className='m-3 text-white font-bold bg-cyan-600 px-4 py-2 rounded-3xl'>Sign Up</button>
+                    </div>
+                </div>
+                <h2 className="flex justify-center text-center mt-6 mb-6 items-center text-3xl  text-white">
+                    <IoIosLock /><span>Customer Signup</span>
                 </h2>
             </div>
-            <div className='mt-8 sm:mx-auto sm:w-full sm:max-w-md'>
-                <div className='bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10'>
+            <div className='mt-4 sm:mx-auto sm:w-full sm:max-w-[35rem] '>
+                <div className="bg-white bg-opacity-30 py-8 px-4 shadow sm:rounded-3xl sm:px-10">
                     <form className='space-y-6' onSubmit={handleSubmit} >
-                        {/* Full Name start */}
+                        {/* Shop Name */}
                         <div>
-                            <label htmlFor="email"
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700 '
+                            >
+                                First Name <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1 '>
+                                <input type="name"
+                                    name='firstName'
+                                    required
+                                    placeholder='First Name'
+                                    value={formData.firstName}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="name"
                                 className='block text-sm font-medium text-gray-700'
                             >
-                                Full Name
+                                Last Name <div className="inline text-red-700">*</div>
                             </label>
                             <div className='mt-1'>
-                                <input type="text"
-                                    name='text'
-                                    autoComplete='text'
+                                <input type="name"
+                                    name='lastName'
                                     required
-                                    placeholder='john doe'
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+placeholder='Last Name'
+                                    value={formData.lastName}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
                                 />
                             </div>
                         </div>
-                        {/* Full Name end */}
-
-                        {/* Email address */}
-                        <div>
-                            <label htmlFor="email"
-                                className='block text-sm font-medium text-gray-700'
-                            >
-                                Email Address
-                            </label>
-                            <div className='mt-1 relative'>
-                                <input
-                                    type="email"
-                                    name='email'
-                                    autoComplete='email'
-                                    required
-                                    placeholder='Enter valid email address'
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
-                                />
-                            </div>
-                        </div>
-                        {/* Email address end */}
-                        {/* Password start */}
-                        <div>
+                         {/* Phon number */}
+                         <div>
                             <label htmlFor="password"
                                 className='block text-sm font-medium text-gray-700'
                             >
-                                password
+                                Phone Number<div className="inline text-red-700">*</div>
                             </label>
                             <div className='mt-1 relative'>
-                                <input type={visible ? "text" : "password"}
-                                    name='password'
+                                <input
+                                    type="tel"
+                                    name='phoneNumber'
                                     autoComplete='password'
                                     required
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                    value={formData.phoneNumber}
+                                    onChange={handleChange}
+                                    placeholder='Phone Number'
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+                        {/* Phone number end */}
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                Email Address <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="email"
+                                    name='email'
+                                    required
+placeholder='Email'
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+
+
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                Institute Name <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="name"
+                                    name='instituteName'
+                                    required
+placeholder='Institute Name'
+                                    value={formData.instituteName}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                               Institute Address: <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="text"
+                                    name='instituteAddress1'
+                                    required
+placeholder='Address line 1'
+                                    value={formData.instituteAddress1}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                                 <input type="text"
+                                    name='instituteAddress2'
+                                    // required
+placeholder='Address line 2'
+
+                                    value={formData.instituteAddress2}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border mt-2 border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                ⁠⁠Landmark   <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="name"
+                                    name='landmark'
+                                    required
+placeholder='Landmark'
+                                    value={formData.landmark}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                ⁠⁠Pincode <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="name"
+                                    name='pincode'
+                                    required
+placeholder='⁠Pincode'
+                                    value={formData.pincode}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                District <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="name"
+                                    name='district'
+                                    required
+placeholder='District'
+                                    value={formData.district}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+                        <div>
+                            <label htmlFor="name"
+                                className='block text-sm font-medium text-gray-700'
+                            >
+                                ⁠⁠State <div className="inline text-red-700">*</div>
+                            </label>
+                            <div className='mt-1'>
+                                <input type="name"
+                                    name='state'
+                                    required
+                                    placeholder='⁠State'
+
+                                    value={formData.state}
+                                    onChange={handleChange}
+                                    className='appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm'
+                                />
+                            </div>
+                        </div>
+
+                       
+
+                       
+
+                        {/* Password */}
+                        <div>
+                            <label
+                                htmlFor="password"
+                                className="block text-sm font-medium text-gray-700"
+                            >
+                                Password <span className="text-red-700">*</span>
+                            </label>
+                            <div className="mt-1 relative">
+                                <input
+                                    type={visible ? "text" : "password"}
+                                    name="password"
+                                    required
+                                    placeholder='Password'
+                                    value={formData.password}
+                                    onChange={handlePasswordChange}
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                                 />
                                 {visible ? (
                                     <AiOutlineEye
@@ -132,63 +359,85 @@ const Signup = () => {
                                         onClick={() => setVisible(true)}
                                     />
                                 )}
-
                             </div>
+                            {/* Password Error Messages */}
+                            {passwordErrors.length > 0 && (
+                                <ul className="mt-2 text-sm text-red-600">
+                                    {passwordErrors.map((error, index) => (
+                                        <li key={index}>{error}</li>
+                                    ))}
+                                </ul>
+                            )}
                         </div>
-                        {/* Password end */}
-
-                        {/* Avatar start */}
                         <div>
-                            <label htmlFor="avatar"
+                            <label
+                                htmlFor="password"
                                 className="block text-sm font-medium text-gray-700"
-                            ></label>
-                            <div className='mt-2 flex items-center'>
-                                <span className='inline-block h-8 w-8 rounded-full overflow-hidden'>
-                                    {
-                                        avatar ? (
-                                            <img
-                                                src={URL.createObjectURL(avatar)}
-                                                alt="avatar"
-                                                className="h-full w-full object-cover rounded-full"
-                                            />
-                                        ) : (
-                                            <RxAvatar className="h-8 w-8" />
-                                        )}
-                                </span>
-                                {/* Input file start */}
-                                <label htmlFor="file-input"
-                                    className="ml-5 flex items-center justify-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                                >
-                                    <span>Upload a file</span>
-                                    <input type="file"
-                                        name='avatar'
-                                        id='file-input'
-                                        accept=".jpg,.jpeg,.png"
-                                        onChange={handleFileInputChange}
-                                        className="sr-only"
+                            >
+                                Confirm Password<div className="inline text-red-700">*</div>
+                            </label>
+                            <div className="mt-1 relative">
+                                <input
+                                    type={visible ? "text" : "password"}
+                                    name="confirmPassword"
+                                    autoComplete="current-password"
+                                    required
+                                    placeholder='Confirm Password'
+                                    value={formData.confirmPassword}
+                                    onChange={handleChange}
+                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-2xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                />
+                                {visible ? (
+                                    <AiOutlineEye
+                                        className="absolute right-2 top-2 cursor-pointer"
+                                        size={25}
+                                        onClick={() => setVisible(false)}
                                     />
-                                </label>
-                                {/* Input file end */}
+                                ) : (
+                                    <AiOutlineEyeInvisible
+                                        className="absolute right-2 top-2 cursor-pointer"
+                                        size={25}
+                                        onClick={() => setVisible(true)}
+                                    />
+                                )}
                             </div>
                         </div>
-                        {/* Avatar end */}
+                        <div className="flex items-center mt-4">
+                            <input
+                                type="checkbox"
+                                id="checkbox"
+                                name="checkbox"
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                onChange={() => { setCheck((prev) => !prev) }}
+                            />
+                            <label htmlFor="checkbox" className="ml-2 text-sm text-gray-700">
+                            By Checking this box I agree to the Terms and Conditions of SEMA Healthcare PVT. LTD.
+
+
+                            </label>
+                        </div>
+
+
+
 
 
                         <div>
                             <button
                                 type='submit'
-                                className=' className="group relative w-full h-[40px] flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"'
+                                className=' className="group relative w-full h-[40px] flex justify-center py-2 px-4 border border-transparent text-md font-medium rounded-3xl  bg-yellow-600 text-black"'
                             >
-                                Submit
+                                SignUp
                             </button>
                         </div>
 
-                        <div className={`${styles.noramlFlex} w-full`} >
+
+                        {/* <div className={`${styles.noramlFlex} w-full`} >
                             <h4>Already have an account?</h4>
-                            <Link to="/login" className="text-blue-600 pl-2">
+                            <Link to="/shop-login" className="text-blue-600 pl-2">
                                 Sign In
                             </Link>
-                        </div>
+                        </div> */}
+
                     </form>
                 </div>
             </div>
@@ -196,7 +445,9 @@ const Signup = () => {
     )
 }
 
-export default Signup
+export default Signup;
+
+
 
 
 
