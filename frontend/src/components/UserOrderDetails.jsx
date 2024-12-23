@@ -14,7 +14,7 @@ const UserOrderDetails = () => {
   const { orders } = useSelector((state) => state.order);
   const { user } = useSelector((state) => state.user);
   const dispatch = useDispatch();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const [comment, setComment] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [rating, setRating] = useState(1);
@@ -43,7 +43,7 @@ const UserOrderDetails = () => {
           productId: selectedItem?._id,
           orderId: id,
         },
-        { withCredentials: true }
+        { withCredentials: true },
       );
 
       toast.success(res.data.message);
@@ -181,7 +181,7 @@ const UserOrderDetails = () => {
                     size={25}
                     onClick={() => setRating(i)}
                   />
-                )
+                ),
               )}
             </div>
             <br />

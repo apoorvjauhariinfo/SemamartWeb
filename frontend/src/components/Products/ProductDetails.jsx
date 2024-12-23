@@ -126,10 +126,10 @@ const ProductDetails = ({ data }) => {
           <div className="w-full py-5">
             <div className="block w-full 800px:flex gap-8">
               <div className="w-full 800px:w-[50%]">
-                <section className="flex items-start">
-                  <div>
+                <section className="grid grid-cols-[1fr_6fr] items-start h-full">
+                  <div className="max-w-[90px]">
                     {data &&
-                      data.images.map((i, index) => (
+                      data.images.map((el, index) => (
                         <div
                           className={`${
                             select === index
@@ -138,35 +138,79 @@ const ProductDetails = ({ data }) => {
                           } cursor-pointer`}
                         >
                           <img
-                            src={`${backend_url}${i}`}
+                            src={`${backend_url}${el}`}
                             alt=""
                             className="h-[80px] overflow-hidden mr-3 mt-3"
                             onClick={() => setSelect(index)}
                           />
                         </div>
                       ))}
+                    <div
+                      className={
+                        "aspect-square flex items-center " +
+                        (select === "vid"
+                          ? "border-2 border-darkBlue"
+                          : "border")
+                      }
+                      onClick={() => setSelect("vid")}
+                    >
+                      <video>
+                        <source
+                          src={backend_url + data.shortVideo}
+                          type="video/mp4"
+                        />
+                      </video>
+                    </div>
                   </div>
-                  <img
-                    src={`${backend_url}${data && data.images[select]}`}
-                    alt=""
-                    className="w-[80%]"
-                  />
+                  <article className="self-center">
+                    {select === "vid" ? (
+                      <video controls>
+                        <source
+                          src={backend_url + data.shortVideo}
+                          type="video/mp4"
+                        />
+                      </video>
+                    ) : (
+                      <img
+                        src={`${backend_url}${data && data.images[select]}`}
+                        alt=""
+                        className="w-[80%]"
+                      />
+                    )}
+                  </article>
                 </section>
               </div>
               {/* Rtght */}
               <div className="w-full 800px:w-[50%] pt-5 ">
-                <h1 className={`${styles.productTitle}`}>{data.name}</h1>
-                <div className="flex pt-3 gap-1">
-                  {/* <p className="font-Roboto text-sm text-slate-600">MRP:</p> */}
-                  <p className="font-Roboto text-4xl text-slate-800 font-bold">
-                    ₹{data.discountPrice}
-                  </p>
-                  <p className="font-Roboto text-sm text-red-600 line-through">
-                    {data.originalPrice ? "₹ " + data.originalPrice : null}
-                  </p>
+                <section className="border-b">
+                  <h1 className={`${styles.productTitle}`}>{data.name}</h1>
+                </section>
+                <div className="mt-6 font-Poppins">
+                  {data?.originalPrice && (
+                    <p className="font-Roboto text-slate-600 pl-[62px] text-sm mb-1">
+                      Price:
+                      <span className="line-through pl-4 text-lg">
+                        ₹{data.originalPrice}
+                      </span>
+                    </p>
+                  )}
+                  <section className="font-Roboto text-slate-700 flex gap-4">
+                    <p className="mt-1 text-sm text-darkBlue font-semibold">
+                      Business Price:{" "}
+                    </p>
+                    <article className="">
+                      <p className="text-3xl text-red-600">
+                        ₹{data.discountPrice}{" "}
+                        <span className="text-lg">excl. GST</span>
+                      </p>
+                      <p className="text-xl text-red-600">
+                        ₹2222 <span className="text-sm">incl. GST</span>
+                      </p>
+                    </article>
+                  </section>
                 </div>
                 {/* incremnt decremnrt btns */}
-                <div className="flex items-center mt-12 justify-between pr-3">
+                <div className="flex items-center mt-4 justify-between pr-3">
                   <article className="flex gap-4">
                     <div className="grid grid-cols-3 border">
                       <button
@@ -209,7 +253,7 @@ const ProductDetails = ({ data }) => {
                   </div>
                 </div>
                 {/* porduct description */}
-                <section className="mt-6 p-2 border-t-slate-200 border-t">
+                <section className="mt-8 pt-4 border-t-slate-200 border-t">
                   <p>{data.description}</p>
                 </section>
                 {/* seller box */}
@@ -301,20 +345,27 @@ const ProductDetailsInfo = ({
       {active === 1 ? (
         <>
           <section className="py-2 text-[18px] leading-8 pb-10 whitespace-pre-line  ">
-            <ProductDetailsRows
-              label="Product Dimensions"
-              value={data.dimension + "; " + data.weight}
-            />
-            <ProductDetailsRows
-              label="Date first available"
-              value={new Date(data.createdAt).toLocaleDateString()}
-            />
-            <ProductDetailsRows
-              label="Manufacturer"
-              value={data.manufacturerName}
-            />
-            <ProductDetailsRows label="Country of origin" value={data.origin} />
-            <ProductDetailsRows label="Category" value={data.category} />
+            <table className="w-full mt-6">
+              <tbody>
+                <ProductDetailsRows
+                  label="Product Dimensions"
+                  value={data.dimension + "; " + data.weight}
+                />
+                <ProductDetailsRows
+                  label="Date first available"
+                  value={new Date(data.createdAt).toLocaleDateString()}
+                />
+                <ProductDetailsRows
+                  label="Manufacturer"
+                  value={data.manufacturerName}
+                />
+                <ProductDetailsRows
+                  label="Country of origin"
+                  value={data.origin}
+                />
+                <ProductDetailsRows label="Category" value={data.category} />
+              </tbody>
+            </table>
           </section>
         </>
       ) : null}
