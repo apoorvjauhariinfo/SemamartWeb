@@ -183,7 +183,10 @@ const ProductDetails = ({ data }) => {
               {/* Rtght */}
               <div className="w-full 800px:w-[50%] pt-5 ">
                 <section className="border-b">
-                  <h1 className={`${styles.productTitle}`}>{data.name}</h1>
+                  <h1 className={`${styles.productTitle}`}>
+                    {/* {data.name} */}
+                    ZANDU BALM
+                  </h1>
                 </section>
                 <div className="mt-6 font-Poppins">
                   {data?.originalPrice && (
@@ -196,15 +199,15 @@ const ProductDetails = ({ data }) => {
                   )}
                   <section className="font-Roboto text-slate-700 flex gap-4">
                     <p className="mt-1 text-sm text-darkBlue font-semibold">
-                      Business Price:{" "}
+                      Discounted Price:{" "}
                     </p>
                     <article className="">
                       <p className="text-3xl text-red-600">
                         ₹{data.discountPrice}{" "}
                         <span className="text-lg">excl. GST</span>
                       </p>
-                      <p className="text-xl text-red-600">
-                        ₹2222 <span className="text-sm">incl. GST</span>
+                      <p className="text-2xl text-red-600">
+                        ₹54 <span className="text-sm">incl. GST</span>
                       </p>
                     </article>
                   </section>
@@ -258,7 +261,9 @@ const ProductDetails = ({ data }) => {
                 </section>
                 {/* seller box */}
                 <div className="flex items-center pt-8">
-                  <Link to={`/shop/preview/${data?.shop._id}`}>
+                  <Link
+                  // to={`/shop/preview/${data?.shop._id}`}
+                  >
                     <img
                       src={`${backend_url}${data?.shop?.avatar}`}
                       alt=""
@@ -274,8 +279,12 @@ const ProductDetails = ({ data }) => {
                       ({averageRating}/5) Ratingss
                     </h5>
                   </div>
-                  <SecondryBtn onClick={handleMessageSubmit}>
-                    Send Message <AiOutlineMessage className="ml-1" />
+                  <SecondryBtn
+                  // onClick={handleMessageSubmit}
+                  >
+                    {/* Send Message */}
+                    Visit Shop
+                    {/* <AiOutlineMessage className="ml-1" /> */}
                   </SecondryBtn>
                 </div>
               </div>
@@ -316,13 +325,23 @@ const ProductDetailsInfo = ({
             <div className="product-detail-table-active" />
           ) : null}
         </div>
-
+        <div className="relative">
+          <h5
+            className="product-detail-table-heading"
+            onClick={() => setActive(4)}
+          >
+            Product Description
+          </h5>
+          {active === 4 ? (
+            <div className="product-detail-table-active" />
+          ) : null}
+        </div>
         <div className="relative">
           <h5
             className="product-detail-table-heading"
             onClick={() => setActive(2)}
           >
-            Product Reviews
+            Reviews
           </h5>
           {active === 2 ? (
             <div className="product-detail-table-active" />
@@ -370,9 +389,27 @@ const ProductDetailsInfo = ({
         </>
       ) : null}
 
+      {/* product description */}
+      {active === 4 && (
+        <div className="w-full min-h-[40vh] flex flex-col items-center py-3 pt-6">
+          {data && (
+            <p className="font-Poppins text-lg text-darkGray">
+              {data.description}
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+              eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+              enim ad minim veniam, quis nostrud exercitation ullamco laboris
+              nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in
+              reprehenderit in voluptate velit esse cillum dolore eu fugiat
+              nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+              sunt in culpa qui officia deserunt mollit anim id est laborum.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Product Rev */}
       {active === 2 ? (
-        <div className="w-full min-h-[40vh] flex flex-col items-center py-3 overflow-y-scroll">
+        <div className="w-full min-h-[40vh] flex flex-col items-center py-3">
           {data &&
             data.reviews.map((item, index) => (
               <div className="w-full flex my-2">

@@ -13,7 +13,7 @@ const CreateProduct = () => {
   const dispatch = useDispatch();
 
   const [images, setImages] = useState([]);
-  const [thumbnail, setThumbnail] = useState(null); // Separate state for thumbnail image
+  const [thumbnail, setThumbnail] = useState(null);
   const [name, setName] = useState("");
   const [hsn, setHsn] = useState("");
   const [shortdescription, setShortDescription] = useState("");
@@ -855,4 +855,3 @@ const CreateProduct = () => {
 };
 
 export default CreateProduct;
-

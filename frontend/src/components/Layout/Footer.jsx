@@ -3,10 +3,10 @@ import { Link } from "react-router-dom";
 
 const Footer = () => {
   return (
-    <div className="text-darkGray mt-24">
+    <div className="text-darkGray mt-24 bg-bgGray">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-10 sm:px-8 px-5 pt-16 ">
-        <article className="px-5 text-center sm:text-start flex sm:block flex-col items-center">
-          <img src="/logo.svg" alt="brand logo" width={300} />
+        <article className="px-5 text-center sm:text-start flex flex-col items-center">
+          <img src="/logo.svg" alt="brand logo" width={350} />
           <section className="grid grid-cols-2 place-items-center mt-4">
             <img src="/footer-lion.png" alt="lion art" width={150} />
             <img src="/footer-art.png" alt="lion art" width={80} />
