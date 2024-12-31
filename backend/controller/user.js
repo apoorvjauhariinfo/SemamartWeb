@@ -12,29 +12,29 @@ const { isAuthenticated, isAdmin } = require("../middleware/auth");
 
 const router = express.Router();
 
-router.post("/create-user",upload.none(),  async (req, res, next) => {
-//  console.log(req.body);
+router.post("/create-user", upload.none(), async (req, res, next) => {
+  //  console.log(req.body);
   try {
-    const { firstName,
+    const {
+      firstName,
       lastName,
       phoneNumber,
       email,
       instituteName,
       instituteAddress1,
       instituteAddress2,
-      landmark ,
+      landmark,
       pincode,
       district,
       state,
       password,
-     } = req.body;
-     
+    } = req.body;
+
     const userEmail = await User.findOne({ email });
-    
+
     if (userEmail) {
       // if user already exits account is not create and file is deleted
-      
-      
+
       return next(new ErrorHandler("User already exits", 400));
     }
 
@@ -67,7 +67,7 @@ router.post("/create-user",upload.none(),  async (req, res, next) => {
       instituteName,
       instituteAddress1,
       instituteAddress2,
-      landmark ,
+      landmark,
       pincode,
       district,
       state,
@@ -115,25 +115,26 @@ router.post(
 
       const newUser = jwt.verify(
         activation_token,
-        process.env.ACTIVATION_SECRET
+        process.env.ACTIVATION_SECRET,
       );
       if (!newUser) {
         return next(new ErrorHandler("Invalid token", 400));
       }
-      const { firstName,
+      const {
+        firstName,
         lastName,
         phoneNumber,
         email,
         instituteName,
         instituteAddress1,
         instituteAddress2,
-        landmark ,
+        landmark,
         pincode,
         district,
         state,
-        password } = newUser;
-      
-      
+        password,
+      } = newUser;
+
       let user = await User.findOne({ email });
 
       if (user) {
@@ -158,12 +159,12 @@ router.post(
         ],
       });
       // console.log(user);
-      
+
       sendToken(user, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // login user
@@ -188,14 +189,14 @@ router.post(
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct inforamtions", 400)
+          new ErrorHandler("Please provide the correct inforamtions", 400),
         );
       }
       sendToken(user, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // load user
@@ -216,7 +217,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // log out user
@@ -235,7 +236,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update user info
@@ -261,7 +262,7 @@ compare the provided password with the stored password for authentication purpos
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct information", 400)
+          new ErrorHandler("Please provide the correct information", 400),
         );
       }
 
@@ -278,7 +279,7 @@ compare the provided password with the stored password for authentication purpos
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update user avatar
@@ -311,7 +312,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update user addresses
@@ -323,16 +324,16 @@ router.put(
       const user = await User.findById(req.user.id);
 
       const sameTypeAddress = user.addresses.find(
-        (address) => address.addressType === req.body.addressType
+        (address) => address.addressType === req.body.addressType,
       );
       if (sameTypeAddress) {
         return next(
-          new ErrorHandler(`${req.body.addressType} address already exists`)
+          new ErrorHandler(`${req.body.addressType} address already exists`),
         );
       }
 
       const existsAddress = user.addresses.find(
-        (address) => address._id === req.body._id
+        (address) => address._id === req.body._id,
       );
 
       if (existsAddress) {
@@ -351,7 +352,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // delete user address
@@ -369,7 +370,7 @@ router.delete(
         {
           _id: userId,
         },
-        { $pull: { addresses: { _id: addressId } } }
+        { $pull: { addresses: { _id: addressId } } },
       );
 
       const user = await User.findById(userId);
@@ -378,7 +379,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update user password
@@ -390,7 +391,7 @@ router.put(
       const user = await User.findById(req.user.id).select("+password");
 
       const isPasswordMatched = await user.comparePassword(
-        req.body.oldPassword
+        req.body.oldPassword,
       );
 
       if (!isPasswordMatched) {
@@ -404,7 +405,7 @@ router.put(
     different passwords and an error is returned. */
       if (req.body.newPassword !== req.body.confirmPassword) {
         return next(
-          new ErrorHandler("Password doesn't matched with each other!", 400)
+          new ErrorHandler("Password doesn't matched with each other!", 400),
         );
       }
       user.password = req.body.newPassword;
@@ -418,7 +419,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // find user infoormation with the userId
@@ -435,7 +436,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // all users --- for admin
@@ -455,7 +456,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // delete users --- admin
@@ -469,7 +470,7 @@ router.delete(
 
       if (!user) {
         return next(
-          new ErrorHandler("User is not available with this id", 400)
+          new ErrorHandler("User is not available with this id", 400),
         );
       }
 
@@ -482,7 +483,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 module.exports = router;

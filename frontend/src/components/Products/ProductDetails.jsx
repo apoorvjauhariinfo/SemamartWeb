@@ -18,6 +18,8 @@ import { addTocart } from "../../redux/actions/cart";
 import { toast } from "react-toastify";
 import Ratings from "./Ratings";
 import axios from "axios";
+import { ProductDetailsRows } from "./Ui.productDetail";
+import { ActionBtn, SecondryBtn } from "../UI/Buttons";
 
 const ProductDetails = ({ data }) => {
   const { products } = useSelector((state) => state.products);
@@ -87,7 +89,7 @@ const ProductDetails = ({ data }) => {
     products.reduce(
       (acc, product) =>
         acc + product.reviews.reduce((sum, review) => sum + review.rating, 0),
-      0
+      0,
     );
 
   const avg = totalRatings / totalReviewsLength || 0;
@@ -118,82 +120,122 @@ const ProductDetails = ({ data }) => {
   };
 
   return (
-    <div className="bg-white">
+    <div className="bg-white pb-8">
       {data ? (
-        <div className={`${styles.section} w-[90%] 800px:w-[80%] `}>
+        <div className={`${styles.section} w-[90%] 800px:w-[80%]`}>
           <div className="w-full py-5">
-            <div className="block w-full 800px:flex">
+            <div className="block w-full 800px:flex gap-8">
               <div className="w-full 800px:w-[50%]">
-                <img
-                  src={`${backend_url}${data && data.images[select]}`}
-                  alt=""
-                  className="w-[80%]"
-                />
-                <div className="w-full flex">
-                  {data &&
-                    data.images.map((i, index) => (
-                      <div
-                        className={`${
-                          select === 0 ? "border" : "null"
-                        } cursor-pointer`}
-                      >
-                        <img
-                          src={`${backend_url}${i}`}
-                          alt=""
-                          className="h-[200px] overflow-hidden mr-3 mt-3"
-                          onClick={() => setSelect(index)}
+                <section className="grid grid-cols-[1fr_6fr] items-start h-full">
+                  <div className="max-w-[90px]">
+                    {data &&
+                      data.images.map((el, index) => (
+                        <div
+                          className={`${
+                            select === index
+                              ? "border-2 border-darkBlue"
+                              : "border"
+                          } cursor-pointer`}
+                        >
+                          <img
+                            src={`${backend_url}${el}`}
+                            alt=""
+                            className="h-[80px] overflow-hidden mr-3 mt-3"
+                            onClick={() => setSelect(index)}
+                          />
+                        </div>
+                      ))}
+                    <div
+                      className={
+                        "aspect-square flex items-center " +
+                        (select === "vid"
+                          ? "border-2 border-darkBlue"
+                          : "border")
+                      }
+                      onClick={() => setSelect("vid")}
+                    >
+                      <video>
+                        <source
+                          src={backend_url + data.shortVideo}
+                          type="video/mp4"
                         />
-                      </div>
-                    ))}
-                  <div
-                    className={`${
-                      select === 1 ? "border" : "null"
-                    } cursor-pointer `}
-                  >
-                    {/* <img
-                                            src={data?.image_Url[1].url}
-                                            alt="img"
-                                            className="h-[200px]"
-                                            onClick={() => setSelect(1)}
-                                        /> */}
+                      </video>
+                    </div>
                   </div>
-                </div>
+                  <article className="self-center">
+                    {select === "vid" ? (
+                      <video controls>
+                        <source
+                          src={backend_url + data.shortVideo}
+                          type="video/mp4"
+                        />
+                      </video>
+                    ) : (
+                      <img
+                        src={`${backend_url}${data && data.images[select]}`}
+                        alt=""
+                        className="w-[80%]"
+                      />
+                    )}
+                  </article>
+                </section>
               </div>
               {/* Rtght */}
               <div className="w-full 800px:w-[50%] pt-5 ">
-                <h1 className={`${styles.productTitle}`}>{data.name}</h1>
-                <p>{data.description}</p>
-                <div className="flex pt-3">
-                  <h4 className={`${styles.productDiscountPrice}`}>
-                    {data.discountPrice}$
-                  </h4>
-                  <h3 className={`${styles.price}`}>
-                    {data.originalPrice ? data.originalPrice + "$" : null}
-                  </h3>
+                <section className="border-b">
+                  <h1 className={`${styles.productTitle}`}>
+                    {/* {data.name} */}
+                    ZANDU BALM
+                  </h1>
+                </section>
+                <div className="mt-6 font-Poppins">
+                  {data?.originalPrice && (
+                    <p className="font-Roboto text-slate-600 pl-[62px] text-sm mb-1">
+                      Price:
+                      <span className="line-through pl-4 text-lg">
+                        ₹{data.originalPrice}
+                      </span>
+                    </p>
+                  )}
+                  <section className="font-Roboto text-slate-700 flex gap-4">
+                    <p className="mt-1 text-sm text-darkBlue font-semibold">
+                      Discounted Price:{" "}
+                    </p>
+                    <article className="">
+                      <p className="text-3xl text-red-600">
+                        ₹{data.discountPrice}{" "}
+                        <span className="text-lg">excl. GST</span>
+                      </p>
+                      <p className="text-2xl text-red-600">
+                        ₹54 <span className="text-sm">incl. GST</span>
+                      </p>
+                    </article>
+                  </section>
                 </div>
-
-                {/* inc dec option */}
-                <div className="flex items-center mt-12 justify-between pr-3">
-                  <div>
-                    <button
-                      className="bg-gradient-to-r from-teal-400 to-teal-500 text-white font-bold rounded-l px-4 py-2 shadow-lg hover:opacity-75 transition duration-300 ease-in-out"
-                      onClick={decrementCount}
-                    >
-                      -
-                    </button>
-
-                    <span className="bg-gray-200 text-gray-800 font-medium px-4 py-[11px]">
-                      {count}
-                    </span>
-
-                    <button
-                      className="bg-gradient-to-r from-teal-400 to-teal-500 text-white font-bold rounded-l px-4 py-2 shadow-lg hover:opacity-75 transition duration-300 ease-in-out"
-                      onClick={incrementCount}
-                    >
-                      +
-                    </button>
-                  </div>
-
+                {/* incremnt decremnrt btns */}
+                <div className="flex items-center mt-4 justify-between pr-3">
+                  <article className="flex gap-4">
+                    <div className="grid grid-cols-3 border">
+                      <button
+                        className="font-bold rounded-l px-4 py-2 hover:opacity-75 transition duration-300 ease-in-out"
+                        onClick={decrementCount}
+                      >
+                        -
+                      </button>
+                      <span className="text-slate-700 font-medium px-4 py-[11px]">
+                        {count}
+                      </span>
+                      <button
+                        className="font-bold rounded-r px-[14px] py-2 hover:opacity-75 transition duration-300 ease-in-out"
+                        onClick={incrementCount}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <ActionBtn onClick={() => addToCartHandler(data._id)}>
+                      Add to Cart <AiOutlineShoppingCart className="ml-1" />
+                    </ActionBtn>
+                  </article>
                   <div>
                     {click ? (
                       <AiFillHeart
@@ -213,60 +255,48 @@ const ProductDetails = ({ data }) => {
                     )}
                   </div>
                 </div>
-                <div
-                  className={`${styles.button} !mt-6 !rounded !h-11 flex items-center`}
-                  onClick={() => addToCartHandler(data._id)}
-                >
-                  <span className="text-white flex items-center">
-                    Add to Cart <AiOutlineShoppingCart className="ml-1" />
-                  </span>
-                </div>
+                {/* porduct description */}
+                <section className="mt-8 pt-4 border-t-slate-200 border-t">
+                  <p>{data.description}</p>
+                </section>
+                {/* seller box */}
                 <div className="flex items-center pt-8">
-                  <Link to={`/shop/preview/${data?.shop._id}`}>
+                  <Link
+                  // to={`/shop/preview/${data?.shop._id}`}
+                  >
                     <img
                       src={`${backend_url}${data?.shop?.avatar}`}
                       alt=""
                       className="w-[50px] h-[50px] rounded-full mr-2"
                     />
                   </Link>
-
                   <div className="pr-8">
                     <Link to={`/shop/preview/${data?.shop._id}`}>
-                      <h3
-                        className={`${styles.shop_name} pb-1 pt-1 cursor-pointer`}
-                      >
-                        {data.shop.name}
-                      </h3>
+                      <h3 className="font-Poppins">{data.shop.name}</h3>
                     </Link>
                     <h5 className="pb-3 text-[15px]">
                       {" "}
                       ({averageRating}/5) Ratingss
                     </h5>
                   </div>
-
-                  <div
-                    className={`${styles.button} bg-[#6443d1] mt-4 !rounded !h-11`}
-                    onClick={handleMessageSubmit}
+                  <SecondryBtn
+                  // onClick={handleMessageSubmit}
                   >
-                    <span className="text-white flex items-center">
-                      Send Message <AiOutlineMessage className="ml-1" />
-                    </span>
-                  </div>
+                    {/* Send Message */}
+                    Visit Shop
+                    {/* <AiOutlineMessage className="ml-1" /> */}
+                  </SecondryBtn>
                 </div>
               </div>
             </div>
           </div>
-
           {/* Product Details  info */}
-
           <ProductDetailsInfo
             data={data}
             products={products}
             totalReviewsLength={totalReviewsLength}
             averageRating={averageRating}
           />
-          <br />
-          <br />
         </div>
       ) : null}
     </div>
@@ -282,64 +312,104 @@ const ProductDetailsInfo = ({
   const [active, setActive] = useState(1);
 
   return (
-    <div className="bg-[#f5f6fb] px-3 800px:px-10 py-2 rounded">
+    <div className="bg-lightBlue px-3 800px:px-10 py-2 rounded">
       <div className="w-full flex justify-between border-b pt-10 pb-2">
         <div className="relative">
           <h5
-            className={
-              "text-[#000] text-[18px] px-1 leading-5 font-[600] cursor-pointer 800px:text-[20px]"
-            }
+            className="product-detail-table-heading"
             onClick={() => setActive(1)}
           >
             Product Details
           </h5>
           {active === 1 ? (
-            <div className={`${styles.active_indicator}`} />
+            <div className="product-detail-table-active" />
           ) : null}
         </div>
-
         <div className="relative">
           <h5
-            className={
-              "text-[#000] text-[18px] px-1 leading-5 font-[600] cursor-pointer 800px:text-[20px]"
-            }
+            className="product-detail-table-heading"
+            onClick={() => setActive(4)}
+          >
+            Product Description
+          </h5>
+          {active === 4 ? (
+            <div className="product-detail-table-active" />
+          ) : null}
+        </div>
+        <div className="relative">
+          <h5
+            className="product-detail-table-heading"
             onClick={() => setActive(2)}
           >
-            Product Reviews
+            Reviews
           </h5>
           {active === 2 ? (
-            <div className={`${styles.active_indicator}`} />
+            <div className="product-detail-table-active" />
           ) : null}
         </div>
 
         <div className="relative">
           <h5
-            className={
-              "text-[#000] text-[18px] px-1 leading-5 font-[600] cursor-pointer 800px:text-[20px]"
-            }
+            className="product-detail-table-heading"
             onClick={() => setActive(3)}
           >
             Seller Information
           </h5>
           {active === 3 ? (
-            <div className={`${styles.active_indicator}`} />
+            <div className="product-detail-table-active" />
           ) : null}
         </div>
       </div>
 
       {active === 1 ? (
         <>
-          <p className="py-2 text-[18px] leading-8 pb-10 whitespace-pre-line  ">
-            {data.description}
-            {data.purchaseNote}
-            {data.taxStatus}
-          </p>
+          <section className="py-2 text-[18px] leading-8 pb-10 whitespace-pre-line  ">
+            <table className="w-full mt-6">
+              <tbody>
+                <ProductDetailsRows
+                  label="Product Dimensions"
+                  value={data.dimension + "; " + data.weight}
+                />
+                <ProductDetailsRows
+                  label="Date first available"
+                  value={new Date(data.createdAt).toLocaleDateString()}
+                />
+                <ProductDetailsRows
+                  label="Manufacturer"
+                  value={data.manufacturerName}
+                />
+                <ProductDetailsRows
+                  label="Country of origin"
+                  value={data.origin}
+                />
+                <ProductDetailsRows label="Category" value={data.category} />
+              </tbody>
+            </table>
+          </section>
         </>
       ) : null}
 
+      {/* product description */}
+      {active === 4 && (
+        <div className="w-full min-h-[40vh] flex flex-col items-center py-3 pt-6">
+          {data && (
+            <p className="font-Poppins text-lg text-darkGray">
+              {data.description}
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
+              eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut
+              enim ad minim veniam, quis nostrud exercitation ullamco laboris
+              nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in
+              reprehenderit in voluptate velit esse cillum dolore eu fugiat
+              nulla pariatur. Excepteur sint occaecat cupidatat non proident,
+              sunt in culpa qui officia deserunt mollit anim id est laborum.
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Product Rev */}
       {active === 2 ? (
-        <div className="w-full min-h-[40vh] flex flex-col items-center py-3 overflow-y-scroll">
+        <div className="w-full min-h-[40vh] flex flex-col items-center py-3">
           {data &&
             data.reviews.map((item, index) => (
               <div className="w-full flex my-2">

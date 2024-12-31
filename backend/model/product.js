@@ -11,8 +11,8 @@ const productSchema = new mongoose.Schema({
     required: [true, "Please enter product HSN Code"],
   },
   productType: {
-    type:String,
-    require:[true, "Please enter your product type"],
+    type: String,
+    require: [true, "Please enter your product type"],
   },
   originalPrice: {
     type: Number,
@@ -47,10 +47,10 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
   enableStockManagement: {
-    type: String,
+    type: Boolean,
   },
   allowSingleQuantity: {
-    type: String,
+    type: Boolean,
   },
   taxStatus: {
     type: String,
@@ -83,7 +83,7 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
   allowproductreviews: {
-    type: String,
+    type: Boolean,
   },
   weight: {
     type: String,
@@ -104,12 +104,11 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
 
- 
   thumbnail: {
     type: String, // Stores the main image URL or path
     // required: [true, "Please upload a thumbnail image!"],
   },
- 
+
   images: [
     {
       type: String,
@@ -145,11 +144,8 @@ const productSchema = new mongoose.Schema({
     type: Number,
   },
   shopId: {
-    type: String,
-    required: true,
-  },
-  shop: {
-    type: Object,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Shop",
     required: true,
   },
   sold_out: {

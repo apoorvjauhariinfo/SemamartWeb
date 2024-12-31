@@ -17,6 +17,7 @@ import { backend_url } from "../../server";
 import Cart from "../cart/Cart";
 import Wishlist from "../Wishlist/Wishlist";
 import { RxCross1 } from "react-icons/rx";
+import { ActionBtn } from "../UI/Buttons";
 
 const Header = ({ activeHeading }) => {
   const { isSeller } = useSelector((state) => state.seller);
@@ -41,7 +42,7 @@ const Header = ({ activeHeading }) => {
     const filteredProducts =
       allProducts &&
       allProducts.filter((product) =>
-        product.name.toLowerCase().includes(term.toLowerCase())
+        product.name.toLowerCase().includes(term.toLowerCase()),
       );
     setSearchData(filteredProducts);
   };
@@ -60,10 +61,7 @@ const Header = ({ activeHeading }) => {
         <div className="hidden 800px:h-[50px] 800px:my-[20px] 800px:flex items-center justify-between ">
           <div>
             <Link to="/">
-              <img
-                src="https://shopo.quomodothemes.website/assets/images/logo.svg"
-                alt=""
-              />
+              <img src="/logo.svg" alt="brand logo" width={250} />
             </Link>
           </div>
           {/*Search box  */}
@@ -73,7 +71,7 @@ const Header = ({ activeHeading }) => {
               placeholder="Search for product..."
               value={searchTerm}
               onChange={handleSearchChange}
-              className="h-[40px] w-full px-2 border-[#3957db] border-[2px] rounded-md"
+              className="h-[40px] w-full px-2 border rounded-md"
             />
             <AiOutlineSearch
               size={30}
@@ -107,23 +105,20 @@ const Header = ({ activeHeading }) => {
           {/* Search end */}
 
           {/* Become a Seller */}
-          <div className={`${styles.button}`}>
-            <Link to={`${isSeller ? "/dashboard" : "/shop-create"}`}>
-              <h1 className="text-[#fff] flex items-center">
-                {isSeller ? "Go Dashboard" : "Become Seller"}{" "}
-                <IoIosArrowForward className="ml-1" />
-              </h1>
-            </Link>
-          </div>
-          {/* Become a Seller end */}
+          <Link to={`${isSeller ? "/dashboard" : "/shop-create"}`}>
+            <ActionBtn>
+              {isSeller ? "Go Dashboard" : "Become Seller"}{" "}
+              <IoIosArrowForward className="ml-1" />
+            </ActionBtn>
+          </Link>
         </div>
       </div>
 
       {/*  2nd part of header start */}
       <div
         className={`${
-          active == true ? "shadow-sm fixed top-0 left-0 z-10" : null
-        } transition hidden 800px:flex items-center justify-between w-full bg-[#3321c8] h-[70px]`}
+          active === true ? "shadow-sm fixed top-0 left-0 z-10" : null
+        } transition hidden 800px:flex items-center justify-between w-full bg-darkBlue h-[70px]`}
       >
         <div
           className={`${styles.section} relative ${styles.noramlFlex} justify-between`}
@@ -131,15 +126,18 @@ const Header = ({ activeHeading }) => {
           {/* Catagories */}
           <div onClick={() => setDropDown(!dropDown)}>
             <div className="relative h-[60px] mt-[10px] w-[270px] hidden 1000px:block">
-              <BiMenuAltLeft size={30} className="absolute top-3 left-2" />
+              <BiMenuAltLeft
+                size={30}
+                className="absolute top-3 left-2 text-slate-800"
+              />
               <button
-                className={`h-[100%] w-full flex justify-between items-center pl-10 bg-white font-sans text-lg font-[500] select-none rounded-t-md`}
+                className={`h-[100%] w-full flex justify-between items-center pl-10 bg-white font-sans text-lg font-[500] select-none rounded-t-md text-slate-800`}
               >
                 All Categories
               </button>
               <IoIosArrowDown
                 size={20}
-                className="absolute right-2 top-4 cursor-pointer"
+                className="absolute right-2 top-4 cursor-pointer text-slate-800"
                 onClick={() => setDropDown(!dropDown)}
               />
               {dropDown ? (
@@ -190,9 +188,14 @@ const Header = ({ activeHeading }) => {
                 {isAuthenticated ? (
                   <Link to="/profile">
                     <img
-                      src={`${backend_url}${user.avatar}`}
+                      src={
+                        user && user.avatar
+                          ? backend_url + user.avatar
+                          : "/placeholder.png"
+                      }
                       className="w-[35px] h-[35px] rounded-full"
-                      alt=""
+                      alt="user avatar"
+                      width={30}
                     />
                   </Link>
                 ) : (
