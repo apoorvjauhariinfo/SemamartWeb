@@ -100,6 +100,11 @@ const shopSchema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordTime: Date,
+  verified: {
+    required: true,
+    type: Boolean,
+    default: false,
+  },
 });
 
 // Hash password

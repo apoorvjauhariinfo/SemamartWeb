@@ -142,7 +142,9 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
     try {
-      const product = await Product.find({ id }).populate("shopId");
+      const product = await Product.findById(id).populate("shopId");
+
+      if (!product) throw new Error("not found");
 
       res.status(200).json(product);
     } catch (error) {

@@ -11,6 +11,7 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
 
 const sendShopToken = require("../utils/shopToken");
+const { transferableAbortController } = require("util");
 
 // create shop
 router.post(
@@ -21,8 +22,6 @@ router.post(
     // Handles single short video
   ]),
   async (req, res, next) => {
-    const x = await Shop.find();
-    console.log(x);
     try {
       const { email } = req.body;
       // console.log(req.body);
@@ -30,10 +29,10 @@ router.post(
 
       if (sellerEmail) {
         const files = req.files;
-        
+
         const filename = files["profilePic"]
-        ? files["profilePic"][0].filename
-        : null;
+          ? files["profilePic"][0].filename
+          : null;
         const filePath = `uploads/${filename}`;
         fs.unlink(filePath, (err) => {
           if (err) {
@@ -63,28 +62,35 @@ router.post(
         profilePic: profilePic,
         banner: banner,
       };
-      
-      const activationToken = createActivationToken(seller);
 
-      const activationUrl = `http://test.semamart.com/seller/activation/${activationToken}`;
+      const newShop = new Shop(seller);
+      const a = await newShop.save();
+      console.log(a);
+      res.json(a);
+      // const savedSeller = await a.save();
+      // res.json(savedSeller).status(201);
 
-      try {
-        await sendMail({
-          email: seller.email,
-          subject: "Activate your Shop",
-          message: `Hello ${seller.name}, please click on the link to activate your shop: ${activationUrl}`,
-        });
-        res.status(201).json({
-          success: true,
-          message: `please check your email:- ${seller.email} to activate your shop!`,
-        });
-      } catch (error) {
-        return next(new ErrorHandler(error.message, 500));
-      }
+      // const activationToken = createActivationToken(seller);
+      //
+      // const activationUrl = `http://test.semamart.com/seller/activation/${activationToken}`;
+      //
+      // try {
+      //   await sendMail({
+      //     email: seller.email,
+      //     subject: "Activate your Shop",
+      //     message: `Hello ${seller.name}, please click on the link to activate your shop: ${activationUrl}`,
+      //   });
+      //   res.status(201).json({
+      //     success: true,
+      //     message: `please check your email:- ${seller.email} to activate your shop!`,
+      //   });
+      // } catch (error) {
+      //   return next(new ErrorHandler(error.message, 500));
+      // }
     } catch (error) {
       return next(new ErrorHandler(error.message, 400));
     }
-  }
+  },
 );
 
 // create activation token
@@ -103,7 +109,7 @@ router.post(
 
       const newSeller = jwt.verify(
         activation_token,
-        process.env.ACTIVATION_SECRET
+        process.env.ACTIVATION_SECRET,
       );
 
       if (!newSeller) {
@@ -122,15 +128,13 @@ router.post(
         banner,
       } = newSeller;
       // console.log(newSeller);
-      
+
       let seller = await Shop.findOne({ email });
-      
+
       if (seller) {
-        
-        
         return next(new ErrorHandler("User already exists", 400));
       }
-      console.log(newSeller);  
+      console.log(newSeller);
       seller = await Shop.create({
         firstName,
         lastName,
@@ -143,13 +147,12 @@ router.post(
         profilePic,
         banner,
       });
-      
-      
+
       sendShopToken(seller, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // login shop
@@ -169,11 +172,15 @@ router.post(
         return next(new ErrorHandler("User doesn't exists!", 400));
       }
 
+      if (!user.verified) {
+        return next(new ErrorHandler("Shop is not verified", 401));
+      }
+
       const isPasswordValid = await user.comparePassword(password);
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct information", 400)
+          new ErrorHandler("Please provide the correct information", 400),
         );
       }
 
@@ -181,7 +188,7 @@ router.post(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // load shop
@@ -203,7 +210,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // log out from shop
@@ -222,7 +229,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // get shop info
@@ -238,7 +245,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update shop profile picture
@@ -267,7 +274,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update seller info
@@ -299,7 +306,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // all sellers --- for admin
@@ -319,7 +326,29 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
+);
+
+//admin verifying seller
+router.get(
+  "/verify-seller/:sellerId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res, next) => {
+    const { sellerId } = req.params;
+    try {
+      const seller = await Shop.findById(sellerId);
+
+      if (!seller) {
+        return next(new ErrorHandler("Seller not found", 404));
+      }
+      seller.verified = true;
+      await seller.save();
+      res.status(201).json({ message: "seller is verified successfully" });
+    } catch (err) {
+      return next(new ErrorHandler(err.message, 500));
+    }
+  }),
 );
 
 // delete seller ---admin
@@ -333,7 +362,7 @@ router.delete(
 
       if (!seller) {
         return next(
-          new ErrorHandler("Seller is not available with this id", 400)
+          new ErrorHandler("Seller is not available with this id", 400),
         );
       }
 
@@ -346,7 +375,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // update seller withdraw methods --- sellers
@@ -368,7 +397,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // delete seller withdraw merthods --- only seller
@@ -394,7 +423,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 module.exports = router;
