@@ -319,7 +319,9 @@ router.get(
       const sellers = await Shop.find().sort({
         createdAt: -1,
       });
-      res.status(201).json({
+      if (sellers.length === 0) throw next(new ErrorHandler("No sellers", 404));
+
+      res.status(200).json({
         success: true,
         sellers,
       });
@@ -330,12 +332,20 @@ router.get(
 );
 
 //admin verifying seller
-router.get(
-  "/verify-seller/:sellerId",
+router.post(
+  "/verify-seller/",
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
-    const { sellerId } = req.params;
+    // const a = await Shop.find();
+    // a.forEach(async (b) => {
+    //   b.verified = false;
+    //   await b.save();
+    // });
+    // res.json({ nin: "aa" });
+    //
+    // return;
+    const { sellerId } = req.body;
     try {
       const seller = await Shop.findById(sellerId);
 
