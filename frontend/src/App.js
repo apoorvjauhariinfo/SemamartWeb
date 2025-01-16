@@ -109,7 +109,7 @@ const App = () => {
           path="/seller/activation/:activation_token"
           element={<SellerActivationPage />}
         />
-        <Route path="/addproduct" element={<Addproduct/>}/>
+        <Route path="/addproduct" element={<Addproduct />} />
         <Route path="/products" element={<ProductsPage />} />
         <Route path="/product/:id" element={<ProductDetailsPage />} />
         <Route path="/best-selling" element={<BestSellingPage />} />
@@ -299,9 +299,9 @@ const App = () => {
         <Route
           path="/admin-sellers"
           element={
-            <ProtectedAdminRoute>
-              <AdminDashboardSellers />
-            </ProtectedAdminRoute>
+            //<ProtectedAdminRoute>
+            <AdminDashboardSellers />
+            //</ProtectedAdminRoute>
           }
         />
         <Route

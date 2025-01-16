@@ -319,7 +319,8 @@ router.get(
       const sellers = await Shop.find().sort({
         createdAt: -1,
       });
-      if (sellers.length === 0) throw next(new ErrorHandler("No sellers", 404));
+      if (sellers.length === 0)
+        return next(new ErrorHandler("No sellers", 404));
 
       res.status(200).json({
         success: true,
@@ -327,6 +328,29 @@ router.get(
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.get(
+  "/admin-verified-sellers",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const sellers = await Shop.find({ verified: true }).sort({
+        createdAt: -1,
+      });
+      if (sellers.length === 0) {
+        return next(new ErrorHandler("No sellers", 404));
+      }
+
+      res.status(200).json({
+        success: true,
+        sellers,
+      });
+    } catch (error) {
+      return next(new ErrorHandler("Something went wrong", 500));
     }
   }),
 );
@@ -343,8 +367,8 @@ router.post(
     //   await b.save();
     // });
     // res.json({ nin: "aa" });
-    //
     // return;
+
     const { sellerId } = req.body;
     try {
       const seller = await Shop.findById(sellerId);
