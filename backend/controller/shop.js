@@ -64,9 +64,11 @@ router.post(
       };
 
       const newShop = new Shop(seller);
+      // res.status(201).json(newShop);
+      // return;
       const a = await newShop.save();
-      console.log(a);
-      res.json(a);
+      res.status(201).json(a);
+
       // const savedSeller = await a.save();
       // res.json(savedSeller).status(201);
 

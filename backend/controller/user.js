@@ -13,7 +13,6 @@ const { isAuthenticated, isAdmin } = require("../middleware/auth");
 const router = express.Router();
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
-  //  console.log(req.body);
   try {
     const {
       firstName,
@@ -38,48 +37,53 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
       return next(new ErrorHandler("User already exits", 400));
     }
 
-    // user = await User.create({
-    //   firstName,
-    //   lastName,
-    //   phoneNumber,
-    //   email,
-    //   instituteName,
-    //   password,
-    //   addresses: [
-    //     {
-    //       instituteAddress1,
-    //       instituteAddress2,
-    //       landmark,
-    //       pincode,
-    //       district,
-    //       state,
-    //     },
-    //   ],
-    // });
     // console.log(user);
-    // return res.status(200).json({user:user});
+    // return res.status(200).json({ user: user });
 
-    const user = {
-      firstName,
-      lastName,
-      phoneNumber,
+    const userTokenData = {
+      // firstName,
+      // lastName,
+      // phoneNumber,
       email,
-      instituteName,
-      instituteAddress1,
-      instituteAddress2,
-      landmark,
-      pincode,
-      district,
-      state,
-      password,
+      // instituteName,
+      // instituteAddress1,
+      // instituteAddress2,
+      // landmark,
+      // pincode,
+      // district,
+      // state,
+      // password,
     };
 
-    const activationToken = createActivationToken(user);
+    const activationToken = createActivationToken(userTokenData);
 
-    const activationUrl = `http://test.semamart.com/activation/${activationToken}`;
+    let activationUrl = `http://localhost:5173/user/activation/${activationToken}`;
+
+    if (process.env.NODE_ENV === "TEST") {
+      activationUrl = `http://test.semamart.com/user/activation/${activationToken}`;
+    }
 
     // send email to user
     try {
+      const user = await User.create({
+        firstName,
+        lastName,
+        phoneNumber,
+        email,
+        instituteName,
+        password,
+        addresses: [
+          {
+            instituteAddress1,
+            instituteAddress2,
+            landmark,
+            pincode,
+            district,
+            state,
+          },
+        ],
+      });
+
       await sendMail({
         email: user.email,
         subject: "Activate your account",
@@ -121,44 +125,47 @@ router.post(
         return next(new ErrorHandler("Invalid token", 400));
       }
       const {
-        firstName,
-        lastName,
-        phoneNumber,
+        // firstName,
+        // lastName,
+        // phoneNumber,
         email,
-        instituteName,
-        instituteAddress1,
-        instituteAddress2,
-        landmark,
-        pincode,
-        district,
-        state,
-        password,
+        // instituteName,
+        // instituteAddress1,
+        // instituteAddress2,
+        // landmark,
+        // pincode,
+        // district,
+        // state,
+        // password,
       } = newUser;
 
       let user = await User.findOne({ email });
 
-      if (user) {
+      if (user && user.isVerified) {
         return next(new ErrorHandler("User already exists", 400));
       }
-      user = await User.create({
-        firstName,
-        lastName,
-        phoneNumber,
-        email,
-        instituteName,
-        password,
-        addresses: [
-          {
-            instituteAddress1,
-            instituteAddress2,
-            landmark,
-            pincode,
-            district,
-            state,
-          },
-        ],
-      });
+      // user = await User.create({
+      //   firstName,
+      //   lastName,
+      //   phoneNumber,
+      //   email,
+      //   instituteName,
+      //   password,
+      //   addresses: [
+      //     {
+      //       instituteAddress1,
+      //       instituteAddress2,
+      //       landmark,
+      //       pincode,
+      //       district,
+      //       state,
+      //     },
+      //   ],
+      // });
       // console.log(user);
+
+      user.isVerified = true;
+      await user.save();
 
       sendToken(user, 201, res);
     } catch (error) {
@@ -181,7 +188,7 @@ router.post(
       // +password is used to select the password field from the database
 
       if (!user) {
-        return next(new ErrorHandler("user doesn't exits", 400));
+        return next(new ErrorHandler("User doesn't exist", 400));
       }
 
       // compore password with database password

@@ -44,12 +44,10 @@ router.post(
           images: imageUrls,
           thumbnail: thumbnailUrl,
           shortVideo: shortVideoUrl,
-          shop: shop,
         };
 
         // Create and save product
         const product = await Product.create(productData);
-
         res.status(201).json({
           success: true,
           product,

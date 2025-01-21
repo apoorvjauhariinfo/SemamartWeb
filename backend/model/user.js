@@ -59,6 +59,7 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     default: "user",
+    enum: ["seller", "user", "Admin"],
   },
   avatar: {
     type: String,
@@ -70,6 +71,11 @@ const userSchema = new mongoose.Schema({
   },
   resetPasswordToken: String,
   resetPasswordTime: Date,
+  isVerified: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
 });
 
 //  Hash password
