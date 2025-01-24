@@ -33,26 +33,11 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
 
     if (userEmail) {
       // if user already exits account is not create and file is deleted
-
-      return next(new ErrorHandler("User already exits", 400));
+      return next(new ErrorHandler("User already exist", 400));
     }
 
-    // console.log(user);
-    // return res.status(200).json({ user: user });
-
     const userTokenData = {
-      // firstName,
-      // lastName,
-      // phoneNumber,
       email,
-      // instituteName,
-      // instituteAddress1,
-      // instituteAddress2,
-      // landmark,
-      // pincode,
-      // district,
-      // state,
-      // password,
     };
 
     const activationToken = createActivationToken(userTokenData);
@@ -124,45 +109,13 @@ router.post(
       if (!newUser) {
         return next(new ErrorHandler("Invalid token", 400));
       }
-      const {
-        // firstName,
-        // lastName,
-        // phoneNumber,
-        email,
-        // instituteName,
-        // instituteAddress1,
-        // instituteAddress2,
-        // landmark,
-        // pincode,
-        // district,
-        // state,
-        // password,
-      } = newUser;
+      const { email } = newUser;
 
       let user = await User.findOne({ email });
 
       if (user && user.isVerified) {
         return next(new ErrorHandler("User already exists", 400));
       }
-      // user = await User.create({
-      //   firstName,
-      //   lastName,
-      //   phoneNumber,
-      //   email,
-      //   instituteName,
-      //   password,
-      //   addresses: [
-      //     {
-      //       instituteAddress1,
-      //       instituteAddress2,
-      //       landmark,
-      //       pincode,
-      //       district,
-      //       state,
-      //     },
-      //   ],
-      // });
-      // console.log(user);
 
       user.isVerified = true;
       await user.save();
@@ -190,6 +143,9 @@ router.post(
       if (!user) {
         return next(new ErrorHandler("User doesn't exist", 400));
       }
+
+      if (!user.isVerified)
+        return next(new ErrorHandler("Account not verified", 401));
 
       // compore password with database password
       const isPasswordValid = await user.comparePassword(password);
@@ -300,7 +256,9 @@ router.put(
 
       const existAvatarPath = `uploads/${existsUser.avatar}`;
 
-      fs.unlinkSync(existAvatarPath); // Delete Priviuse Image
+      if (fs.existsSync(existAvatarPath)) {
+        fs.unlinkSync(existAvatarPath); // Delete Priviuse Image
+      }
 
       const fileUrl = path.join(req.file.filename); // new image
 
@@ -308,9 +266,13 @@ router.put(
         updating the avatar field of the user with the specified `req.user.id`. It uses the
         `User.findByIdAndUpdate()` method to find the user by their id and update the avatar field
         with the new `fileUrl` value. The updated user object is then stored in the `user` variable. */
-      const user = await User.findByIdAndUpdate(req.user.id, {
-        avatar: fileUrl,
-      });
+      const user = await User.findByIdAndUpdate(
+        req.user.id,
+        {
+          avatar: fileUrl,
+        },
+        { new: true },
+      );
 
       res.status(200).json({
         success: true,
