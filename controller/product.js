@@ -134,6 +134,64 @@ router.get(
   }),
 );
 
+router.get(
+  "/get-consumable-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        productType: "Consumables",
+      })
+        .sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 400));
+    }
+  })
+);
+
+router.get(
+  "/get-equipment-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        productType: "Equipment",
+      })
+        .sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 400));
+    }
+  })
+);
+
+router.get(
+  "/get-pharmaceutical-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        productType: "Pharmaceutical",
+      })
+        .sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 400));
+    }
+  })
+);
+
+
 // get product details of product with id
 router.get(
   "/get-product/:id",
