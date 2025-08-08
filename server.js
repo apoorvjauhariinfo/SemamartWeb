@@ -34,6 +34,13 @@ app.use(
   })
 );
 
+app.use(
+  cors({
+    origin: 'http://localhost:5173',
+    credentials: true,           // if you need cookies/auth
+  })
+);
+
 app.use("/", express.static("uploads"));
 
 app.get("/test", (req, res) => {
