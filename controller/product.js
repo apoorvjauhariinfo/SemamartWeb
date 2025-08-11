@@ -287,4 +287,27 @@ router.get(
   }),
 );
 
+router.get(
+  "/search",
+  catchAsyncErrors(async (req, res, next) => {
+    const { q } = req.query;
+    if (!q) {
+      return res.status(200).json({ success: true, products: [] });
+    }
+
+    // build a RegExp for case‐insensitive partial match
+    const regex = new RegExp(q, "i");
+
+    const products = await Product.find({
+      $or: [
+        { name: { $regex: regex } },
+        { category: { $regex: regex } },
+        { tags: { $regex: regex } },
+      ],
+    });
+  
+    res.status(200).json({ success: true, products });
+  })
+);
+
 module.exports = router;
