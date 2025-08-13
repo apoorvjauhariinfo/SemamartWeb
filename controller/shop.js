@@ -90,6 +90,7 @@ router.post(
       //   return next(new ErrorHandler(error.message, 500));
       // }
     } catch (error) {
+      console.log(error)
       return next(new ErrorHandler(error.message, 400));
     }
   },
