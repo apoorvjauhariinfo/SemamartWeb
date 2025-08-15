@@ -29,7 +29,8 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: "http://localhost:4000",
+    // origin: "http://localhost:4000",
+    origin: "http://localhost:5173",
     credentials: true,
   })
 );
@@ -67,6 +68,7 @@ const order = require("./controller/order");
 const message = require("./controller/message");
 const conversation = require("./controller/conversation");
 const withdraw = require("./controller/withdraw");
+const category = require("./controller/category");
 app.use("/api/v2/withdraw", withdraw);
 
 // end points
@@ -79,6 +81,7 @@ app.use("/api/v2/product", product);
 app.use("/api/v2/event", event);
 app.use("/api/v2/coupon", coupon);
 app.use("/api/v2/payment", payment);
+app.use("/api/v2/category", category);
 
 // it'for errhendel
 app.use(ErrorHandler);

@@ -1,7 +1,7 @@
 const Category = require("../model/category");
 const mongoose = require("mongoose");
 const Subcategory = require("../model/subcategory");
-const { quiptSubCat, robo, diag, consumSubCat } = require("./subCat");
+const { quiptSubCat, robo, diag, consumSubCat, instrumentSubCat } = require("./subCat");
 
 const categories = [
   "Consumables",
@@ -71,4 +71,4 @@ async function seedSubCats(catName, subCatOb) {
 
 
 
-seedSubCats("Consumables", consumSubCat)
+seedSubCats("Advanced & Robotic Systems", robo)
