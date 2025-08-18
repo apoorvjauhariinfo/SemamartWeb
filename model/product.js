@@ -1,94 +1,51 @@
 const mongoose = require("mongoose");
-// const { productData } = require("../../frontend/src/static/data"); // wE DONT NEED STATIC DATA ANYMORE
 
 const productSchema = new mongoose.Schema({
   name: {
     type: String,
     required: [true, "Please enter your product name!"],
   },
-  hsn: {
-    type: String,
-    required: [true, "Please enter product HSN Code"],
+  category: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Category",
+    required: [true, "Please enter your product category"],
   },
+  subCategory: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Subcategory",
+    required: [true, "Please enter your product subcategory"],
+  },
+  tags: [{
+    type: String,
+    required: true,
+  }],
   productType: {
     type: String,
-    require: [true, "Please enter your product type"],
+    required: true,
   },
-  originalPrice: {
-    type: Number,
-  },
-  discountPrice: {
-    type: Number,
-    required: [true, "Please enter your product price!"],
-  },
-  category: {
+  intendedUse: {
     type: String,
-    required: [true, "Please enter your product category!"],
-  },
-  tags: {
-    type: String,
-  },
-  shortdescription: {
-    type: String,
-    required: [true, "Please enter your product short description!"],
-  },
-  description: {
-    type: String,
-    required: [true, "Please enter your product description!"],
-  },
-  stock: {
-    type: Number,
-    required: [true, "Please enter your product stock!"],
+    required: true,
   },
   sku: {
     type: String,
+    required: true
   },
-  stockStatus: {
+  gtin: {
     type: String,
+    required: true
   },
-  enableStockManagement: {
-    type: Boolean,
-  },
-  allowSingleQuantity: {
-    type: Boolean,
-  },
-  taxStatus: {
+  hsn: {
     type: String,
+    required: true
   },
-  taxClass: {
+  unspsc: {
     type: String,
   },
   upsells: {
     type: String,
   },
   crosssells: {
-    type: String,
-  },
-  discountOptions: {
-    type: String,
-  },
-  rma: {
-    type: String,
-  },
-  minmaxrule: {
-    type: String,
-  },
-  productStatus: {
-    type: String,
-  },
-  visibility: {
-    type: String,
-  },
-  purchaseNote: {
-    type: String,
-  },
-  allowproductreviews: {
-    type: Boolean,
-  },
-  weight: {
-    type: String,
-  },
-  dimension: {
     type: String,
   },
   manufacturerName: {
@@ -104,42 +61,167 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
 
-  thumbnail: {
-    type: String, // Stores the main image URL or path
-    // required: [true, "Please upload a thumbnail image!"],
+  /////
+  shortdescription: {
+    type: String,
+    required: [true, "Please enter your product short description!"],
+  },
+  description: {
+    type: String,
+    required: [true, "Please enter your product description!"],
+  },
+  attributes: [{
+    type: mongoose.Schema.Types.Mixed
+  }],
+  weight: {
+    type: String,
+    required: true
+  },
+  dimension: {
+    type: String,
+    required: true
+  },
+  colorOptions: {
+    type: String, // TODO:
+  },
+  sterile: {
+    type: Boolean,
+    required: true
+  },
+  singelUse: {
+    type: Boolean,
+    required: true
+  },
+  expiry: {
+    type: Date,
+  },
+  productCompilance: {
+    type: String // document name
+  },
+  msds_ifu_leaflet: {
+    type: String // document name
   },
 
-  images: [
-    {
-      type: String,
-    },
-  ],
+  /////
+  originalPrice: {
+    type: Number,
+    required: [true, "Please enter your product mrp!"],
+  },
+  discountPrice: {
+    type: Number,
+  },
+  institutePrice: {
+    type: Number,
+  },
+  minmaxrule: {
+    type: mongoose.Schema.Types.Mixed
+  },
+  taxStatus: {
+    type: String,
+  },
+  taxClass: {
+    type: Number,
+  },
+  stock: {
+    type: Number,
+    required: [true, "Please enter your product stock!"],
+  },
+  unitOfMeasure: {
+    type: String,
+    required: true
+  },
+  stockStatus: {
+    type: String,
+  },
+  deliveryLeadTime: {
+    type: String
+  },
+  warranty: {
+    type: String // TODO:
+  },
+  enableStockManagement: {
+    type: Boolean,
+  },
+  amc_cms: {
+    type: String // if present then document name
+  },
+  rma: {
+    type: String,
+  },
 
+  //////
+  dispatchLocation: {
+    type: String,
+    required: true
+  },
+  dispatchPinCode: {
+    type: Number,
+    required: true
+  },
+  unitsPerCarton: {
+    type: Number,
+    required: true
+  },
+  shippingWeight: {
+    type: Number, // in kgs
+    required: true
+  },
+  packagingType: {
+    type: String,
+    required: true
+  },
+  deliveryPartner: {
+    type: String,
+  },
+  shelfing_storage_req: {
+    type: String,
+  },
+
+  ///////
+  allowSingleQuantity: {
+    type: Boolean,
+  },
+  discountOptions: {
+    type: String,
+  },
+  productStatus: {
+    type: String,
+  },
+  visibility: {
+    type: String,
+  },
+  purchaseNote: {
+    type: String,
+  },
+
+  /////
+  thumbnail: {
+    type: String, // Stores the image name we have saved
+  },
+  images: [{
+    type: String, // image name
+  }],
   shortVideo: {
     type: String, // Stores the video URL or file path
-    // required: [true, "Please upload a short video for the product!"],
+  },
+  certificate: {
+    type: String, // certi name
+  },
+  oemLetter: {
+    type: String, // letter doc name
+  },
+  productComparisionSheet: {
+    type: String, // sheet pdf name
   },
 
-  reviews: [
-    {
-      user: {
-        type: Object,
-      },
-      rating: {
-        type: Number,
-      },
-      comment: {
-        type: String,
-      },
-      productId: {
-        type: String,
-      },
-      createdAt: {
-        type: Date,
-        default: Date.now(),
-      },
-    },
-  ],
+  /////
+  allowproductreviews: {
+    type: Boolean,
+  },
+  reviews: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Review"
+  }],
   ratings: {
     type: Number,
   },
@@ -152,10 +234,8 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now(),
-  },
+}, {
+  timestamps: true
 });
 
 module.exports = mongoose.model("Product", productSchema);
