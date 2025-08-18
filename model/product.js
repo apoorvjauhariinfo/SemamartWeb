@@ -82,7 +82,7 @@ const productSchema = new mongoose.Schema({
     required: true
   },
   colorOptions: {
-    type: String,
+    type: String, // TODO:
   },
   sterile: {
     type: Boolean,
@@ -137,7 +137,7 @@ const productSchema = new mongoose.Schema({
     type: String
   },
   warranty: {
-    type: String
+    type: String // TODO:
   },
   enableStockManagement: {
     type: Boolean,

@@ -1,7 +1,7 @@
 const Category = require("../model/category");
 const mongoose = require("mongoose");
 const Subcategory = require("../model/subcategory");
-const { quiptSubCat, robo, diag, consumSubCat, instrumentSubCat } = require("./subCat");
+const { quiptSubCat, robo, diag, consumSubCat, instrumentSubCat, furn, it, kits, facility, special } = require("./subCat");
 
 const categories = [
   "Consumables",
@@ -14,13 +14,14 @@ const categories = [
   "Hospital IT & Software",
   "Kits & Bundles",
   "Facility & Utilities",
-  "Specialty Packages"
+  // "Specialty Packages" // TODO: 
 ];
 
 async function seedCategories() {
   try {
 
     await mongoose.connect("mongodb://127.0.0.1:27017/sema_local");
+    // await mongoose.connect("mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0");
     console.log('Connected to MongoDB');
 
     for (const name of categories) {
@@ -34,18 +35,17 @@ async function seedCategories() {
     }
 
     console.log('Seeding complete.');
-    process.exit();
   } catch (err) {
     console.error('❌ Error seeding categories:', err);
     process.exit(1);
   }
 }
 
-// seedCategories();
 
 async function seedSubCats(catName, subCatOb) {
   try {
     await mongoose.connect("mongodb://127.0.0.1:27017/sema_local");
+    // await mongoose.connect("mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0");
 
     const category = await Category.findOne({ name: catName });
 
@@ -71,4 +71,23 @@ async function seedSubCats(catName, subCatOb) {
 
 
 
-seedSubCats("Advanced & Robotic Systems", robo)
+async function seedDb() {
+  await seedCategories();
+  await seedSubCats("Consumables", consumSubCat)
+  await seedSubCats("Instruments", instrumentSubCat)
+  await seedSubCats("Medical Equipment", quiptSubCat)
+  await seedSubCats("Advanced & Robotic Systems", robo)
+  await seedSubCats("Diagnostics", diag)
+  await seedSubCats("Hospital Furniture", furn)
+  await seedSubCats("Hospital IT & Software", it)
+  await seedSubCats("Kits & Bundles", kits)
+  await seedSubCats("Facility & Utilities", facility)
+  // await seedSubCats("Pharmaceuticals & Therapeutics", facility) // TODO: no subcat
+
+  process.exit();
+
+}
+
+seedDb()
+
+// seedSubCats("Specialty Packages", special)
