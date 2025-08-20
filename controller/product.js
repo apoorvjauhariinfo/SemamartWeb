@@ -5,60 +5,66 @@ const router = express.Router();
 const Product = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload } = require("../multer");
+const { upload, uploadV2 } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 
-// create product
+
+//creatre product v2
 router.post(
-  "/create-product",
-  upload.fields([
-    { name: "images" }, // Handles multiple images
-    { name: "thumbnail" }, // Handles single thumbnail
-    { name: "shortVideo" }, // Handles single short video
+  "/create-product-v2",
+  uploadV2.fields([
+    { name: "images", maxCount: 5 },
+    { name: "thumbnail", maxCount: 1 },
+    { name: "shortVideo", maxCount: 1 },
+    { name: "certificate", maxCount: 5 },
+    { name: "oemLetter", maxCount: 1 },
+    { name: "productComparisionSheet", maxCount: 1 },
+    { name: "productCompilance", maxCount: 1 },
+    { name: "msds_ifu_leaflet", maxCount: 1 },
+    { name: "amc_cms", maxCount: 1 },
   ]),
   catchAsyncErrors(async (req, res, next) => {
-    try {
-      const shopId = req.body.shopId;
-      const shop = await Shop.findById(shopId);
+    const shopId = req.body.shopId;
+    const shop = await Shop.findById(shopId);
 
-      if (!shop) {
-        return next(new ErrorHandler("Shop Id is invalid!", 400));
-      } else {
-        // Extracting uploaded files
-        const files = req.files;
-
-        const imageUrls = files["images"]
-          ? files["images"].map((file) => `${file.filename}`)
-          : [];
-        const thumbnailUrl = files["thumbnail"]
-          ? files["thumbnail"][0].filename
-          : null;
-        const shortVideoUrl = files["shortVideo"]
-          ? files["shortVideo"][0].filename
-          : null;
-
-        // Build product data
-        const productData = {
-          ...req.body,
-          images: imageUrls,
-          thumbnail: thumbnailUrl,
-          shortVideo: shortVideoUrl,
-        };
-
-        // Create and save product
-        const product = await Product.create(productData);
-        res.status(201).json({
-          success: true,
-          product,
-        });
-      }
-    } catch (error) {
-      return next(
-        new ErrorHandler(error.message || "Internal Server Error", 500),
-      );
+    if (!shop) {
+      throw new ErrorHandler("Shop not found", 402)
     }
-  }),
+
+    const product = req.body
+
+    if (req.files.images) {
+      product.images = req.files.images.map(e => e.filename)
+    }
+    if (req.files.thumbnail) {
+      product.thumbnail = req.files.thumbnail[0].filename
+    }
+    if (req.files.shortVideo) {
+      product.shortVideo = req.files.shortVideo[0].filename
+    }
+    if (req.files.certificate) {
+      product.certificate = req.files.certificate.map(c => c.filename)
+    }
+    if (req.files.oemLetter) {
+      product.oemLetter = req.files.oemLetter[0].filename
+    }
+    if (req.files.prodcutComparisionSheet) {
+      product.prodcutComparisionSheet = req.files.prodcutComparisionSheet[0].filename
+    }
+    if (req.files.productCompilace) {
+      product.productCompilance = req.files.productCompilance[0].filename
+    }
+    if (req.files.msds_ifu_leaflet) {
+      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet[0].filename
+    }
+    if (req.files.amc_cms) {
+      product.amc_cms = req.files.amc_cms[0].filename
+    }
+
+    const pro = await new Product(product).save()
+    res.status(201).json(pro)
+  })
 );
 
 // get all products of a shop

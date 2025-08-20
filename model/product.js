@@ -88,7 +88,7 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     required: true
   },
-  singelUse: {
+  singleUse: {
     type: Boolean,
     required: true
   },
@@ -134,7 +134,7 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
   deliveryLeadTime: {
-    type: String
+    type: String // TODO: make it a number ?
   },
   warranty: {
     type: String // TODO:
@@ -189,6 +189,7 @@ const productSchema = new mongoose.Schema({
   },
   visibility: {
     type: String,
+    default: 'public'
   },
   purchaseNote: {
     type: String,
@@ -204,9 +205,9 @@ const productSchema = new mongoose.Schema({
   shortVideo: {
     type: String, // Stores the video URL or file path
   },
-  certificate: {
+  certificate: [{
     type: String, // certi name
-  },
+  }],
   oemLetter: {
     type: String, // letter doc name
   },
@@ -215,8 +216,9 @@ const productSchema = new mongoose.Schema({
   },
 
   /////
-  allowproductreviews: {
+  allowProductReviews: {
     type: Boolean,
+    default: true
   },
   reviews: [{
     type: mongoose.Schema.Types.ObjectId,

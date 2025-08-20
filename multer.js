@@ -17,4 +17,33 @@ const storage = multer.diskStorage({
   },
 });
 
+const subFolders = {
+  images: "images",
+  thumbnail: "images",
+  shortVideo: "videos",
+  certificate: "docs",
+  oemLetter: "docs",
+  productComparisionSheet: "docs",
+  productCompilance: "docs",
+  msds_ifu_leaflet: "docs",
+  amc_cms: "docs",
+};
+
+const storageV2 = multer.diskStorage({
+  destination: (_req, file, cb) => {
+    const sub = subFolders[file.fieldname];
+    const targetDir = path.join(__dirname, "uploads", sub)
+    cb(null, targetDir);
+  },
+
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext);
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, `${base}-${uniqueSuffix}${ext}`);
+  }
+})
+
+exports.uploadV2 = multer({ storage: storageV2 })
+
 exports.upload = multer({ storage: storage });

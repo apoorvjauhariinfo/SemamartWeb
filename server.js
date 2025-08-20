@@ -7,6 +7,7 @@ const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs")
 
 // config
 if (process.env.NODE_ENV !== "PRODUCTION") {
@@ -21,6 +22,14 @@ connectDatabase();
 const server = app.listen(process.env.PORT, () => {
   console.log(`Server is running on http://localhost:${process.env.PORT}`);
 });
+
+const uploadPath = path.join(__dirname, "uploads")
+
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath + "/images", { recursive: true })
+  fs.mkdirSync(uploadPath + "/videos", { recursive: true })
+  fs.mkdirSync(uploadPath + "/docs", { recursive: true })
+}
 
 // middlewares
 app.use(express.json());
