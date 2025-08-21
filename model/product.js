@@ -5,16 +5,16 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please enter your product name!"],
   },
-  category: {
+  category: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Category",
     required: [true, "Please enter your product category"],
-  },
-  subCategory: {
+  }],
+  subCategory: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "Subcategory",
     required: [true, "Please enter your product subcategory"],
-  },
+  }],
   tags: [{
     type: String,
     required: true,
