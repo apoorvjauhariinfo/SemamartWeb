@@ -301,19 +301,25 @@ router.get(
       return res.status(200).json({ success: true, products: [] });
     }
 
-    // build a RegExp for case‐insensitive partial match
-    const regex = new RegExp(q, "i");
+    const regex = new RegExp(
+      q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
+      "i"
+    );
 
-    const products = await Product.find({
-      $or: [
-        { name: { $regex: regex } },
-        { category: { $regex: regex } },
-        { tags: { $regex: regex } },
-      ],
-    });
-  
+    // Populate category to get its name
+    const products = await Product.find()
+      .populate("category", "name")
+      .where({
+        $or: [
+          { name: regex },
+          { manufacturerName: regex },
+          { "category.name": regex }, // search by category name
+        ],
+      });
+
     res.status(200).json({ success: true, products });
   })
 );
+
 
 module.exports = router;
