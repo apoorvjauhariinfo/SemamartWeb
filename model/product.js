@@ -48,6 +48,17 @@ const productSchema = new mongoose.Schema({
   crosssells: {
     type: String,
   },
+  specialityPackage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "SpecialityPackage",
+    required: true
+  },
+  specialityPackageType: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "SpecialityPackageType",
+    required: true
+  },
+  //////
   manufacturerName: {
     type: String,
   },
