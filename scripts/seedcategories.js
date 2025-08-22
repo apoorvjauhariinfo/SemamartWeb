@@ -2,6 +2,7 @@ const Category = require("../model/category");
 const mongoose = require("mongoose");
 const Subcategory = require("../model/subcategory");
 const { quiptSubCat, robo, diag, consumSubCat, instrumentSubCat, furn, it, kits, facility, special } = require("./subCat");
+const { SpecialityPackageType, SpecialityPackage } = require("../model/specialityPackages");
 
 const categories = [
   "Consumables",
@@ -17,11 +18,12 @@ const categories = [
   // "Specialty Packages" // TODO: 
 ];
 
+const url = "mongodb://127.0.0.1:27017/sema_local"
+// const url = "mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+
 async function seedCategories() {
   try {
-
-    await mongoose.connect("mongodb://127.0.0.1:27017/sema_local");
-    // await mongoose.connect("mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect(url);
     console.log('Connected to MongoDB');
 
     for (const name of categories) {
@@ -44,8 +46,7 @@ async function seedCategories() {
 
 async function seedSubCats(catName, subCatOb) {
   try {
-    await mongoose.connect("mongodb://127.0.0.1:27017/sema_local");
-    // await mongoose.connect("mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0");
+    await mongoose.connect(url);
 
     const category = await Category.findOne({ name: catName });
 
@@ -88,6 +89,27 @@ async function seedDb() {
 
 }
 
-seedDb()
 
-// seedSubCats("Specialty Packages", special)
+async function seedSpecialPackage() {
+  await mongoose.connect(url);
+  await seedDb()
+
+  const specialName = Object.keys(special)
+
+  for (const s of specialName) {
+    const packesTypes = special[s].map(e => ({ name: e }))
+    const res = await SpecialityPackageType.insertMany(packesTypes)
+
+    const a = new SpecialityPackage({
+      name: s,
+      packageTypes: res.map(r => r._id)
+    })
+
+    console.log(a)
+    await a.save()
+  }
+
+  process.exit()
+}
+
+seedSpecialPackage()

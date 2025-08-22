@@ -85,6 +85,7 @@ const message = require("./controller/message");
 const conversation = require("./controller/conversation");
 const withdraw = require("./controller/withdraw");
 const category = require("./controller/category");
+const specialPackageRoutes = require("./controller/specialityPackage");
 app.use("/api/v2/withdraw", withdraw);
 
 // end points
@@ -98,6 +99,7 @@ app.use("/api/v2/event", event);
 app.use("/api/v2/coupon", coupon);
 app.use("/api/v2/payment", payment);
 app.use("/api/v2/category", category);
+app.use("/api/v2/special-package", specialPackageRoutes);
 
 // it'for errhendel
 app.use(ErrorHandler);
