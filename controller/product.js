@@ -15,7 +15,7 @@ router.post(
   "/create-product-v2",
   uploadV2.fields([
     { name: "images", maxCount: 5 },
-    { name: "thumbnail", maxCount: 1 },
+    { name: "thumbnail" },
     { name: "shortVideo", maxCount: 1 },
     { name: "certificate", maxCount: 5 },
     { name: "oemLetter", maxCount: 1 },
@@ -25,20 +25,24 @@ router.post(
     { name: "amc_cms", maxCount: 1 },
   ]),
   catchAsyncErrors(async (req, res, next) => {
-    const shopId = req.body.shopId;
-    const shop = await Shop.findById(shopId);
-
-    if (!shop) {
-      throw new ErrorHandler("Shop not found", 402)
-    }
+    // const shopId = req.body.shopId;
+    // const shop = await Shop.findById(shopId);
+    //
+    // if (!shop) {
+    //   throw new ErrorHandler("Shop not found", 402)
+    // }
 
     const product = req.body
+    const variants = JSON.parse(product.variants)
 
     if (req.files.images) {
       product.images = req.files.images.map(e => e.filename)
     }
     if (req.files.thumbnail) {
-      product.thumbnail = req.files.thumbnail[0].filename
+      // product.thumbnail = req.files.thumbnail[0].filename
+      req.files.thumbnail.forEach((el, i) => {
+        variants[i].thumbnail = el.filename
+      })
     }
     if (req.files.shortVideo) {
       product.shortVideo = req.files.shortVideo[0].filename
@@ -62,6 +66,7 @@ router.post(
       product.amc_cms = req.files.amc_cms[0].filename
     }
 
+    product.variants = variants
     const pro = await new Product(product).save()
     res.status(201).json(pro)
   })
