@@ -1,5 +1,25 @@
 const mongoose = require("mongoose");
 
+const variantSchema = new mongoose.Schema({
+  size: { type: String, required: false, default: null },
+  colorOption: { type: String, required: false, default: null },
+  thumbnail: { type: String, default: null },
+  originalPrice: {
+    type: Number,
+    required: [true, "Please enter your product mrp!"],
+  },
+  discountPrice: {
+    type: Number,
+  },
+  institutePrice: {
+    type: Number,
+  },
+  stock: {
+    type: Number,
+    required: [true, "Please enter your product stock!"],
+  },
+});
+
 const productSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -92,9 +112,10 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  colorOptions: {
-    type: String, // TODO:
-  },
+  variants: [variantSchema],
+  // colorOptions: {
+  //   type: String, 
+  // },
   sterile: {
     type: Boolean,
     required: true
@@ -114,16 +135,16 @@ const productSchema = new mongoose.Schema({
   },
 
   /////
-  originalPrice: {
-    type: Number,
-    required: [true, "Please enter your product mrp!"],
-  },
-  discountPrice: {
-    type: Number,
-  },
-  institutePrice: {
-    type: Number,
-  },
+  // originalPrice: {
+  //   type: Number,
+  //   required: [true, "Please enter your product mrp!"],
+  // },
+  // discountPrice: {
+  //   type: Number,
+  // },
+  // institutePrice: {
+  //   type: Number,
+  // },
   minmaxrule: {
     type: mongoose.Schema.Types.Mixed
   },
@@ -133,10 +154,10 @@ const productSchema = new mongoose.Schema({
   taxClass: {
     type: Number,
   },
-  stock: {
-    type: Number,
-    required: [true, "Please enter your product stock!"],
-  },
+  // stock: {
+  //   type: Number,
+  //   required: [true, "Please enter your product stock!"],
+  // },
   unitOfMeasure: {
     type: String,
     required: true
@@ -207,9 +228,9 @@ const productSchema = new mongoose.Schema({
   },
 
   /////
-  thumbnail: {
-    type: String, // Stores the image name we have saved
-  },
+  // thumbnail: {
+  //   type: String, // Stores the image name we have saved
+  // },
   images: [{
     type: String, // image name
   }],
