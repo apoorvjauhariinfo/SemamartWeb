@@ -118,11 +118,11 @@ const productSchema = new mongoose.Schema({
   // },
   sterile: {
     type: Boolean,
-    required: true
+    // required: true
   },
   singleUse: {
     type: Boolean,
-    required: true
+    // required: true
   },
   expiry: {
     type: Date,

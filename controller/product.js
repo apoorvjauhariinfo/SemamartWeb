@@ -5,9 +5,10 @@ const router = express.Router();
 const Product = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2 } = require("../multer");
+const { uploadV2 } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
+const mongoose = require("mongoose")
 
 
 //creatre product v2
@@ -39,7 +40,6 @@ router.post(
       product.images = req.files.images.map(e => e.filename)
     }
     if (req.files.thumbnail) {
-      // product.thumbnail = req.files.thumbnail[0].filename
       req.files.thumbnail.forEach((el, i) => {
         variants[i].thumbnail = el.filename
       })
@@ -79,7 +79,7 @@ router.get(
     try {
       const products = await Product.find({ shopId: req.params.id });
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         products,
       });

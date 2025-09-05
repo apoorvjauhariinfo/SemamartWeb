@@ -36,10 +36,19 @@ app.use(express.json());
 app.use(cookieParser());
 // Enable CORS for all routes
 
+const allowedOriginsCors = [
+  "http://localhost:5173",
+  "http://test.semamart.com/",
+  "https://test.semamart.com/",
+]
+
 app.use(
   cors({
-    // origin: "http://localhost:4000",
-    origin: "http://localhost:5173",
+    origin: function (origin, callback) {
+      if (!origin || allowedOriginsCors.includes(origin)) {
+        callback(null, true);
+      }
+    },
     credentials: true,
   })
 );
