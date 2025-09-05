@@ -6,12 +6,12 @@ const url = "mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryW
 
 const connectDatabase = () => {
   mongoose
-    .connect(url, {
+    .connect(process.env.DB_URL, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
     })
-    .then(() => {
-      console.log(`mongod connected with server: ${url}`);
+    .then((data) => {
+      console.log(`mongod connected with server: ${data.connection.host}`);
     });
 };
 

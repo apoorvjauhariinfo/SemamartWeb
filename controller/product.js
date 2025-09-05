@@ -5,9 +5,10 @@ const router = express.Router();
 const Product = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2 } = require("../multer");
+const { uploadV2 } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
+const mongoose = require("mongoose")
 
 
 //creatre product v2
@@ -15,7 +16,7 @@ router.post(
   "/create-product-v2",
   uploadV2.fields([
     { name: "images", maxCount: 5 },
-    { name: "thumbnail", maxCount: 1 },
+    { name: "thumbnail" },
     { name: "shortVideo", maxCount: 1 },
     { name: "certificate", maxCount: 5 },
     { name: "oemLetter", maxCount: 1 },
@@ -33,12 +34,15 @@ router.post(
     }
 
     const product = req.body
+    const variants = JSON.parse(product.variants)
 
     if (req.files.images) {
       product.images = req.files.images.map(e => e.filename)
     }
     if (req.files.thumbnail) {
-      product.thumbnail = req.files.thumbnail[0].filename
+      req.files.thumbnail.forEach((el, i) => {
+        variants[i].thumbnail = el.filename
+      })
     }
     if (req.files.shortVideo) {
       product.shortVideo = req.files.shortVideo[0].filename
@@ -62,6 +66,7 @@ router.post(
       product.amc_cms = req.files.amc_cms[0].filename
     }
 
+    product.variants = variants
     const pro = await new Product(product).save()
     res.status(201).json(pro)
   })
@@ -74,7 +79,7 @@ router.get(
     try {
       const products = await Product.find({ shopId: req.params.id });
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         products,
       });
