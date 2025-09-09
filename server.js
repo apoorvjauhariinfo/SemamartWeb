@@ -38,8 +38,8 @@ app.use(cookieParser());
 
 const allowedOriginsCors = [
   "http://localhost:5173",
-  "http://test.semamart.com/",
-  "https://test.semamart.com/",
+  "http://test.semamart.com",
+  "https://test.semamart.com",
 ]
 
 app.use(
@@ -47,24 +47,17 @@ app.use(
     origin: function (origin, callback) {
       if (!origin || allowedOriginsCors.includes(origin)) {
         callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
   })
 );
 
-app.use(
-  cors({
-    origin: 'http://localhost:5173',
-    credentials: true,           // if you need cookies/auth
-  })
-);
 
 app.use("/", express.static("uploads"));
 
-app.get("/test", (req, res) => {
-  res.send("Hello World!");
-});
 
 app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
