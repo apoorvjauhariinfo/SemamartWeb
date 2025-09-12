@@ -315,8 +315,8 @@ router.put(
 // all sellers --- for admin
 router.get(
   "/admin-all-sellers",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellers = await Shop.find().sort({
@@ -337,8 +337,8 @@ router.get(
 
 router.get(
   "/admin-verified-sellers",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellers = await Shop.find({ verified: true }).sort({
@@ -361,8 +361,8 @@ router.get(
 //admin verifying seller
 router.post(
   "/verify-seller/",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     // const a = await Shop.find();
     // a.forEach(async (b) => {
@@ -391,8 +391,8 @@ router.post(
 // delete seller ---admin
 router.delete(
   "/delete-seller/:id",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const seller = await Shop.findById(req.params.id);

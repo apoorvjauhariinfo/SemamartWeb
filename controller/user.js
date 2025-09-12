@@ -411,8 +411,8 @@ router.get(
 // all users --- for admin
 router.get(
   "/admin-all-users",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  //isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find().sort({
@@ -431,8 +431,8 @@ router.get(
 // delete users --- admin
 router.delete(
   "/delete-user/:id",
-  isAuthenticated,
-  isAdmin("Admin"),
+  // isAuthenticated,
+  //isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const user = await User.findById(req.params.id);
