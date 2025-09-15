@@ -5,9 +5,11 @@ const router = express.Router();
 const Product = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2 } = require("../multer");
+const { upload, uploadV2, uploadDocUpdate } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
+const path = require("path");
+// const mongoose = require("mongoose")
 
 
 //creatre product v2
@@ -25,12 +27,12 @@ router.post(
     { name: "amc_cms", maxCount: 1 },
   ]),
   catchAsyncErrors(async (req, res, next) => {
-    // const shopId = req.body.shopId;
-    // const shop = await Shop.findById(shopId);
-    //
-    // if (!shop) {
-    //   throw new ErrorHandler("Shop not found", 402)
-    // }
+    const shopId = req.body.shopId;
+    const shop = await Shop.findById(shopId);
+
+    if (!shop) {
+      throw new ErrorHandler("Shop not found", 402)
+    }
 
     const product = req.body
     const variants = JSON.parse(product.variants)
@@ -326,5 +328,46 @@ router.get(
   })
 );
 
+router.put(
+  "/upload-doc/:productId",
+  uploadV2.single("file"),
+  catchAsyncErrors(async (req, res) => {
+    const { productId } = req.params
+    const { docType, idx } = req.body
+
+    if (!productId || !docType) {
+      throw new ErrorHandler("productId and docType are required", 400)
+    }
+
+    const product = await Product.findById(productId)
+    if (!product) {
+      throw new ErrorHandler("Product not found", 404)
+    }
+    // Delete old file if exists
+    const oldFile = idx !== undefined ? product.certificate[parseInt(idx)] : product[docType]
+    if (oldFile) {
+      const oldPath = path.join("uploads/docs", oldFile)
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath)
+      }
+    }
+
+    // Save new file
+    const filePath = req.file.filename
+    if (idx !== undefined) {
+      product.certificate[idx] = filePath
+    } else {
+      product[docType] = filePath
+    }
+
+    await product.save()
+
+    res.status(200).json({
+      success: true,
+      message: "Document replaced successfully",
+      product,
+    })
+  })
+)
 
 module.exports = router;

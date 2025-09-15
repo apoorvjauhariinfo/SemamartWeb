@@ -128,10 +128,12 @@ const productSchema = new mongoose.Schema({
     type: Date,
   },
   productCompilance: {
-    type: String // document name
+    type: String, // document name
+    default: null
   },
   msds_ifu_leaflet: {
-    type: String // document name
+    type: String, // document name
+    default: null
   },
 
   /////
