@@ -370,4 +370,35 @@ router.put(
   })
 )
 
+router.put(
+  "/upload-image/:productId",
+  uploadV2.single("images"),
+  catchAsyncErrors(async (req, res) => {
+
+    const { productId } = req.params
+    const { idx } = req.body
+
+    const product = await Product.findById(productId)
+    if (!product) return res.status(404).json({ message: "Product not found" })
+
+    const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null
+    if (oldFile) {
+      const oldPath = path.join("uploads/images", oldFile)
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath)
+      }
+    }
+
+    // add new image
+    if (idx !== undefined) {
+      product.images[parseInt(idx)] = req.file.filename
+    } else {
+      product.images.push(req.file.filename)
+    }
+    await product.save()
+
+    res.json({ success: true, product })
+  })
+)
+
 module.exports = router;
