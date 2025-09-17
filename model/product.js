@@ -206,6 +206,11 @@ const productSchema = new mongoose.Schema({
   },
   deliveryPartner: {
     type: String,
+    default:null
+  },
+  deliveryInstruction: {
+    type: String,
+    default:null
   },
   shelfing_storage_req: {
     type: String,
