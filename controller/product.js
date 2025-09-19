@@ -2,83 +2,63 @@ const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
-const {Product , ProductVariant} = require("../model/product");
+const Product = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2, uploadDocUpdate } = require("../multer");
+const { upload } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
-const path = require("path");
-// const mongoose = require("mongoose")
 
-
-//creatre product v2
+// create product
 router.post(
-  "/create-product-v2",
-  uploadV2.fields([
-    { name: "images", maxCount: 5 },
-    { name: "thumbnail" },
-    { name: "shortVideo", maxCount: 1 },
-    { name: "certificate", maxCount: 5 },
-    { name: "oemLetter", maxCount: 1 },
-    { name: "productComparisionSheet", maxCount: 1 },
-    { name: "productCompilance", maxCount: 1 },
-    { name: "msds_ifu_leaflet", maxCount: 1 },
-    { name: "amc_cms", maxCount: 1 },
+  "/create-product",
+  upload.fields([
+    { name: "images" }, // Handles multiple images
+    { name: "thumbnail" }, // Handles single thumbnail
+    { name: "shortVideo" }, // Handles single short video
   ]),
   catchAsyncErrors(async (req, res, next) => {
-    const shopId = req.body.shopId;
-    const shop = await Shop.findById(shopId);
+    try {
+      const shopId = req.body.shopId;
+      const shop = await Shop.findById(shopId);
 
-    if (!shop) {
-      throw new ErrorHandler("Shop not found", 402)
-    }
+      if (!shop) {
+        return next(new ErrorHandler("Shop Id is invalid!", 400));
+      } else {
+        // Extracting uploaded files
+        const files = req.files;
 
-    const product = req.body
-    const variants = JSON.parse(product.variants)
-    product.variants = []
+        const imageUrls = files["images"]
+          ? files["images"].map((file) => `${file.filename}`)
+          : [];
+        const thumbnailUrl = files["thumbnail"]
+          ? files["thumbnail"][0].filename
+          : null;
+        const shortVideoUrl = files["shortVideo"]
+          ? files["shortVideo"][0].filename
+          : null;
 
-    if (req.files.images) {
-      product.images = req.files.images.map(e => e.filename)
-    }
-    if (req.files.thumbnail) {
-      req.files.thumbnail.forEach((el, i) => {
-        variants[i].thumbnail = el.filename
-      })
-    }
-    if (req.files.shortVideo) {
-      product.shortVideo = req.files.shortVideo[0].filename
-    }
-    if (req.files.certificate) {
-      product.certificate = req.files.certificate.map(c => c.filename)
-    }
-    if (req.files.oemLetter) {
-      product.oemLetter = req.files.oemLetter[0].filename
-    }
-    if (req.files.prodcutComparisionSheet) {
-      product.prodcutComparisionSheet = req.files.prodcutComparisionSheet[0].filename
-    }
-    if (req.files.productCompilace) {
-      product.productCompilance = req.files.productCompilance[0].filename
-    }
-    if (req.files.msds_ifu_leaflet) {
-      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet[0].filename
-    }
-    if (req.files.amc_cms) {
-      product.amc_cms = req.files.amc_cms[0].filename
-    }
+        // Build product data
+        const productData = {
+          ...req.body,
+          images: imageUrls,
+          thumbnail: thumbnailUrl,
+          shortVideo: shortVideoUrl,
+        };
 
-    const savedProduct = await Product.create(product);
-
-    const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id }))
-    );
-
-     savedProduct.variants = savedVariants.map((v) => v._id);
-    await savedProduct.save();
-
-    res.status(201).json(savedProduct)
-  })
+        // Create and save product
+        const product = await Product.create(productData);
+        res.status(201).json({
+          success: true,
+          product,
+        });
+      }
+    } catch (error) {
+      return next(
+        new ErrorHandler(error.message || "Internal Server Error", 500),
+      );
+    }
+  }),
 );
 
 // get all products of a shop
@@ -86,12 +66,9 @@ router.get(
   "/get-all-products-shop/:id",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const products = await Product
-                                .find({ shopId: req.params.id })
-                                .populate("variants")
-                                .select("name variants createdAt");
+      const products = await Product.find({ shopId: req.params.id });
 
-      res.status(200).json({
+      res.status(201).json({
         success: true,
         products,
       });
@@ -328,106 +305,5 @@ router.get(
     }
   }),
 );
-
-router.get(
-  "/search",
-  catchAsyncErrors(async (req, res, next) => {
-    const { q } = req.query;
-    if (!q) {
-      return res.status(200).json({ success: true, products: [] });
-    }
-
-    const regex = new RegExp(
-      q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
-    );
-
-    // Populate category to get its name
-    const products = await Product.find()
-      .populate("category", "name")
-      .where({
-        $or: [
-          { name: regex },
-          { manufacturerName: regex },
-          { "category.name": regex }, // search by category name
-        ],
-      });
-
-    res.status(200).json({ success: true, products });
-  })
-);
-
-router.put(
-  "/upload-doc/:productId",
-  uploadV2.single("file"),
-  catchAsyncErrors(async (req, res) => {
-    const { productId } = req.params
-    const { docType, idx } = req.body
-
-    if (!productId || !docType) {
-      throw new ErrorHandler("productId and docType are required", 400)
-    }
-
-    const product = await Product.findById(productId)
-    if (!product) {
-      throw new ErrorHandler("Product not found", 404)
-    }
-    // Delete old file if exists
-    const oldFile = idx !== undefined ? product.certificate[parseInt(idx)] : product[docType]
-    if (oldFile) {
-      const oldPath = path.join("uploads/docs", oldFile)
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath)
-      }
-    }
-
-    // Save new file
-    const filePath = req.file.filename
-    if (idx !== undefined) {
-      product.certificate[idx] = filePath
-    } else {
-      product[docType] = filePath
-    }
-
-    await product.save()
-
-    res.status(200).json({
-      success: true,
-      message: "Document replaced successfully",
-      product,
-    })
-  })
-)
-
-router.put(
-  "/upload-image/:productId",
-  uploadV2.single("images"),
-  catchAsyncErrors(async (req, res) => {
-
-    const { productId } = req.params
-    const { idx } = req.body
-
-    const product = await Product.findById(productId)
-    if (!product) return res.status(404).json({ message: "Product not found" })
-
-    const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null
-    if (oldFile) {
-      const oldPath = path.join("uploads/images", oldFile)
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath)
-      }
-    }
-
-    // add new image
-    if (idx !== undefined) {
-      product.images[parseInt(idx)] = req.file.filename
-    } else {
-      product.images.push(req.file.filename)
-    }
-    await product.save()
-
-    res.json({ success: true, product })
-  })
-)
 
 module.exports = router;
