@@ -2,7 +2,7 @@ const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
-const Product = require("../model/product");
+const {Product , ProductVariant} = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const { upload, uploadV2, uploadDocUpdate } = require("../multer");
@@ -36,6 +36,7 @@ router.post(
 
     const product = req.body
     const variants = JSON.parse(product.variants)
+    product.variants = []
 
     if (req.files.images) {
       product.images = req.files.images.map(e => e.filename)
@@ -68,9 +69,16 @@ router.post(
       product.amc_cms = req.files.amc_cms[0].filename
     }
 
-    product.variants = variants
-    const pro = await new Product(product).save()
-    res.status(201).json(pro)
+    const savedProduct = await Product.create(product);
+
+    const savedVariants = await ProductVariant.insertMany(
+      variants.map((v) => ({ ...v, productId: savedProduct._id }))
+    );
+
+     savedProduct.variants = savedVariants.map((v) => v._id);
+    await savedProduct.save();
+
+    res.status(201).json(savedProduct)
   })
 );
 
@@ -79,7 +87,10 @@ router.get(
   "/get-all-products-shop/:id",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const products = await Product.find({ shopId: req.params.id });
+      const products = await Product
+                                .find({ shopId: req.params.id })
+                                .populate("variants")
+                                .select("name variants createdAt");
 
       res.status(201).json({
         success: true,
@@ -211,7 +222,7 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
     try {
-      const product = await Product.findById(id).populate("shopId");
+      const product = await Product.findById(id).populate("shopId variants");
 
       if (!product) throw new Error("not found");
 

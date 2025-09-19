@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const variantSchema = new mongoose.Schema({
+  productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
   size: { type: String, required: false, default: null },
   colorOption: { type: String, required: false, default: null },
   thumbnail: { type: String, default: null },
@@ -9,9 +10,6 @@ const variantSchema = new mongoose.Schema({
     required: [true, "Please enter your product mrp!"],
   },
   discountPrice: {
-    type: Number,
-  },
-  institutePrice: {
     type: Number,
   },
   stock: {
@@ -112,10 +110,7 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  variants: [variantSchema],
-  // colorOptions: {
-  //   type: String, 
-  // },
+  variants: [{ type: mongoose.Schema.Types.ObjectId, ref: "ProductVariant" }],
   sterile: {
     type: Boolean,
     required: true
@@ -135,18 +130,6 @@ const productSchema = new mongoose.Schema({
     type: String, // document name
     default: null
   },
-
-  /////
-  // originalPrice: {
-  //   type: Number,
-  //   required: [true, "Please enter your product mrp!"],
-  // },
-  // discountPrice: {
-  //   type: Number,
-  // },
-  // institutePrice: {
-  //   type: Number,
-  // },
   minmaxrule: {
     type: mongoose.Schema.Types.Mixed
   },
@@ -156,10 +139,6 @@ const productSchema = new mongoose.Schema({
   taxClass: {
     type: Number,
   },
-  // stock: {
-  //   type: Number,
-  //   required: [true, "Please enter your product stock!"],
-  // },
   unitOfMeasure: {
     type: String,
     required: true
@@ -233,11 +212,6 @@ const productSchema = new mongoose.Schema({
   purchaseNote: {
     type: String,
   },
-
-  /////
-  // thumbnail: {
-  //   type: String, // Stores the image name we have saved
-  // },
   images: [{
     type: String, // image name
   }],
@@ -279,4 +253,10 @@ const productSchema = new mongoose.Schema({
   timestamps: true
 });
 
-module.exports = mongoose.model("Product", productSchema);
+const Product = mongoose.model("Product", productSchema);
+const ProductVariant = mongoose.model("ProductVariant", variantSchema);
+
+module.exports={
+  Product,
+  ProductVariant
+}
