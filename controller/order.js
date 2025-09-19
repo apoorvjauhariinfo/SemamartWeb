@@ -49,6 +49,19 @@ router.post(
   })
 );
 
+router.get(
+  "/get-order-details/:orderId",
+  catchAsyncErrors(async(req,res)=>{
+    const order = await Order.findById(req.params.orderId).populate("cart.productId","variants name")
+
+    if(!order){
+      res.status(404).send("Order not Found")
+    }
+
+    res.json(order)
+  })
+);
+
 // get all orders of user
 router.get(
   "/get-all-orders/:userId",
@@ -73,11 +86,11 @@ router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find({
-        "cart.shopId": req.params.shopId,
-      }).sort({
-        createdAt: -1,
-      });
+      const orders = await Order
+        .find({ "cart.shopId": req.params.shopId, })
+        .select("-shippingAddress -paymentInfo")
+        .populate("user", "firstName lastName")
+        .sort({ createdAt: -1, });
 
       res.status(200).json({
         success: true,
