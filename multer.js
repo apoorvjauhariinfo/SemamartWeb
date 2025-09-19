@@ -27,6 +27,7 @@ const subFolders = {
   productCompilance: "docs",
   msds_ifu_leaflet: "docs",
   amc_cms: "docs",
+  file: "docs"
 };
 
 const storageV2 = multer.diskStorage({
@@ -44,6 +45,18 @@ const storageV2 = multer.diskStorage({
   }
 })
 
-exports.uploadV2 = multer({ storage: storageV2 })
+const storageDocUpdate = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const targetDir = path.join(__dirname, "uploads/docs")
+    cb(null, targetDir)
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname)
+    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`
+    cb(null, uniqueName)
+  },
+})
 
+exports.uploadV2 = multer({ storage: storageV2 })
+exports.uploadDocUpdate = multer({ storage: storageDocUpdate })
 exports.upload = multer({ storage: storage });

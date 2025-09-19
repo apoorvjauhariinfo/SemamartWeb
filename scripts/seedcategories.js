@@ -92,7 +92,7 @@ async function seedDb() {
 
 async function seedSpecialPackage() {
   await mongoose.connect(url);
-  await seedDb()
+  // await seedDb()
 
   const specialName = Object.keys(special)
 
