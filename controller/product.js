@@ -2,203 +2,159 @@ const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
-const Product = require("../model/product");
+const { Product, ProductVariant } = require("../model/product"); // ✅ Correct import
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const { upload } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 
-// create product
+// ✅ Create product
 router.post(
   "/create-product",
   upload.fields([
-    { name: "images" }, // Handles multiple images
-    { name: "thumbnail" }, // Handles single thumbnail
-    { name: "shortVideo" }, // Handles single short video
+    { name: "images" }, // multiple images
+    { name: "thumbnail" }, // single thumbnail
+    { name: "shortVideo" }, // single video
   ]),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const shopId = req.body.shopId;
       const shop = await Shop.findById(shopId);
 
-      if (!shop) {
-        return next(new ErrorHandler("Shop Id is invalid!", 400));
-      } else {
-        // Extracting uploaded files
-        const files = req.files;
+      if (!shop) return next(new ErrorHandler("Shop Id is invalid!", 400));
 
-        const imageUrls = files["images"]
-          ? files["images"].map((file) => `${file.filename}`)
-          : [];
-        const thumbnailUrl = files["thumbnail"]
-          ? files["thumbnail"][0].filename
-          : null;
-        const shortVideoUrl = files["shortVideo"]
-          ? files["shortVideo"][0].filename
-          : null;
+      const files = req.files;
 
-        // Build product data
-        const productData = {
-          ...req.body,
-          images: imageUrls,
-          thumbnail: thumbnailUrl,
-          shortVideo: shortVideoUrl,
-        };
+      const imageUrls = files["images"]
+        ? files["images"].map((file) => file.filename)
+        : [];
+      const thumbnailUrl = files["thumbnail"]
+        ? files["thumbnail"][0].filename
+        : null;
+      const shortVideoUrl = files["shortVideo"]
+        ? files["shortVideo"][0].filename
+        : null;
 
-        // Create and save product
-        const product = await Product.create(productData);
-        res.status(201).json({
-          success: true,
-          product,
-        });
-      }
+      const productData = {
+        ...req.body,
+        images: imageUrls,
+        thumbnail: thumbnailUrl,
+        shortVideo: shortVideoUrl,
+      };
+
+      const product = await Product.create(productData);
+
+      res.status(201).json({ success: true, product });
     } catch (error) {
-      return next(
-        new ErrorHandler(error.message || "Internal Server Error", 500),
-      );
+      return next(new ErrorHandler(error.message || "Internal Server Error", 500));
     }
-  }),
+  })
 );
 
-// get all products of a shop
+// ✅ Get all products of a shop
 router.get(
   "/get-all-products-shop/:id",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({ shopId: req.params.id });
-
-      res.status(201).json({
-        success: true,
-        products,
-      });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
-// delete product of a shop
+// ✅ Delete product of a shop
 router.delete(
   "/delete-shop-product/:id",
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
     try {
       const productId = req.params.id;
-
       const productData = await Product.findById(productId);
 
-      productData.images.forEach((imageUrl) => {
-        const filename = imageUrl;
-        const filePath = `uploads/${filename}`;
+      if (!productData)
+        return next(new ErrorHandler("Product not found with this id!", 404));
 
+      // delete images
+      productData.images.forEach((imageUrl) => {
+        const filePath = `uploads/${imageUrl}`;
         fs.unlink(filePath, (err) => {
-          if (err) {
-            console.log(err);
-          }
+          if (err) console.log(err);
         });
       });
 
-      const product = await Product.findByIdAndDelete(productId);
+      await Product.findByIdAndDelete(productId);
 
-      if (!product) {
-        return next(new ErrorHandler("Product not found with this id!", 500));
-      }
-
-      res.status(201).json({
-        success: true,
-        message: "Product Deleted successfully!",
-      });
+      res.status(200).json({ success: true, message: "Product deleted successfully!" });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
-// get all products
-// get all products (only include the first variant in "variants")
+// ✅ Get all products (with first variant only)
 router.get(
   "/get-all-products",
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (_req, res, next) => {
     try {
       const products = await Product.find()
         .populate("shopId", "name")
         .populate({
           path: "variants",
-          options: { sort: { createdAt: 1 } }, // ensures consistent order
-          perDocumentLimit: 1,                 // only first variant
+          options: { sort: { createdAt: 1 } },
+          perDocumentLimit: 1, // only first variant
         })
         .sort({ createdAt: -1 });
 
-      res.status(200).json({
-        success: true,
-        products,
-      });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
   })
 );
 
-
+// ✅ Get consumables
 router.get(
   "/get-consumable-products",
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (_req, res, next) => {
     try {
-      const products = await Product.find({
-        productType: "Consumables",
-      })
-        .sort({ createdAt: -1 });
-
-      res.status(200).json({
-        success: true,
-        products,
-      });
+      const products = await Product.find({ productType: "Consumables" }).sort({ createdAt: -1 });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
   })
 );
 
+// ✅ Get equipment
 router.get(
   "/get-equipment-products",
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (_req, res, next) => {
     try {
-      const products = await Product.find({
-        productType: "Equipment",
-      })
-        .sort({ createdAt: -1 });
-
-      res.status(200).json({
-        success: true,
-        products,
-      });
+      const products = await Product.find({ productType: "Equipment" }).sort({ createdAt: -1 });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
   })
 );
 
+// ✅ Get pharmaceuticals
 router.get(
   "/get-pharmaceutical-products",
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (_req, res, next) => {
     try {
-      const products = await Product.find({
-        productType: "Pharmaceutical",
-      })
-        .sort({ createdAt: -1 });
-
-      res.status(200).json({
-        success: true,
-        products,
-      });
+      const products = await Product.find({ productType: "Pharmaceutical" }).sort({ createdAt: -1 });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
   })
 );
 
-
+// ✅ Get single product
 router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -213,23 +169,16 @@ router.get(
 
       if (!product) throw new Error("Product not found");
 
-      // fallback for existing frontend usage
       const defaultVariant = product.variants.length > 0 ? product.variants[0] : null;
 
-      res.status(200).json({
-        success: true,
-        product,
-        defaultVariant, // ✅ send first variant explicitly
-      });
+      res.status(200).json({ success: true, product, defaultVariant });
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  }),
+  })
 );
 
-
-
-// review for a product
+// ✅ Create / update review
 router.put(
   "/create-new-review",
   isAuthenticated,
@@ -238,72 +187,56 @@ router.put(
       const { user, rating, comment, productId, orderId } = req.body;
 
       const product = await Product.findById(productId);
+      if (!product) return next(new ErrorHandler("Product not found", 404));
 
-      const review = {
-        user,
-        rating,
-        comment,
-        productId,
-      };
+      const review = { user, rating, comment, productId };
 
-      const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id,
-      );
+      const isReviewed = product.reviews.find((rev) => rev.user._id === req.user._id);
 
       if (isReviewed) {
         product.reviews.forEach((rev) => {
           if (rev.user._id === req.user._id) {
-            (rev.rating = rating), (rev.comment = comment), (rev.user = user);
+            rev.rating = rating;
+            rev.comment = comment;
+            rev.user = user;
           }
         });
       } else {
         product.reviews.push(review);
       }
 
-      let avg = 0;
-
-      product.reviews.forEach((rev) => {
-        avg += rev.rating;
-      });
-
-      product.ratings = avg / product.reviews.length;
+      product.ratings =
+        product.reviews.reduce((acc, rev) => acc + rev.rating, 0) /
+        product.reviews.length;
 
       await product.save({ validateBeforeSave: false });
 
       await Order.findByIdAndUpdate(
         orderId,
         { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true },
+        { arrayFilters: [{ "elem._id": productId }], new: true }
       );
 
-      res.status(200).json({
-        success: true,
-        message: "Reviwed succesfully!",
-      });
+      res.status(200).json({ success: true, message: "Reviewed successfully!" });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
-// all products --- for admin
+// ✅ Admin: get all products
 router.get(
   "/admin-all-products",
   isAuthenticated,
   isAdmin("Admin"),
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (_req, res, next) => {
     try {
-      const products = await Product.find().sort({
-        createdAt: -1,
-      });
-      res.status(201).json({
-        success: true,
-        products,
-      });
+      const products = await Product.find().sort({ createdAt: -1 });
+      res.status(200).json({ success: true, products });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 module.exports = router;
