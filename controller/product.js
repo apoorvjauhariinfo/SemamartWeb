@@ -139,23 +139,30 @@ router.delete(
 );
 
 // get all products
+// get all products (only include the first variant in "variants")
 router.get(
   "/get-all-products",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find()
         .populate("shopId", "name")
+        .populate({
+          path: "variants",
+          options: { sort: { createdAt: 1 } }, // ensures consistent order
+          perDocumentLimit: 1,                 // only first variant
+        })
         .sort({ createdAt: -1 });
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         products,
       });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
+
 
 router.get(
   "/get-consumable-products",
@@ -215,23 +222,35 @@ router.get(
 );
 
 
-// get product details of product with id
 router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
-    const { id } = req.params;
     try {
-      const product = await Product.findById(id).populate("shopId variants");
+      const product = await Product.findById(req.params.id)
+        .populate("shopId", "name")
+        .populate({
+          path: "variants",
+          select: "size colorOption thumbnail originalPrice discountPrice stock",
+          options: { sort: { createdAt: 1 } },
+        });
 
-      if (!product) throw new Error("not found");
+      if (!product) throw new Error("Product not found");
 
-      res.status(200).json(product);
+      // fallback for existing frontend usage
+      const defaultVariant = product.variants.length > 0 ? product.variants[0] : null;
+
+      res.status(200).json({
+        success: true,
+        product,
+        defaultVariant, // ✅ send first variant explicitly
+      });
     } catch (error) {
-      console.error(error);
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message || error, 400));
     }
   }),
 );
+
+
 
 // review for a product
 router.put(

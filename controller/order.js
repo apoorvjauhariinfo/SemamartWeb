@@ -9,126 +9,121 @@ const Shop = require("../model/shop");
 const Product = require("../model/product");
 const PDFDocument = require("pdfkit");
 
-// create new order
+// ✅ Create new order(s)
 router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const { cart, shippingAddress, user, totalPrice, paymentInfo } = req.body;
 
-      //   group cart items by shopId
-      const shopItemsMap = new Map();
-
-      for (const item of cart) {
-        const shopId = item.shopId;
-        if (!shopItemsMap.has(shopId)) {
-          shopItemsMap.set(shopId, []);
-        }
-        shopItemsMap.get(shopId).push(item);
+      if (!cart || cart.length === 0) {
+        return next(new ErrorHandler("Cart is empty", 400));
       }
 
-      // create an order for each shop
       const orders = [];
 
-      for (const [shopId, items] of shopItemsMap) {
+      // 🔥 Split each cart item into its own order
+      for (const item of cart) {
         const order = await Order.create({
-          cart: items,
+          shop: item.shopId,
+          product: item.productId,
+          variant: item.variantId || null,
+          qty: item.qty,
+          cart: [item], // legacy support
           shippingAddress,
           user,
-          totalPrice,
+          totalPrice: item.totalPrice, // ✅ use per-item totalPrice
           paymentInfo,
         });
         orders.push(order);
       }
 
-      res.status(201).json({
-        success: true,
-        orders,
-      });
+      res.status(201).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   })
 );
 
-// get all orders of user
+
+// ✅ Get all orders of a user
 router.get(
   "/get-all-orders/:userId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find({ "user._id": req.params.userId }).sort({
-        createdAt: -1,
-      });
+      const userId = new mongoose.Types.ObjectId(req.params.userId);
 
-      res.status(200).json({
-        success: true,
-        orders,
-      });
+      const orders = await Order.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .populate("product")
+        .populate("variant")
+        .populate("shop")
+        .populate("user");
+
+      res.status(200).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   })
 );
 
-// get all orders of seller
+// ✅ Get all orders of a seller
 router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find({
-        "cart.shopId": req.params.shopId,
-      }).sort({
-        createdAt: -1,
-      });
+      const shopId = new mongoose.Types.ObjectId(req.params.shopId);
 
-      res.status(200).json({
-        success: true,
-        orders,
-      });
+      const orders = await Order.find({ shop: shopId })
+        .sort({ createdAt: -1 })
+        .populate("product")
+        .populate("variant")
+        .populate("user");
+
+      res.status(200).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   })
 );
 
+// ✅ Get orders for a user (with products populated)
 router.get(
   "/get-order/:userId",
-   catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors(async (req, res, next) => {
     try {
-        const userId = new mongoose.Types.ObjectId(req.params.userId);
+      const userId = new mongoose.Types.ObjectId(req.params.userId);
 
       const orders = await Order.find({ user: userId })
         .sort({ createdAt: -1 })
-        .populate({
-          path: "cart.product", 
-          model: "Product",     
-        });
+        .populate("product")
+        .populate("variant")
+        .populate("shop")
+        .populate("user");
 
-      res.status(200).json({
-        success: true,
-        orders,
-      });
+      res.status(200).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   })
 );
 
-// update order status for seller    ---------------(product)
+// ✅ Update order status (for sellers)
 router.put(
   "/update-order-status/:id",
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const order = await Order.findById(req.params.id);
+      const order = await Order.findById(req.params.id)
+        .populate("product")
+        .populate("variant");
 
       if (!order) {
         return next(new ErrorHandler("Order not found with this id", 400));
       }
+
       if (req.body.status === "Transferred to delivery partner") {
-        order.cart.forEach(async (o) => {
-          await updateOrder(o._id, o.qty);
-        });
+        await updateStock(order.product._id, order.qty);
       }
 
       order.status = req.body.status;
@@ -136,32 +131,30 @@ router.put(
       if (req.body.status === "Delivered") {
         order.deliveredAt = Date.now();
         order.paymentInfo.status = "Succeeded";
+
         const serviceCharge = order.totalPrice * 0.1;
-        await updateSellerInfo(order.totalPrice - serviceCharge);
+        await updateSellerInfo(order.shop, order.totalPrice - serviceCharge);
       }
 
       await order.save({ validateBeforeSave: false });
 
-      res.status(200).json({
-        success: true,
-        order,
-      });
+      res.status(200).json({ success: true, order });
 
-      async function updateOrder(id, qty) {
-        const product = await Product.findById(id);
-
-        product.stock -= qty;
-        product.sold_out += qty;
-
-        await product.save({ validateBeforeSave: false });
+      async function updateStock(productId, qty) {
+        const product = await Product.findById(productId);
+        if (product) {
+          product.stock -= qty;
+          product.sold_out += qty;
+          await product.save({ validateBeforeSave: false });
+        }
       }
 
-      async function updateSellerInfo(amount) {
-        const seller = await Shop.findById(req.seller.id);
-
-        seller.availableBalance = amount;
-
-        await seller.save();
+      async function updateSellerInfo(shopId, amount) {
+        const seller = await Shop.findById(shopId);
+        if (seller) {
+          seller.availableBalance = (seller.availableBalance || 0) + amount;
+          await seller.save();
+        }
       }
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -169,7 +162,7 @@ router.put(
   })
 );
 
-// give a refund ----- user
+// ✅ Refund request (user)
 router.put(
   "/order-refund/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -181,7 +174,6 @@ router.put(
       }
 
       order.status = req.body.status;
-
       await order.save({ validateBeforeSave: false });
 
       res.status(200).json({
@@ -195,40 +187,39 @@ router.put(
   })
 );
 
-// accept the refund ---- seller
+// ✅ Refund approval (seller)
 router.put(
   "/order-refund-success/:id",
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const order = await Order.findById(req.params.id);
+      const order = await Order.findById(req.params.id)
+        .populate("product")
+        .populate("variant");
 
       if (!order) {
         return next(new ErrorHandler("Order not found with this id", 400));
       }
 
       order.status = req.body.status;
-
       await order.save();
 
       res.status(200).json({
         success: true,
-        message: "Order Refund successfull!",
+        message: "Order Refund successful!",
       });
 
       if (req.body.status === "Refund Success") {
-        order.cart.forEach(async (o) => {
-          await updateOrder(o._id, o.qty);
-        });
+        await restoreStock(order.product._id, order.qty);
       }
 
-      async function updateOrder(id, qty) {
-        const product = await Product.findById(id);
-
-        product.stock += qty;
-        product.sold_out -= qty;
-
-        await product.save({ validateBeforeSave: false });
+      async function restoreStock(productId, qty) {
+        const product = await Product.findById(productId);
+        if (product) {
+          product.stock += qty;
+          product.sold_out -= qty;
+          await product.save({ validateBeforeSave: false });
+        }
       }
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -236,53 +227,43 @@ router.put(
   })
 );
 
-// all orders --- for admin
+// ✅ Admin: get all orders
 router.get(
   "/admin-all-orders",
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find().sort({
-        deliveredAt: -1,
-        createdAt: -1,
-      });
-      res.status(201).json({
-        success: true,
-        orders,
-      });
+      const orders = await Order.find()
+        .sort({ deliveredAt: -1, createdAt: -1 })
+        .populate("product")
+        .populate("variant")
+        .populate("shop")
+        .populate("user");
+
+      res.status(200).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   })
 );
 
-router.get("/invoice/:orderId/:productId", async (req, res) => {
-  const { orderId, productId } = req.params;
+// ✅ Generate invoice per order
+router.get("/invoice/:orderId", async (req, res) => {
+  const { orderId } = req.params;
 
   try {
-    const order = await Order.findById(orderId);
+    const order = await Order.findById(orderId)
+      .populate("product")
+      .populate("variant")
+      .populate("user");
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    // ✅ Filter only matching product
-    const matchingItems = order.cart.filter(
-      (item) => item.product.toString() === productId
-    );
-
-    if (matchingItems.length === 0) {
-      return res.status(404).json({ error: "Product not found in this order" });
-    }
-
-    // 🧾 Generate PDF
     const doc = new PDFDocument({ size: "A4", margin: 50 });
-
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=invoice-${orderId}-${productId}.pdf`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename=invoice-${orderId}.pdf`);
     res.setHeader("Content-Type", "application/pdf");
 
     doc.pipe(res);
@@ -309,26 +290,21 @@ router.get("/invoice/:orderId/:productId", async (req, res) => {
     // 💳 Payment Info
     doc.fontSize(14).text("Payment Info:", { underline: true });
     const payment = order.paymentInfo || {};
-    doc.fontSize(12).text(`Type: ${payment.type || "N/A"}`);
+    doc.fontSize(12).text(`Method: ${payment.method || "N/A"}`);
     doc.text(`Status: ${payment.status || "N/A"}`);
-    doc.text(`Paid At: ${payment.paidAt ? new Date(payment.paidAt).toLocaleString() : "N/A"}`);
+    doc.text(`Paid At: ${order.paidAt ? new Date(order.paidAt).toLocaleString() : "N/A"}`);
     doc.moveDown();
 
     // 🛍️ Item
     doc.fontSize(14).text("Item:", { underline: true });
-
-    let total = 0;
-    matchingItems.forEach((item, index) => {
-      const itemTotal = item.price * item.qty;
-      total += itemTotal;
-
-      doc.fontSize(12).text(
-        `${index + 1}. ${item.name} - ₹${item.price} x ${item.qty} = ₹${itemTotal}`
-      );
-    });
+    doc.fontSize(12).text(
+      `${order.product?.name || "Unknown Product"} - ₹${order.totalPrice} × ${order.qty} = ₹${
+        order.totalPrice * order.qty
+      }`
+    );
 
     doc.moveDown();
-    doc.fontSize(14).text(`Total Price: ₹${total}`, { align: "right" });
+    doc.fontSize(14).text(`Total Price: ₹${order.totalPrice}`, { align: "right" });
 
     doc.end();
   } catch (err) {
@@ -336,6 +312,5 @@ router.get("/invoice/:orderId/:productId", async (req, res) => {
     res.status(500).json({ error: "Failed to generate invoice" });
   }
 });
-
 
 module.exports = router;
