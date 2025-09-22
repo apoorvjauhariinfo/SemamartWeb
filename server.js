@@ -87,8 +87,10 @@ const withdraw = require("./controller/withdraw");
 const category = require("./controller/category");
 const subCategory = require("./controller/subcategory");
 const specialPackageRoutes = require("./controller/specialityPackage");
-app.use("/api/v2/withdraw", withdraw);
+const productVariant = require("./controller/productVariant")
+
 // end points
+app.use("/api/v2/withdraw", withdraw);
 app.use("/api/v2/user", user);
 app.use("/api/v2/conversation", conversation);
 app.use("/api/v2/message", message);
@@ -101,6 +103,7 @@ app.use("/api/v2/payment", payment);
 app.use("/api/v2/category", category);
 app.use("/api/v2/sub-category", subCategory);
 app.use("/api/v2/special-package", specialPackageRoutes);
+app.use("/api/v2/product-variant", productVariant);
 
 // it'for errhendel
 app.use(ErrorHandler);

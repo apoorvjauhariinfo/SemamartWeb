@@ -207,7 +207,7 @@ const productSchema = new mongoose.Schema({
   },
   visibility: {
     type: String,
-    default: 'public'
+    default: 'public' // TODO: make it boolean and change it on adminn verification
   },
   purchaseNote: {
     type: String,
