@@ -2,7 +2,7 @@ const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
-const Product = require("../model/product");
+const {Product} = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const { uploadV2 } = require("../multer");
@@ -225,10 +225,20 @@ router.get(
 router.get('/get-products-by-subcategory/:subCategoryId', async (req, res, next) => {
   try {
     const { subCategoryId } = req.params;
-    const products = await Product.find({ subCategory: subCategoryId }).populate('shopId');
+
+    if (!mongoose.isValidObjectId(subCategoryId)) {
+      return res.status(400).json({ message: 'Invalid subCategoryId' });
+    }
+   const products = await Product.find({ subCategory: subCategoryId })
+      .populate('shopId',) 
+      .populate({
+        path: 'variants',
+        select: 'thumbnail originalPrice discountPrice stock colorOption size', 
+      })
+      .lean(); 
 
     if (!products || products.length === 0) {
-      return res.status(200).json([]); // ✅ 200 OK, empty array
+      return res.status(200).json([]);
     }
 
     res.status(200).json(products);
@@ -236,6 +246,7 @@ router.get('/get-products-by-subcategory/:subCategoryId', async (req, res, next)
     next(error);
   }
 });
+
 
 
 // review for a product
