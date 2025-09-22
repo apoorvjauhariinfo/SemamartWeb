@@ -14,14 +14,6 @@ router.get("/", catchAsyncErrors(
   }
 ))
 
-router.get("/categoryName", catchAsyncErrors(
-  async function (_req, res) {
-    const categories = await Category.find().select('name _id');
-    res.json(categories);
-  }
-));
-
-
 router.get("/:categoryId", catchAsyncErrors(
   async (req, res) => {
     const { categoryId } = req.params
@@ -30,21 +22,6 @@ router.get("/:categoryId", catchAsyncErrors(
     res.json(category)
   }
 ))
-
-router.get("/:categoryId/subcategories", catchAsyncErrors(
-  async (req, res, next) => {
-    const { categoryId } = req.params;
-
-    const subcategories = await Subcategory.find({ category: categoryId });
-
-    if (!subcategories) {
-      return next(new ErrorHandler("Subcategories not found", 404));
-    }
-
-    res.json(subcategories);
-  }
-));
-
 
 module.exports = router;
 

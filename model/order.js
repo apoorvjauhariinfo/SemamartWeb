@@ -1,6 +1,28 @@
 const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema({
+  shop: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Shop",
+    required: true,
+  },
+  // Single product reference
+  product: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Product",
+    required: true,
+  },
+  // Variant reference (null if no variant selected)
+  variant: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null,
+  },
+  qty: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
+  // We still keep `cart` for compatibility but now it will only contain one item
   cart: {
     type: Array,
     required: true,
@@ -10,7 +32,8 @@ const orderSchema = new mongoose.Schema({
     required: true,
   },
   user: {
-    type: Object,
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
     required: true,
   },
   totalPrice: {
@@ -20,28 +43,24 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "Processing",
+    enum: ["Processing", "Shipped", "Delivered", "Cancelled", "Refund Requested", "Refund Success"],
   },
-  paymentInfo: {
-    id: {
-      type: String,
-    },
-    status: {
-      type: String,
-    },
-    type: {
-      type: String,
-    },
-  },
+paymentInfo: {
+  id: { type: String },
+  status: { type: String },
+  method: { type: String }, // <-- rename from "type" to "method" (avoids clashing with mongoose "type" keyword)
+},
+
   paidAt: {
     type: Date,
-    default: Date.now(),
+    default: Date.now,
   },
   deliveredAt: {
     type: Date,
   },
   createdAt: {
     type: Date,
-    default: Date.now(),
+    default: Date.now,
   },
 });
 
