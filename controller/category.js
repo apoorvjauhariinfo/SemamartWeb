@@ -16,12 +16,12 @@ router.get("/", catchAsyncErrors(
 ))
 
 
-router.get("/categoryName", catchAsyncErrors(
-  async function (_req, res) {
-    const categories = await Category.find().select('name _id');
-    res.json(categories);
-  }
-));
+// router.get("/categoryName", catchAsyncErrors(
+//   async function (_req, res) {
+//     const categories = await Category.find().select('name _id');
+//     res.json(categories);
+//   }
+// ));
 
 
 router.get("/:categoryId", catchAsyncErrors(
