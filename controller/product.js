@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
@@ -267,5 +268,20 @@ router.get(
     }
   })
 );
+
+router.get('/get-products-by-subcategory/:subCategoryId', async (req, res, next) => {
+  try {
+    const { subCategoryId } = req.params;
+    const products = await Product.find({ subCategory: subCategoryId }).populate('shopId');
+
+    if (!products || products.length === 0) {
+      return res.status(200).json([]); // ✅ 200 OK, empty array
+    }
+
+    res.status(200).json(products);
+  } catch (error) {
+    next(error);
+  }
+});
 
 module.exports = router;
