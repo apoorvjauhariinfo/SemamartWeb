@@ -284,4 +284,23 @@ router.get('/get-products-by-subcategory/:subCategoryId', async (req, res, next)
   }
 });
 
+router.put(
+  "/update-product/:productId",
+  uploadV2.none(),
+  catchAsyncErrors(async (req, res) => {
+
+    const {productId} = req.params
+    const product = await Product.findById(productId)
+    if(!product) throw new ErrorHandler("product not found",404)
+
+    const updates = req.body
+    Object.keys(updates).forEach(k=>{
+      product[k] = updates[k]
+    })
+    
+    await product.save()
+    res.json({success:true})
+  }
+))
+
 module.exports = router;

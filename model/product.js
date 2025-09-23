@@ -16,6 +16,12 @@ const variantSchema = new mongoose.Schema({
     type: Number,
     required: [true, "Please enter your product stock!"],
   },
+  bulkOrders: [
+    {
+      qty: { type: Number, required: true },
+      price: { type: Number, required: true },
+    },
+  ],
 });
 
 const productSchema = new mongoose.Schema({
@@ -207,7 +213,7 @@ const productSchema = new mongoose.Schema({
   },
   visibility: {
     type: String,
-    default: 'public'
+    default: 'public' // TODO: make it boolean and change it on adminn verification
   },
   purchaseNote: {
     type: String,

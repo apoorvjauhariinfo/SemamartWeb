@@ -1,5 +1,30 @@
 const mongoose = require("mongoose");
 
+const cartItemSchema = new mongoose.Schema(
+  {
+    shopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shop",
+      required: true,
+    },
+    productId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+    variantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+    },
+    qty: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+  },
+  { _id: false }
+);
+
 const orderSchema = new mongoose.Schema({
   shop: {
     type: mongoose.Schema.Types.ObjectId,
@@ -24,7 +49,7 @@ const orderSchema = new mongoose.Schema({
   },
   // We still keep `cart` for compatibility but now it will only contain one item
   cart: {
-    type: Array,
+    type: [cartItemSchema],
     required: true,
   },
   shippingAddress: {

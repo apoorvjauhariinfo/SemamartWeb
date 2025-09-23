@@ -45,6 +45,32 @@ router.post(
   })
 );
 
+router.get(
+  "/get-order-details/:orderId",
+  catchAsyncErrors(async(req,res)=>{
+    const order = await Order.findById(req.params.orderId).populate("cart.productId","variants name")
+
+    if(!order){
+      res.status(404).send("Order not Found")
+    }
+
+    res.json(order)
+  })
+);
+
+router.get(
+  "/get-order-details/:orderId",
+  catchAsyncErrors(async(req,res)=>{
+    const order = await Order.findById(req.params.orderId).populate("cart.productId","variants name")
+
+    if(!order){
+      res.status(404).send("Order not Found")
+    }
+
+    res.json(order)
+  })
+);
+
 
 // ✅ Get all orders of a user
 router.get(
@@ -72,34 +98,11 @@ router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const shopId = new mongoose.Types.ObjectId(req.params.shopId);
-
-      const orders = await Order.find({ shop: shopId })
-        .sort({ createdAt: -1 })
-        .populate("product")
-        .populate("variant")
-        .populate("user");
-
-      res.status(200).json({ success: true, orders });
-    } catch (error) {
-      return next(new ErrorHandler(error.message, 500));
-    }
-  })
-);
-
-// ✅ Get orders for a user (with products populated)
-router.get(
-  "/get-order/:userId",
-  catchAsyncErrors(async (req, res, next) => {
-    try {
-      const userId = new mongoose.Types.ObjectId(req.params.userId);
-
-      const orders = await Order.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .populate("product")
-        .populate("variant")
-        .populate("shop")
-        .populate("user");
+      const orders = await Order
+        .find({ "cart.shopId": req.params.shopId, })
+        .select("-shippingAddress -paymentInfo")
+        .populate("user", "firstName lastName")
+        .sort({ createdAt: -1, });
 
       res.status(200).json({ success: true, orders });
     } catch (error) {
