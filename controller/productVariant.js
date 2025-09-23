@@ -4,9 +4,34 @@ const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { uploadV2 } = require("../multer");
 const { isSeller } = require("../middleware/auth");
-const { ProductVariant } = require("../model/product");
+const { ProductVariant, Product } = require("../model/product");
 const path = require("path");
 const fs = require("fs");
+
+router.post(
+  "/post-variant",
+  isSeller,
+  uploadV2.single("thumbnail"),
+  catchAsyncErrors(async (req, res) => {
+    const { productId, ...a } = req.body;
+    const product = await Product.findById(productId);
+    if (!product) throw new ErrorHandler("Product not found", 404);
+
+    if (req.file) {
+      const variant = await ProductVariant.create({
+        ...a,
+        productId: product._id,
+        thumbnail: req.file.filename,
+      });
+      
+      product.variants.push(variant)
+      await product.save()
+      res.status(201).json({success:true});
+      return;
+    }
+    throw new ErrorHandler();
+  })
+);
 
 router.put(
   "/update-variant/:variantId",
@@ -15,7 +40,7 @@ router.put(
   catchAsyncErrors(async (req, res) => {
     const { variantId } = req.params;
     const variant = await ProductVariant.findById(variantId).populate(
-      "productId",
+      "productId"
     );
 
     if (!variant) throw new ErrorHandler("Not found", 404);
@@ -36,12 +61,14 @@ router.put(
       variant.thumbnail = req.file.filename;
     }
 
-    Object.keys(req.body).forEach(k=>{
-        variant[k] = req.body[k]
+    req.body.bulkOrders = JSON.parse(req.body.bulkOrders)
+
+    Object.keys(req.body).forEach((k) => {
+      variant[k] = req.body[k];
     });
-    
-    await variant.save()
-    res.json({success:true})
+
+    await variant.save();
+    res.json({ success: true });
   })
 );
 

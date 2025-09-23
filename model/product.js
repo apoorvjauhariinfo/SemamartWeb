@@ -16,6 +16,12 @@ const variantSchema = new mongoose.Schema({
     type: Number,
     required: [true, "Please enter your product stock!"],
   },
+  bulkOrders: [
+    {
+      qty: { type: Number, required: true },
+      price: { type: Number, required: true },
+    },
+  ],
 });
 
 const productSchema = new mongoose.Schema({
