@@ -32,14 +32,15 @@ const orderSchema = new mongoose.Schema({
     required: true,
   },
   // Single product reference
-  product: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Product",
-    required: true,
-  },
+  // product: {
+  //   type: mongoose.Schema.Types.ObjectId,
+  //   ref: "Product",
+  //   required: true,
+  // },
   // Variant reference (null if no variant selected)
   variant: {
     type: mongoose.Schema.Types.ObjectId,
+    ref:"ProductVariant",
     default: null,
   },
   qty: {
@@ -48,10 +49,10 @@ const orderSchema = new mongoose.Schema({
     min: 1,
   },
   // We still keep `cart` for compatibility but now it will only contain one item
-  cart: {
-    type: [cartItemSchema],
-    required: true,
-  },
+  // cart: {
+  //   type: [cartItemSchema],
+  //   required: true,
+  // },
   shippingAddress: {
     type: Object,
     required: true,
@@ -75,7 +76,6 @@ paymentInfo: {
   status: { type: String },
   method: { type: String }, // <-- rename from "type" to "method" (avoids clashing with mongoose "type" keyword)
 },
-
   paidAt: {
     type: Date,
     default: Date.now,

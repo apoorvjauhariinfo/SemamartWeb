@@ -6,7 +6,7 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const Product = require("../model/product");
+const {Product} = require("../model/product");
 const PDFDocument = require("pdfkit");
 
 // ✅ Create new order(s)
@@ -26,10 +26,10 @@ router.post(
       for (const item of cart) {
         const order = await Order.create({
           shop: item.shopId,
-          product: item.productId,
+          // product: item.productId,
           variant: item.variantId || null,
           qty: item.qty,
-          cart: [item], // legacy support
+          // cart: [item], // legacy support
           shippingAddress,
           user,
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
@@ -47,30 +47,38 @@ router.post(
 
 router.get(
   "/get-order-details/:orderId",
-  catchAsyncErrors(async(req,res)=>{
-    const order = await Order.findById(req.params.orderId).populate("cart.productId","variants name")
+  catchAsyncErrors(async (req, res) => {
+    const order = await Order.findById(req.params.orderId).populate(
+      "cart.productId",
+      "variants name"
+    );
 
-    if(!order){
-      res.status(404).send("Order not Found")
+    if (!order) {
+      res.status(404).send("Order not Found");
     }
 
-    res.json(order)
+    res.json(order);
   })
 );
 
 router.get(
-  "/get-order-details/:orderId",
-  catchAsyncErrors(async(req,res)=>{
-    const order = await Order.findById(req.params.orderId).populate("cart.productId","variants name")
+  "/get-order-details-seller/:orderId",
+  catchAsyncErrors(async (req, res) => {
+    const order = await Order.findById(req.params.orderId).populate({
+      path: "variant",
+      populate: {
+        path: "productId",
+        select: "name",
+      },
+    });
 
-    if(!order){
-      res.status(404).send("Order not Found")
+    if (!order) {
+      res.status(404).send("Order not Found");
     }
 
-    res.json(order)
+    res.json(order);
   })
 );
-
 
 // ✅ Get all orders of a user
 router.get(
@@ -98,11 +106,10 @@ router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order
-        .find({ "cart.shopId": req.params.shopId, })
+      const orders = await Order.find({ shop: req.params.shopId })
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName")
-        .sort({ createdAt: -1, });
+        .sort({ createdAt: -1 });
 
       res.status(200).json({ success: true, orders });
     } catch (error) {
@@ -118,7 +125,6 @@ router.put(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const order = await Order.findById(req.params.id)
-        .populate("product")
         .populate("variant");
 
       if (!order) {
@@ -126,7 +132,7 @@ router.put(
       }
 
       if (req.body.status === "Transferred to delivery partner") {
-        await updateStock(order.product._id, order.qty);
+        await updateStock(order.variant.productId, order.qty);
       }
 
       order.status = req.body.status;
@@ -266,7 +272,10 @@ router.get("/invoice/:orderId", async (req, res) => {
     }
 
     const doc = new PDFDocument({ size: "A4", margin: 50 });
-    res.setHeader("Content-Disposition", `attachment; filename=invoice-${orderId}.pdf`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename=invoice-${orderId}.pdf`
+    );
     res.setHeader("Content-Type", "application/pdf");
 
     doc.pipe(res);
@@ -284,7 +293,9 @@ router.get("/invoice/:orderId", async (req, res) => {
     doc.fontSize(14).text("Shipping Address:", { underline: true });
     const address = order.shippingAddress;
     if (address) {
-      doc.fontSize(12).text(`${address.instituteAddress1}, ${address.instituteAddress2}`);
+      doc
+        .fontSize(12)
+        .text(`${address.instituteAddress1}, ${address.instituteAddress2}`);
       doc.text(`${address.district}, ${address.state} - ${address.pincode}`);
       doc.text(`Landmark: ${address.landmark}`);
     }
@@ -295,19 +306,27 @@ router.get("/invoice/:orderId", async (req, res) => {
     const payment = order.paymentInfo || {};
     doc.fontSize(12).text(`Method: ${payment.method || "N/A"}`);
     doc.text(`Status: ${payment.status || "N/A"}`);
-    doc.text(`Paid At: ${order.paidAt ? new Date(order.paidAt).toLocaleString() : "N/A"}`);
+    doc.text(
+      `Paid At: ${
+        order.paidAt ? new Date(order.paidAt).toLocaleString() : "N/A"
+      }`
+    );
     doc.moveDown();
 
     // 🛍️ Item
     doc.fontSize(14).text("Item:", { underline: true });
-    doc.fontSize(12).text(
-      `${order.product?.name || "Unknown Product"} - ₹${order.totalPrice} × ${order.qty} = ₹${
-        order.totalPrice * order.qty
-      }`
-    );
+    doc
+      .fontSize(12)
+      .text(
+        `${order.product?.name || "Unknown Product"} - ₹${order.totalPrice} × ${
+          order.qty
+        } = ₹${order.totalPrice * order.qty}`
+      );
 
     doc.moveDown();
-    doc.fontSize(14).text(`Total Price: ₹${order.totalPrice}`, { align: "right" });
+    doc
+      .fontSize(14)
+      .text(`Total Price: ₹${order.totalPrice}`, { align: "right" });
 
     doc.end();
   } catch (err) {
