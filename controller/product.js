@@ -146,17 +146,23 @@ router.get(
     try {
       const products = await Product.find()
         .populate("shopId", "name")
+        .populate({
+          path: "variants",      // field in Product
+          model: "ProductVariant", // force it to use ProductVariant collection
+          select: "thumbnail originalPrice discountPrice stock colorOption size"
+        })
         .sort({ createdAt: -1 });
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         products,
       });
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
+
 
 router.get(
   "/get-consumable-products",
