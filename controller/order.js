@@ -87,12 +87,18 @@ router.get(
     try {
       const userId = new mongoose.Types.ObjectId(req.params.userId);
 
-      const orders = await Order.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .populate("product")
-        .populate("variant")
-        .populate("shop")
-        .populate("user");
+    const orders = await Order.find({ user: userId })
+  .sort({ createdAt: -1 })
+  .populate({
+    path: "variant",
+    populate: {
+      path: "productId",
+      select: "name images variants", // fetch product details through variant
+    },
+  })
+  .populate("shop", "name email")
+  .populate("user", "firstName lastName email phoneNumber addresses");
+
 
       res.status(200).json({ success: true, orders });
     } catch (error) {
@@ -100,6 +106,7 @@ router.get(
     }
   })
 );
+
 
 // ✅ Get all orders of a seller
 router.get(
