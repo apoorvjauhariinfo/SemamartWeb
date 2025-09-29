@@ -40,7 +40,7 @@ const orderSchema = new mongoose.Schema({
   // Variant reference (null if no variant selected)
   variant: {
     type: mongoose.Schema.Types.ObjectId,
-    ref:"ProductVariant",
+    ref: "ProductVariant",
     default: null,
   },
   qty: {
@@ -69,13 +69,21 @@ const orderSchema = new mongoose.Schema({
   status: {
     type: String,
     default: "Processing",
-    enum: ["Processing", "Shipped", "Delivered", "Cancelled", "Refund Requested", "Refund Success"],
+    enum: [
+      "Processing",
+      "Packed",
+      "Shipped",
+      "Delivered",
+      "Cancelled",
+      "Refund Requested",
+      "Refund Success",
+    ],
   },
-paymentInfo: {
-  id: { type: String },
-  status: { type: String },
-  method: { type: String }, // <-- rename from "type" to "method" (avoids clashing with mongoose "type" keyword)
-},
+  paymentInfo: {
+    id: { type: String },
+    status: { type: String },
+    method: { type: String }, // <-- rename from "type" to "method" (avoids clashing with mongoose "type" keyword)
+  },
   paidAt: {
     type: Date,
     default: Date.now,

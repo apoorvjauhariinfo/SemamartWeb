@@ -6,7 +6,7 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const {Product} = require("../model/product");
+const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
 
 // ✅ Create new order(s)
@@ -64,13 +64,15 @@ router.get(
 router.get(
   "/get-order-details-seller/:orderId",
   catchAsyncErrors(async (req, res) => {
-    const order = await Order.findById(req.params.orderId).populate({
-      path: "variant",
-      populate: {
-        path: "productId",
-        select: "name",
-      },
-    });
+    const order = await Order.findById(req.params.orderId)
+      .populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+          select: "name",
+        },
+      })
+      .select("-shippingAddress");
 
     if (!order) {
       res.status(404).send("Order not Found");
@@ -87,18 +89,17 @@ router.get(
     try {
       const userId = new mongoose.Types.ObjectId(req.params.userId);
 
-    const orders = await Order.find({ user: userId })
-  .sort({ createdAt: -1 })
-  .populate({
-    path: "variant",
-    populate: {
-      path: "productId",
-      select: "name images variants", // fetch product details through variant
-    },
-  })
-  .populate("shop", "name email")
-  .populate("user", "firstName lastName email phoneNumber addresses");
-
+      const orders = await Order.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images variants", // fetch product details through variant
+          },
+        })
+        .populate("shop", "name email")
+        .populate("user", "firstName lastName email phoneNumber addresses");
 
       res.status(200).json({ success: true, orders });
     } catch (error) {
@@ -106,7 +107,6 @@ router.get(
     }
   })
 );
-
 
 // ✅ Get all orders of a seller
 router.get(
@@ -131,8 +131,7 @@ router.put(
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const order = await Order.findById(req.params.id)
-        .populate("variant");
+      const order = await Order.findById(req.params.id).populate("variant");
 
       if (!order) {
         return next(new ErrorHandler("Order not found with this id", 400));
@@ -251,16 +250,52 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const orders = await Order.find()
-        .sort({ deliveredAt: -1, createdAt: -1 })
-        .populate("product")
-        .populate("variant")
-        .populate("shop")
-        .populate("user");
+        .select("-shippingAddress -paymentInfo")
+        .populate("user", "firstName lastName")
+        .populate("shop", "businessName")
+        .sort({ createdAt: -1 });
 
       res.status(200).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
+  })
+);
+
+router.get(
+  "/get-order-details-admin/:orderId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const order = await Order.findById(req.params.orderId).populate({
+      path: "variant",
+      populate: {
+        path: "productId",
+        select: "name",
+      },
+    });
+
+    if (!order) {
+      res.status(404).send("Order not Found");
+    }
+
+    res.json(order);
+  })
+);
+
+router.put(
+  "/update-order-status-admin/:id",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) throw new ErrorHandler("Order not found", 404);
+
+    order.status = req.body.status;
+
+    await order.save();
+    res.status(201).json(order);
   })
 );
 
