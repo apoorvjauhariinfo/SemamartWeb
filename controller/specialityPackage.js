@@ -20,4 +20,22 @@ router.get("/:id", catchAsyncErrors(
 ))
 
 
+router.get("/:id/package-types", catchAsyncErrors(
+  async (req, res) => {
+    const { id } = req.params;
+
+    const packageWithTypes = await SpecialityPackage.findById(id)
+      .populate("packageTypes");
+
+    if (!packageWithTypes) {
+      return res.status(404).json({ message: "SpecialityPackage not found" });
+    }
+
+    res.json(packageWithTypes.packageTypes);
+  }
+));
+
+
+
+
 module.exports = router

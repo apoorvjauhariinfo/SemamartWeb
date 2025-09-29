@@ -462,4 +462,49 @@ router.put(
   }
 ))
 
+router.get('/get-products-by-speciality-package/:specialityPackageId', async (req, res, next) => {
+  try {
+    const { specialityPackageId } = req.params;
+
+    if (!mongoose.isValidObjectId(specialityPackageId)) {
+      return res.status(400).json({ message: 'Invalid specialityPackageId' });
+    }
+
+    const products = await Product.find({ specialityPackage: specialityPackageId })
+      .populate('shopId')
+      .populate({
+        path: 'variants',
+        select: 'thumbnail originalPrice discountPrice stock colorOption size',
+      })
+      .lean();
+
+    res.status(200).json(products);
+  } catch (error) {
+    next(error);
+  }
+})
+
+router.get('/get-products-by-speciality-package-type/:specialityPackageTypeId', async (req, res, next) => {
+  try {
+    const { specialityPackageTypeId } = req.params;
+
+    if (!mongoose.isValidObjectId(specialityPackageTypeId)) {
+      return res.status(400).json({ message: 'Invalid specialityPackageTypeId' });
+    }
+
+    const products = await Product.find({ specialityPackageType: specialityPackageTypeId })
+      .populate('shopId')
+      .populate({
+        path: 'variants',
+        select: 'thumbnail originalPrice discountPrice stock colorOption size',
+      })
+      .lean();
+
+    res.status(200).json(products);
+  } catch (error) {
+    next(error);
+  }
+})
+
+
 module.exports = router;
