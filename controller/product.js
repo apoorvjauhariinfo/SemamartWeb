@@ -2,15 +2,14 @@ const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
-const {Product , ProductVariant} = require("../model/product");
+const { Product, ProductVariant } = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const { upload, uploadV2, uploadDocUpdate } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 const path = require("path");
-const mongoose = require("mongoose")
-
+const mongoose = require("mongoose");
 
 //creatre product v2
 router.post(
@@ -31,42 +30,43 @@ router.post(
     const shop = await Shop.findById(shopId);
 
     if (!shop) {
-      throw new ErrorHandler("Shop not found", 402)
+      throw new ErrorHandler("Shop not found", 402);
     }
 
-    const product = req.body
-    const variants = JSON.parse(product.variants)
-    product.variants = []
+    const product = req.body;
+    const variants = JSON.parse(product.variants);
+    product.variants = [];
 
     if (req.files.images) {
-      product.images = req.files.images.map(e => e.filename)
+      product.images = req.files.images.map((e) => e.filename);
     }
     if (req.files.thumbnail) {
       // product.thumbnail = req.files.thumbnail[0].filename
       req.files.thumbnail.forEach((el, i) => {
-        variants[i].thumbnail = el.filename
-      })
+        variants[i].thumbnail = el.filename;
+      });
     }
     if (req.files.shortVideo) {
-      product.shortVideo = req.files.shortVideo[0].filename
+      product.shortVideo = req.files.shortVideo[0].filename;
     }
     if (req.files.certificate) {
-      product.certificate = req.files.certificate.map(c => c.filename)
+      product.certificate = req.files.certificate.map((c) => c.filename);
     }
     if (req.files.oemLetter) {
-      product.oemLetter = req.files.oemLetter[0].filename
+      product.oemLetter = req.files.oemLetter[0].filename;
     }
     if (req.files.prodcutComparisionSheet) {
-      product.prodcutComparisionSheet = req.files.prodcutComparisionSheet[0].filename
+      product.prodcutComparisionSheet =
+        req.files.prodcutComparisionSheet[0].filename;
     }
     if (req.files.productCompilace) {
-      product.productCompilance = req.files.productCompilance[0].filename
+      product.productCompilance = req.files.productCompilance[0].filename;
     }
     if (req.files.msds_ifu_leaflet) {
-      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet[0].filename
+      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet[0].filename;
     }
     if (req.files.amc_cms) {
-      product.amc_cms = req.files.amc_cms[0].filename
+      product.amc_cms = req.files.amc_cms[0].filename;
     }
 
     const savedProduct = await Product.create(product);
@@ -75,10 +75,10 @@ router.post(
       variants.map((v) => ({ ...v, productId: savedProduct._id }))
     );
 
-     savedProduct.variants = savedVariants.map((v) => v._id);
+    savedProduct.variants = savedVariants.map((v) => v._id);
     await savedProduct.save();
 
-    res.status(201).json(savedProduct)
+    res.status(201).json(savedProduct);
   })
 );
 
@@ -87,10 +87,10 @@ router.get(
   "/get-all-products-shop/:id",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const products = await Product
-                                .find({ shopId: req.params.id })
-                                .populate("variants")
-                                .select("name variants createdAt");
+      const products = await Product.find({ shopId: req.params.id })
+        .sort({ createdAt: -1 })
+        .populate("variants")
+        .select("name variants createdAt");
 
       res.status(201).json({
         success: true,
@@ -99,7 +99,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // delete product of a shop
@@ -136,7 +136,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // get all products
@@ -147,9 +147,10 @@ router.get(
       const products = await Product.find()
         .populate("shopId", "name")
         .populate({
-          path: "variants",      // field in Product
+          path: "variants", // field in Product
           model: "ProductVariant", // force it to use ProductVariant collection
-          select: "thumbnail originalPrice discountPrice stock colorOption size"
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
         })
         .sort({ createdAt: -1 });
 
@@ -163,15 +164,13 @@ router.get(
   })
 );
 
-
 router.get(
   "/get-consumable-products",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
         productType: "Consumables",
-      })
-        .sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 });
 
       res.status(200).json({
         success: true,
@@ -189,8 +188,7 @@ router.get(
     try {
       const products = await Product.find({
         productType: "Equipment",
-      })
-        .sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 });
 
       res.status(200).json({
         success: true,
@@ -208,8 +206,7 @@ router.get(
     try {
       const products = await Product.find({
         productType: "Pharmaceutical",
-      })
-        .sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 });
 
       res.status(200).json({
         success: true,
@@ -220,7 +217,6 @@ router.get(
     }
   })
 );
-
 
 // get product details of product with id
 router.get(
@@ -237,7 +233,7 @@ router.get(
       console.error(error);
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // review for a product
@@ -258,7 +254,7 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id,
+        (rev) => rev.user._id === req.user._id
       );
 
       if (isReviewed) {
@@ -284,7 +280,7 @@ router.put(
       await Order.findByIdAndUpdate(
         orderId,
         { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true },
+        { arrayFilters: [{ "elem._id": productId }], new: true }
       );
 
       res.status(200).json({
@@ -294,7 +290,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // all products --- for admin
@@ -303,18 +299,16 @@ router.get(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
-    try {
-      const products = await Product.find().sort({
-        createdAt: -1,
-      });
-      res.status(201).json({
-        success: true,
-        products,
-      });
-    } catch (error) {
-      return next(new ErrorHandler(error.message, 500));
-    }
-  }),
+    const products = await Product.find()
+      .sort({ createdAt: -1 })
+      .populate("variants")
+      .select("name variants createdAt");
+
+    res.status(201).json({
+      success: true,
+      products,
+    });
+  })
 );
 
 router.get(
@@ -345,166 +339,182 @@ router.get(
   })
 );
 
-router.get('/get-products-by-subcategory/:subCategoryId', async (req, res, next) => {
-  try {
-    const { subCategoryId } = req.params;
+router.get(
+  "/get-products-by-subcategory/:subCategoryId",
+  async (req, res, next) => {
+    try {
+      const { subCategoryId } = req.params;
 
-    if (!mongoose.isValidObjectId(subCategoryId)) {
-      return res.status(400).json({ message: 'Invalid subCategoryId' });
+      if (!mongoose.isValidObjectId(subCategoryId)) {
+        return res.status(400).json({ message: "Invalid subCategoryId" });
+      }
+      const products = await Product.find({ subCategory: subCategoryId })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      if (!products || products.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
     }
-   const products = await Product.find({ subCategory: subCategoryId })
-      .populate('shopId',) 
-      .populate({
-        path: 'variants',
-        select: 'thumbnail originalPrice discountPrice stock colorOption size', 
-      })
-      .lean(); 
-
-    if (!products || products.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    res.status(200).json(products);
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 router.put(
   "/upload-doc/:productId",
   uploadV2.single("file"),
   catchAsyncErrors(async (req, res) => {
-    const { productId } = req.params
-    const { docType, idx } = req.body
+    const { productId } = req.params;
+    const { docType, idx } = req.body;
 
     if (!productId || !docType) {
-      throw new ErrorHandler("productId and docType are required", 400)
+      throw new ErrorHandler("productId and docType are required", 400);
     }
 
-    const product = await Product.findById(productId)
+    const product = await Product.findById(productId);
     if (!product) {
-      throw new ErrorHandler("Product not found", 404)
+      throw new ErrorHandler("Product not found", 404);
     }
     // Delete old file if exists
-    const oldFile = idx !== undefined ? product.certificate[parseInt(idx)] : product[docType]
+    const oldFile =
+      idx !== undefined ? product.certificate[parseInt(idx)] : product[docType];
     if (oldFile) {
-      const oldPath = path.join("uploads/docs", oldFile)
+      const oldPath = path.join("uploads/docs", oldFile);
       if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath)
+        fs.unlinkSync(oldPath);
       }
     }
 
     // Save new file
-    const filePath = req.file.filename
+    const filePath = req.file.filename;
     if (idx !== undefined) {
-      product.certificate[idx] = filePath
+      product.certificate[idx] = filePath;
     } else {
-      product[docType] = filePath
+      product[docType] = filePath;
     }
 
-    await product.save()
+    await product.save();
 
     res.status(200).json({
       success: true,
       message: "Document replaced successfully",
       product,
-    })
+    });
   })
-)
+);
 
 router.put(
   "/upload-image/:productId",
   uploadV2.single("images"),
   catchAsyncErrors(async (req, res) => {
+    const { productId } = req.params;
+    const { idx } = req.body;
 
-    const { productId } = req.params
-    const { idx } = req.body
+    const product = await Product.findById(productId);
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
-    const product = await Product.findById(productId)
-    if (!product) return res.status(404).json({ message: "Product not found" })
-
-    const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null
+    const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null;
     if (oldFile) {
-      const oldPath = path.join("uploads/images", oldFile)
+      const oldPath = path.join("uploads/images", oldFile);
       if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath)
+        fs.unlinkSync(oldPath);
       }
     }
 
     // add new image
     if (idx !== undefined) {
-      product.images[parseInt(idx)] = req.file.filename
+      product.images[parseInt(idx)] = req.file.filename;
     } else {
-      product.images.push(req.file.filename)
+      product.images.push(req.file.filename);
     }
-    await product.save()
+    await product.save();
 
-    res.json({ success: true, product })
+    res.json({ success: true, product });
   })
-)
+);
 
 router.put(
   "/update-product/:productId",
   uploadV2.none(),
   catchAsyncErrors(async (req, res) => {
+    const { productId } = req.params;
+    const product = await Product.findById(productId);
+    if (!product) throw new ErrorHandler("product not found", 404);
 
-    const {productId} = req.params
-    const product = await Product.findById(productId)
-    if(!product) throw new ErrorHandler("product not found",404)
+    const updates = req.body;
+    Object.keys(updates).forEach((k) => {
+      product[k] = updates[k];
+    });
 
-    const updates = req.body
-    Object.keys(updates).forEach(k=>{
-      product[k] = updates[k]
-    })
-    
-    await product.save()
-    res.json({success:true})
-  }
-))
+    await product.save();
+    res.json({ success: true });
+  })
+);
 
-router.get('/get-products-by-speciality-package/:specialityPackageId', async (req, res, next) => {
-  try {
-    const { specialityPackageId } = req.params;
+router.get(
+  "/get-products-by-speciality-package/:specialityPackageId",
+  async (req, res, next) => {
+    try {
+      const { specialityPackageId } = req.params;
 
-    if (!mongoose.isValidObjectId(specialityPackageId)) {
-      return res.status(400).json({ message: 'Invalid specialityPackageId' });
-    }
+      if (!mongoose.isValidObjectId(specialityPackageId)) {
+        return res.status(400).json({ message: "Invalid specialityPackageId" });
+      }
 
-    const products = await Product.find({ specialityPackage: specialityPackageId })
-      .populate('shopId')
-      .populate({
-        path: 'variants',
-        select: 'thumbnail originalPrice discountPrice stock colorOption size',
+      const products = await Product.find({
+        specialityPackage: specialityPackageId,
       })
-      .lean();
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
 
-    res.status(200).json(products);
-  } catch (error) {
-    next(error);
-  }
-})
-
-router.get('/get-products-by-speciality-package-type/:specialityPackageTypeId', async (req, res, next) => {
-  try {
-    const { specialityPackageTypeId } = req.params;
-
-    if (!mongoose.isValidObjectId(specialityPackageTypeId)) {
-      return res.status(400).json({ message: 'Invalid specialityPackageTypeId' });
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
     }
-
-    const products = await Product.find({ specialityPackageType: specialityPackageTypeId })
-      .populate('shopId')
-      .populate({
-        path: 'variants',
-        select: 'thumbnail originalPrice discountPrice stock colorOption size',
-      })
-      .lean();
-
-    res.status(200).json(products);
-  } catch (error) {
-    next(error);
   }
-})
+);
 
+router.get(
+  "/get-products-by-speciality-package-type/:specialityPackageTypeId",
+  async (req, res, next) => {
+    try {
+      const { specialityPackageTypeId } = req.params;
+
+      if (!mongoose.isValidObjectId(specialityPackageTypeId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid specialityPackageTypeId" });
+      }
+
+      const products = await Product.find({
+        specialityPackageType: specialityPackageTypeId,
+      })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 module.exports = router;
