@@ -9,9 +9,11 @@ const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const { upload } = require("../multer");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
+const mongoose = require("mongoose");
 
 const sendShopToken = require("../utils/shopToken");
 const { transferableAbortController } = require("util");
+const user = require("../model/user");
 
 // create shop
 router.post(
@@ -462,5 +464,26 @@ router.delete(
     }
   }),
 );
+
+// Express route
+router.get(
+  "/admin-seller/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    const { id } = req.params;
+
+    // Validate ObjectId
+    const seller = await Shop.findById(id);
+
+    if (!seller) {
+      return next(new ErrorHandler("Seller not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      seller,
+    });
+  })
+);
+
 
 module.exports = router;
