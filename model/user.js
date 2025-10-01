@@ -36,31 +36,62 @@ const userSchema = new mongoose.Schema({
 
   addresses: [
     {
+     
+      reciever_name: {
+        type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s.'-]+$/, 'Invalid name format'] // Only letters, spaces, and basic punctuation
+      },
       state: {
         type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s]+$/, 'State must contain only letters and spaces']
       },
       district: {
         type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s]+$/, 'District must contain only letters and spaces']
       },
       instituteAddress1: {
         type: String,
+        required: true,
+        trim: true
       },
       instituteAddress2: {
         type: String,
+        trim: true,
+        default: ''
       },
       pincode: {
         type: String,
+        required: true,
+        match: [/^\d{6}$/, 'Pincode must be exactly 6 digits'] // Strict 6-digit number
       },
       landmark: {
         type: String,
+        trim: true,
+        default: ''
       },
       alternatePhone: {
         type: String,
+        match: [/^\d{10}$/, 'Alternate phone must be a 10-digit number'],
+        default: ''
+      },
+      phone: {
+        type: String,
+        required: true,
+        match: [/^\d{10}$/, 'Phone must be a 10-digit number']
       },
       addressType: {
         type: String,
-        enum: ["Home", "Work"],
-      },
+        enum: ['Home', 'Work',],
+        default: 'Home',
+        required: true
+      }
+
     },
   ],
   role: {

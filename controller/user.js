@@ -455,4 +455,97 @@ router.delete(
   }),
 );
 
+router.post('/:userId/addresses', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const newAddress = req.body;
+
+    // Basic validation for required fields
+    const requiredFields = ['phone', 'reciever_name', 'state', 'district', 'instituteAddress1', 'pincode', 'addressType'];
+    for (const field of requiredFields) {
+      if (!newAddress[field]) {
+        return res.status(400).json({ success: false, message: `${field} is required` });
+      }
+    }
+
+    // Validate addressType enum
+    const allowedAddressTypes = ['Home', 'Work'];
+    if (!allowedAddressTypes.includes(newAddress.addressType)) {
+      return res.status(400).json({ success: false, message: `addressType must be one of ${allowedAddressTypes.join(', ')}` });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    user.addresses.push(newAddress);
+    await user.save();
+
+    res.status(201).json({ success: true, addresses: user.addresses });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+
+
+// Update address by address id
+router.put('/:userId/addresses/:addressId', async (req, res) => {
+  try {
+    const { userId, addressId } = req.params;
+    const updatedAddressData = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).send('User not found');
+
+    const address = user.addresses.id(addressId);
+    if (!address) return res.status(404).send('Address not found');
+
+    Object.assign(address, updatedAddressData);
+    await user.save();
+
+    res.json(address);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete address by address id
+router.delete('/:userId/addresses/:addressId', async (req, res) => {
+  try {
+    const { userId, addressId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).send('User not found');
+
+    // Find index of the address to remove
+    const addressIndex = user.addresses.findIndex(addr => addr._id.toString() === addressId);
+    if (addressIndex === -1) return res.status(404).send('Address not found');
+
+    // Remove address from array
+    user.addresses.splice(addressIndex, 1);
+
+    // Save the user
+    await user.save();
+
+    res.json({ message: 'Address deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+router.get('/:userId/addresses', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    res.json(user.addresses);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 module.exports = router;
