@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { required } = require("nodemon/lib/config");
 
 const variantSchema = new mongoose.Schema({
   productId: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
@@ -255,6 +256,11 @@ const productSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  commission:{
+    type:Number,
+    default:5,
+    required:true
+  }
 }, {
   timestamps: true
 });

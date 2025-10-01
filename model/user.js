@@ -54,6 +54,13 @@ const userSchema = new mongoose.Schema({
       landmark: {
         type: String,
       },
+      alternatePhone: {
+        type: String,
+      },
+      addressType: {
+        type: String,
+        enum: ["Home", "Work"],
+      },
     },
   ],
   role: {
