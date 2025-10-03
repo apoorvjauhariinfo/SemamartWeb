@@ -6,19 +6,18 @@ const jwt = require("jsonwebtoken");
 const sendMail = require("../utils/sendMail");
 const Shop = require("../model/shop");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
-const { upload } = require("../multer");
+const {  uploadV2 } = require("../multer");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
 const mongoose = require("mongoose");
 
 const sendShopToken = require("../utils/shopToken");
-const { transferableAbortController } = require("util");
 const user = require("../model/user");
 
 // create shop
 router.post(
   "/create-shop",
-  upload.fields([
+  uploadV2.fields([
     { name: "profilePic" }, // Handles multiple images
     { name: "banner" }, // Handles single thumbnail
     // Handles single short video
@@ -35,7 +34,7 @@ router.post(
         const filename = files["profilePic"]
           ? files["profilePic"][0].filename
           : null;
-        const filePath = `uploads/${filename}`;
+        const filePath = `uploads/images/${filename}`;
         fs.unlink(filePath, (err) => {
           if (err) {
             console.log(err);
@@ -257,12 +256,12 @@ router.get(
 router.put(
   "/update-shop-avatar",
   isSeller,
-  upload.single("image"),
+  uploadV2.single("image"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const existsUser = await Shop.findById(req.seller._id);
 
-      const existAvatarPath = `uploads/${existsUser.avatar}`;
+      const existAvatarPath = `uploads/images/${existsUser.avatar}`;
 
       fs.unlinkSync(existAvatarPath);
 

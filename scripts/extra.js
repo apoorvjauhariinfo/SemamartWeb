@@ -1,20 +1,15 @@
 const mongoose = require("mongoose");
 const Shop = require("../model/shop");
-const Product = require("../model/product");
+const { Product } = require("../model/product");
 
-const url = "mongodb://127.0.0.1:27017/sema_local"
+// const url = "mongodb://127.0.0.1:27017/sema_local";
+const url = "mongodb+srv://shubham:Qwertyuiop@cluster0.nbshs.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 async function showShops() {
   await mongoose.connect(url);
 
-  await Product.findByIdAndUpdate('68c4010762d012bd94e899fa', {
-    certificate: ["it-1757675783107-573432320.pdf", "it-1757675783107-573432320.pdf"],
-    amc_cms: "it-1757675783107-573432320.pdf",
-    oemLetter: "it-1757675783107-573432320.pdf",
-    productComparisionSheet: "it-1757675783107-573432320.pdf",
-    msds_ifu_leaflet: "it-1757675783107-573432320.pdf",
-    productCompilance: "it-1757675783107-573432320.pdf"
-  })
+  const products = await Product.find();
+  const result = await Product.updateMany({}, { $set: { commission: 5 } });
 }
 
-showShops()
+showShops();

@@ -90,7 +90,7 @@ router.get(
       const products = await Product.find({ shopId: req.params.id })
         .sort({ createdAt: -1 })
         .populate("variants")
-        .select("name variants createdAt");
+        .select("name variants createdAt commission sku");
 
       res.status(201).json({
         success: true,
@@ -515,6 +515,21 @@ router.get(
       next(error);
     }
   }
+);
+
+router.put(
+  "/update-commission/:productId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const product = await Product.findById(req.params.productId);
+    if (!product) throw new ErrorHandler("Product not found", 404);
+
+    product.commission = req.body.commission;
+    await product.save();
+
+    res.status(200).json({ success: true });
+  })
 );
 
 module.exports = router;
