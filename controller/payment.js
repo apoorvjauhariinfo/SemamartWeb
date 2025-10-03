@@ -1,31 +1,62 @@
 const express = require("express");
+const Razorpay = require("razorpay");
+const crypto = require("crypto");
+
 const router = express.Router();
-const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+// ✅ Hardcoded test keys
+const razorpay = new Razorpay({
+  key_id: "rzp_test_RP4Pp63egmufYa",
+  key_secret: "efhwya6a7Ph1wZU4neOd3Q90",
+});
 
-router.post(
-  "/process",
-  catchAsyncErrors(async (req, res, next) => {
-    const myPayment = await stripe.paymentIntents.create({
-      amount: req.body.amount,
-      currency: "inr",
-      metadata: {
-        company: "Omprakash",
-      },
-    });
-    res.status(200).json({
-      success: true,
-      client_secret: myPayment.client_secret,
-    });
-  })
-);
+// Create Razorpay order
+router.post("/order", async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const options = {
+      amount: amount * 100, // convert to paise
+      currency: "INR",
+      receipt: "receipt_" + Date.now(),
+    };
+    const order = await razorpay.orders.create(options);
+    res.json({ success: true, order });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-router.get(
-  "/stripeapikey",
-  catchAsyncErrors(async (req, res, next) => {
-    res.status(200).json({ stripeApikey: process.env.STRIPE_API_KEY });
-  })
-);
+// Verify Razorpay payment
+router.post("/verify", async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderIds } = req.body;
+
+    const hmac = crypto.createHmac("sha256", "efhwya6a7Ph1wZU4neOd3Q90");
+    hmac.update(razorpay_order_id + "|" + razorpay_payment_id);
+    const generatedSignature = hmac.digest("hex");
+
+    if (generatedSignature !== razorpay_signature) {
+      return res.status(400).json({ success: false, message: "Invalid signature" });
+    }
+
+    // ✅ Update all split orders with same payment info
+    const Order = require("../model/order");
+    await Order.updateMany(
+      { _id: { $in: orderIds } },
+      {
+        $set: {
+          "paymentInfo.id": razorpay_payment_id,
+          "paymentInfo.status": "Paid",
+          "paymentInfo.method": "Razorpay",
+          paidAt: new Date(),
+        },
+      }
+    );
+
+    res.json({ success: true, message: "Payment verified and orders updated" });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 module.exports = router;
