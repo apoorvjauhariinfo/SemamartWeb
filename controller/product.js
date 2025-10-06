@@ -21,8 +21,8 @@ router.post(
     { name: "certificate", maxCount: 5 },
     { name: "oemLetter", maxCount: 1 },
     { name: "productComparisionSheet", maxCount: 1 },
-    { name: "productCompilance", maxCount: 1 },
-    { name: "msds_ifu_leaflet", maxCount: 1 },
+    { name: "productCompilance", maxCount: 5 },
+    { name: "msds_ifu_leaflet", maxCount: 5 },
     { name: "amc_cms", maxCount: 1 },
   ]),
   catchAsyncErrors(async (req, res, next) => {
@@ -36,8 +36,9 @@ router.post(
     const product = req.body;
     const variants = JSON.parse(product.variants);
     product.variants = [];
-    product.attributes = req.body.attributes.map(v=>JSON.parse(v))
-    product.tags = req.body.tags.map(v=>v) 
+    product.attributes = req.body.attributes.map((v) => JSON.parse(v));
+    product.tags = req.body.tags.map((v) => v);
+
 
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
@@ -61,11 +62,15 @@ router.post(
       product.prodcutComparisionSheet =
         req.files.prodcutComparisionSheet[0].filename;
     }
-    if (req.files.productCompilace) {
-      product.productCompilance = req.files.productCompilance[0].filename;
+    if (req.files.productCompilance) {
+      product.productCompilance = req.files.productCompilance.map(
+        (e) => e.filename
+      );
     }
     if (req.files.msds_ifu_leaflet) {
-      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet[0].filename;
+      product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
+        (e) => e.filename
+      );
     }
     if (req.files.amc_cms) {
       product.amc_cms = req.files.amc_cms[0].filename;
@@ -387,7 +392,7 @@ router.put(
     }
     // Delete old file if exists
     const oldFile =
-      idx !== undefined ? product.certificate[parseInt(idx)] : product[docType];
+      idx !== undefined ? product[docType][parseInt(idx)] : product[docType];
     if (oldFile) {
       const oldPath = path.join("uploads/docs", oldFile);
       if (fs.existsSync(oldPath)) {
@@ -398,7 +403,7 @@ router.put(
     // Save new file
     const filePath = req.file.filename;
     if (idx !== undefined) {
-      product.certificate[idx] = filePath;
+      product[docType][idx] = filePath;
     } else {
       product[docType] = filePath;
     }

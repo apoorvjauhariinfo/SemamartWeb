@@ -130,14 +130,12 @@ const productSchema = new mongoose.Schema({
   expiry: {
     type: Date,
   },
-  productCompilance: {
+  productCompilance: [{
     type: String, // document name
-    default: null
-  },
-  msds_ifu_leaflet: {
+  }],
+  msds_ifu_leaflet: [{
     type: String, // document name
-    default: null
-  },
+  }],
   minmaxrule: {
     type: mongoose.Schema.Types.Mixed
   },
