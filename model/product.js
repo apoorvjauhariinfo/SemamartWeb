@@ -50,7 +50,6 @@ const productSchema = new mongoose.Schema({
   },
   intendedUse: {
     type: String,
-    required: true,
   },
   sku: {
     type: String,
@@ -68,10 +67,12 @@ const productSchema = new mongoose.Schema({
     type: String,
   },
   upsells: {
-    type: String,
+    type: [String],
+    defaule:[]
   },
   crosssells: {
-    type: String,
+    type: [String],
+    default:[]
   },
   specialityPackage: {
     type: mongoose.Schema.Types.ObjectId,
