@@ -127,7 +127,7 @@ const productSchema = new mongoose.Schema({
     type: Boolean,
     // required: true
   },
-  expiry: {
+  manufacturingDate: {
     type: Date,
   },
   productCompilance: [{
