@@ -20,13 +20,9 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
       phoneNumber,
       email,
       instituteName,
-      instituteAddress1,
-      instituteAddress2,
-      landmark,
-      pincode,
-      district,
-      state,
+    
       password,
+     
     } = req.body;
 
     const userEmail = await User.findOne({ email });
@@ -50,24 +46,27 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
 
     // send email to user
     try {
-      const user = await User.create({
-        firstName,
-        lastName,
-        phoneNumber,
-        email,
-        instituteName,
-        password,
-        addresses: [
-          {
-            instituteAddress1,
-            instituteAddress2,
-            landmark,
-            pincode,
-            district,
-            state,
-          },
-        ],
+        const user = await User.create({
+          firstName,        // top-level
+          lastName,
+          email,
+          password,
+          phoneNumber,      // optional, ok to store
+          instituteName,
+          addresses: req.body.addresses.map(addr => ({
+          reciever_name: addr.reciever_name,
+          instituteAddress1: addr.instituteAddress1,
+          instituteAddress2: addr.instituteAddress2 || "",
+          landmark: addr.landmark || "",
+          pincode: addr.pincode,
+          district: addr.district,
+          state: addr.state,
+          phone: addr.phone,
+          alternatePhone: addr.alternatePhone || "",
+          addressType: addr.addressType || "Home"
+        }))
       });
+
 
       await sendMail({
         email: user.email,
