@@ -36,7 +36,7 @@ router.post(
     const product = req.body;
     const variants = JSON.parse(product.variants);
     product.variants = [];
-    product.attributes = req.body.attributes.map((v) => JSON.parse(v));
+    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v))||[];
     product.tags = req.body.tags.map((v) => v);
 
 
