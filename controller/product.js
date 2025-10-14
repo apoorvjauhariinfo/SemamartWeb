@@ -10,6 +10,7 @@ const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
+const Manufacturer  = require("../model/manufacturer");
 
 //creatre product v2
 router.post(
@@ -33,12 +34,26 @@ router.post(
       throw new ErrorHandler("Shop not found", 402);
     }
 
-    const product = req.body;
+    const { manufacturerName, email, phone, origin, ...product } = req.body;
+
+    let manufacturer = await Manufacturer.findOne({ manufacturerName });
+
+    if (!manufacturer) {
+      manufacturer = new Manufacturer({
+        manufacturerName,
+        email,
+        phone,
+        origin,
+      });
+      await manufacturer.save();
+    }
+
+    product.manufacturer = manufacturer._id;
+
     const variants = JSON.parse(product.variants);
     product.variants = [];
-    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v))||[];
+    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
     product.tags = req.body.tags.map((v) => v);
-
 
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
@@ -64,12 +79,12 @@ router.post(
     }
     if (req.files.productCompilance) {
       product.productCompilance = req.files.productCompilance.map(
-        (e) => e.filename
+        (e) => e.filename,
       );
     }
     if (req.files.msds_ifu_leaflet) {
       product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
-        (e) => e.filename
+        (e) => e.filename,
       );
     }
     if (req.files.amc_cms) {
@@ -79,14 +94,14 @@ router.post(
     const savedProduct = await Product.create(product);
 
     const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id }))
+      variants.map((v) => ({ ...v, productId: savedProduct._id })),
     );
 
     savedProduct.variants = savedVariants.map((v) => v._id);
     await savedProduct.save();
 
     res.status(201).json(savedProduct);
-  })
+  }),
 );
 
 // get all products of a shop
@@ -106,7 +121,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // delete product of a shop
@@ -143,7 +158,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // get all products
@@ -168,7 +183,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -186,7 +201,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -204,7 +219,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -222,7 +237,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 // get product details of product with id
@@ -231,7 +246,7 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
     try {
-      const product = await Product.findById(id).populate("shopId variants");
+      const product = await Product.findById(id).populate("shopId variants manufacturer");
 
       if (!product) throw new Error("not found");
 
@@ -240,7 +255,7 @@ router.get(
       console.error(error);
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // review for a product
@@ -261,13 +276,13 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id
+        (rev) => rev.user._id === req.user._id,
       );
 
       if (isReviewed) {
         product.reviews.forEach((rev) => {
           if (rev.user._id === req.user._id) {
-            (rev.rating = rating), (rev.comment = comment), (rev.user = user);
+            ((rev.rating = rating), (rev.comment = comment), (rev.user = user));
           }
         });
       } else {
@@ -287,7 +302,7 @@ router.put(
       await Order.findByIdAndUpdate(
         orderId,
         { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true }
+        { arrayFilters: [{ "elem._id": productId }], new: true },
       );
 
       res.status(200).json({
@@ -297,7 +312,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // all products --- for admin
@@ -315,7 +330,7 @@ router.get(
       success: true,
       products,
     });
-  })
+  }),
 );
 
 router.get(
@@ -328,7 +343,7 @@ router.get(
 
     const regex = new RegExp(
       q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
+      "i",
     );
 
     // Populate category to get its name
@@ -343,7 +358,7 @@ router.get(
       });
 
     res.status(200).json({ success: true, products });
-  })
+  }),
 );
 
 router.get(
@@ -372,7 +387,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.put(
@@ -415,7 +430,7 @@ router.put(
       message: "Document replaced successfully",
       product,
     });
-  })
+  }),
 );
 
 router.put(
@@ -445,7 +460,7 @@ router.put(
     await product.save();
 
     res.json({ success: true, product });
-  })
+  }),
 );
 
 router.put(
@@ -463,7 +478,7 @@ router.put(
 
     await product.save();
     res.json({ success: true });
-  })
+  }),
 );
 
 router.get(
@@ -491,7 +506,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.get(
@@ -521,7 +536,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.put(
@@ -536,7 +551,7 @@ router.put(
     await product.save();
 
     res.status(200).json({ success: true });
-  })
+  }),
 );
 
 module.exports = router;

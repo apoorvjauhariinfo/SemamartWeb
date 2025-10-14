@@ -90,6 +90,7 @@ const category = require("./controller/category");
 const subCategory = require("./controller/subcategory");
 const specialPackageRoutes = require("./controller/specialityPackage");
 const productVariant = require("./controller/productVariant")
+const manufacturer = require("./controller/manufacturer")
 
 
 
@@ -109,6 +110,7 @@ app.use("/api/v2/category", category);
 app.use("/api/v2/sub-category", subCategory);
 app.use("/api/v2/special-package", specialPackageRoutes);
 app.use("/api/v2/product-variant", productVariant);
+app.use("/api/v2/manufacturer", manufacturer);
 
 // it'for errhendel
 app.use(ErrorHandler);
