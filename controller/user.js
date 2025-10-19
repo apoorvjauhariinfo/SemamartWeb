@@ -20,70 +20,83 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
       phoneNumber,
       email,
       instituteName,
-    
       password,
-     
     } = req.body;
 
     const userEmail = await User.findOne({ email });
-
     if (userEmail) {
-      // if user already exits account is not create and file is deleted
-      return next(new ErrorHandler("User already exist", 400));
+      return next(new ErrorHandler("User already exists", 400));
     }
 
-    const userTokenData = {
-      email,
-    };
-
+    const userTokenData = { email };
     const activationToken = createActivationToken(userTokenData);
 
     let activationUrl = `http://localhost:5173/user/activation/${activationToken}`;
-
     if (process.env.NODE_ENV === "TEST") {
       activationUrl = `http://test.semamart.com/user/activation/${activationToken}`;
     }
 
-    // send email to user
+    // ✅ Create new user document
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      phoneNumber,
+      instituteName,
+      addresses: req.body.addresses.map((addr) => ({
+        reciever_name: addr.reciever_name,
+        instituteAddress1: addr.instituteAddress1,
+        instituteAddress2: addr.instituteAddress2 || "",
+        landmark: addr.landmark || "",
+        pincode: addr.pincode,
+        district: addr.district,
+        state: addr.state,
+        phone: addr.phone,
+        alternatePhone: addr.alternatePhone || "",
+        addressType: addr.addressType || "Home",
+      })),
+    });
+
+    // ✅ Send activation email via Mailjet
+    const html = `
+      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+        <h2>Welcome to Semamart!</h2>
+        <p>Hello ${firstName || "User"},</p>
+        <p>Thank you for registering with Semamart.</p>
+        <p>Please click the link below to activate your account:</p>
+        <a href="${activationUrl}" 
+           style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
+          Activate Account
+        </a>
+        <p style="margin-top:15px;">This link will expire in 15 minutes.</p>
+        <hr/>
+        <p>If you didn’t create this account, you can ignore this email.</p>
+      </div>
+    `;
+
     try {
-        const user = await User.create({
-          firstName,        // top-level
-          lastName,
-          email,
-          password,
-          phoneNumber,      // optional, ok to store
-          instituteName,
-          addresses: req.body.addresses.map(addr => ({
-          reciever_name: addr.reciever_name,
-          instituteAddress1: addr.instituteAddress1,
-          instituteAddress2: addr.instituteAddress2 || "",
-          landmark: addr.landmark || "",
-          pincode: addr.pincode,
-          district: addr.district,
-          state: addr.state,
-          phone: addr.phone,
-          alternatePhone: addr.alternatePhone || "",
-          addressType: addr.addressType || "Home"
-        }))
-      });
-
-
       await sendMail({
         email: user.email,
-        subject: "Activate your account",
-        message: `Hello  ${user.name}, please click on the link to activate your account ${activationUrl} `,
+        subject: "Activate your Semamart account",
+        html,
       });
+      console.log("✅ Activation email sent successfully to:", user.email);
+
       res.status(201).json({
         success: true,
-        message: `please check your email:- ${user.email} to activate your account!`,
+        message: `Please check your email (${user.email}) to activate your account.`,
       });
-    } catch (err) {
-      return next(new ErrorHandler(err.message, 500));
+    } catch (emailErr) {
+      console.error("❌ Failed to send activation email:", emailErr.message);
+      return next(new ErrorHandler("Failed to send activation email.", 500));
     }
   } catch (err) {
+    console.error("❌ Error during registration:", err.message);
     return next(new ErrorHandler(err.message, 400));
   }
 });
+
 
 // create activation token
 const createActivationToken = (user) => {
