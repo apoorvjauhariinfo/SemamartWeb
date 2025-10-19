@@ -31,10 +31,9 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
     const userTokenData = { email };
     const activationToken = createActivationToken(userTokenData);
 
-    let activationUrl = `http://localhost:5173/user/activation/${activationToken}`;
-    if (process.env.NODE_ENV === "TEST") {
-      activationUrl = `http://test.semamart.com/user/activation/${activationToken}`;
-    }
+   // With this cleaner one:
+const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
 
     // ✅ Create new user document
     const user = await User.create({
