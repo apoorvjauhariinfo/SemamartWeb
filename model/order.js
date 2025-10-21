@@ -1,29 +1,25 @@
 const mongoose = require("mongoose");
 
-const cartItemSchema = new mongoose.Schema(
-  {
-    shopId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Shop",
-      required: true,
-    },
-    productId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    variantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: true,
-    },
-    qty: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
+const orderStatusHistorySchema = new mongoose.Schema({
+  status: {
+    type: String,
+    enum: [
+      "Processing",
+      "Packed",
+      "Shipped",
+      "Delivered",
+      "Cancelled",
+      "Refund Requested",
+      "Refund Success",
+    ],
+    required: true,
   },
-  { _id: false }
-);
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
+
 
 const orderSchema = new mongoose.Schema({
   shop: {
@@ -31,13 +27,6 @@ const orderSchema = new mongoose.Schema({
     ref: "Shop",
     required: true,
   },
-  // Single product reference
-  // product: {
-  //   type: mongoose.Schema.Types.ObjectId,
-  //   ref: "Product",
-  //   required: true,
-  // },
-  // Variant reference (null if no variant selected)
   variant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "ProductVariant",
@@ -48,11 +37,6 @@ const orderSchema = new mongoose.Schema({
     required: true,
     min: 1,
   },
-  // We still keep `cart` for compatibility but now it will only contain one item
-  // cart: {
-  //   type: [cartItemSchema],
-  //   required: true,
-  // },
   shippingAddress: {
     type: Object,
     required: true,
@@ -78,11 +62,12 @@ const orderSchema = new mongoose.Schema({
       "Refund Requested",
       "Refund Success",
     ],
+    required:true
   },
   paymentInfo: {
     id: { type: String },
     status: { type: String },
-    method: { type: String }, // <-- rename from "type" to "method" (avoids clashing with mongoose "type" keyword)
+    method: { type: String },
   },
   paidAt: {
     type: Date,
@@ -95,6 +80,7 @@ const orderSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  statusHistory: [orderStatusHistorySchema],
 });
 
 module.exports = mongoose.model("Order", orderSchema);

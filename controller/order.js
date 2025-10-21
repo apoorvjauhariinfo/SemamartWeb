@@ -34,6 +34,7 @@ router.post(
           user,
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
           paymentInfo,
+          statusHistory:[{ status: "Processing", updatedAt: new Date() }]
         });
         orders.push(order);
       }
@@ -142,6 +143,10 @@ router.put(
       }
 
       order.status = req.body.status;
+      order.statusHistory.push({
+        status:req.body.status,
+        updatedAt:new Date()
+      })
 
       if (req.body.status === "Delivered") {
         order.deliveredAt = Date.now();

@@ -5,7 +5,7 @@ const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2, uploadDocUpdate } = require("../multer");
+const {  uploadV2  } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 const path = require("path");
@@ -44,7 +44,7 @@ router.post(
         email,
         phone,
         origin,
-      });
+      })
       await manufacturer.save();
     }
 
@@ -54,7 +54,7 @@ router.post(
     product.variants = [];
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
     product.tags = req.body.tags.map((v) => v);
-
+    
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
