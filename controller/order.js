@@ -34,7 +34,7 @@ router.post(
           user,
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
           paymentInfo,
-          statusHistory:[{ status: "Processing", updatedAt: new Date() }]
+          statusHistory: [{ status: "Processing", updatedAt: new Date() }],
         });
         orders.push(order);
       }
@@ -144,9 +144,9 @@ router.put(
 
       order.status = req.body.status;
       order.statusHistory.push({
-        status:req.body.status,
-        updatedAt:new Date()
-      })
+        status: req.body.status,
+        updatedAt: new Date(),
+      });
 
       if (req.body.status === "Delivered") {
         order.deliveredAt = Date.now();
@@ -310,9 +310,14 @@ router.get("/invoice/:orderId", async (req, res) => {
 
   try {
     const order = await Order.findById(orderId)
-      .populate("product")
-      .populate("variant")
-      .populate("user");
+      .populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+        },
+      })
+      .populate("user")
+      .populate("shop");
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
@@ -327,17 +332,18 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     doc.pipe(res);
 
-    // 📄 Header
     doc.fontSize(20).text("Invoice", { align: "center" });
     doc.moveDown();
 
-    doc.fontSize(12).text(`Order ID: ${order._id}`);
-    doc.text(`Order Date: ${new Date(order.createdAt).toLocaleString()}`);
-    doc.text(`Order Status: ${order.status}`);
+    doc.fontSize(12).text(`Seller: ${order.shop.businessName}`);
+    doc.text(`Address: ${order.variant.productId.dispatchLocation}`);
+    doc.text(
+      `Invoice: ${new Date(order.createdAt).toLocaleDateString("en-IN")}`
+    );
     doc.moveDown();
 
-    // 📦 Shipping Address
-    doc.fontSize(14).text("Shipping Address:", { underline: true });
+    doc.fontSize(12).text("Buyer:" + order.user.instituteName);
+    doc.fontSize(12).text("Shipping Address:");
     const address = order.shippingAddress;
     if (address) {
       doc
@@ -348,32 +354,18 @@ router.get("/invoice/:orderId", async (req, res) => {
     }
     doc.moveDown();
 
-    // 💳 Payment Info
-    doc.fontSize(14).text("Payment Info:", { underline: true });
-    const payment = order.paymentInfo || {};
-    doc.fontSize(12).text(`Method: ${payment.method || "N/A"}`);
-    doc.text(`Status: ${payment.status || "N/A"}`);
-    doc.text(
-      `Paid At: ${
-        order.paidAt ? new Date(order.paidAt).toLocaleString() : "N/A"
-      }`
-    );
-    doc.moveDown();
-
-    // 🛍️ Item
-    doc.fontSize(14).text("Item:", { underline: true });
     doc
       .fontSize(12)
-      .text(
-        `${order.product?.name || "Unknown Product"} - ₹${order.totalPrice} × ${
-          order.qty
-        } = ₹${order.totalPrice * order.qty}`
-      );
+      .text("Description of Goods: " + order.variant.productId?.name);
+    doc.text("HSN code: " + order.variant.productId?.hsn);
+    doc.text("Quantity: " + order.qty);
+    doc.text("Price: " + order.totalPrice);
 
-    doc.moveDown();
     doc
-      .fontSize(14)
-      .text(`Total Price: ₹${order.totalPrice}`, { align: "right" });
+      .moveDown(2)
+      .fontSize(12)
+      .text(`For ${order.shop.businessName}`, { align: "right" })
+      .text("(Authorized Signatory)", { align: "right" });
 
     doc.end();
   } catch (err) {

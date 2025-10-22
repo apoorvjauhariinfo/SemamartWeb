@@ -30,7 +30,7 @@ const orderSchema = new mongoose.Schema({
   variant: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "ProductVariant",
-    default: null,
+    required: true,
   },
   qty: {
     type: Number,
@@ -81,6 +81,12 @@ const orderSchema = new mongoose.Schema({
     default: Date.now,
   },
   statusHistory: [orderStatusHistorySchema],
+  trackingDetails: {
+    logisticPartner: { type: String, trim: true },
+    pickupPerson: { type: String, trim: true },
+    pickupPersonPhone: { type: Number, trim: true },
+    trackingNumber: { type: String, trim: true },
+  },
 });
 
 module.exports = mongoose.model("Order", orderSchema);
