@@ -310,6 +310,40 @@ router.put(
   })
 );
 
+router.put(
+  "/update-tracking-details/:id",
+  isSeller,
+  catchAsyncErrors(async (req, res) => {
+    const { id } = req.params;
+    const { logisticPartner, trackingNumber, pickupPerson, pickupPersonPhone } =
+      req.body;
+
+    if (!logisticPartner || !trackingNumber) {
+      throw new ErrorHandler("Bad Request", 402);
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      throw new ErrorHandler("Order not found", 404);
+    }
+
+    order.trackingDetails = {
+      logisticPartner,
+      trackingNumber,
+      pickupPerson,
+      pickupPersonPhone,
+    };
+
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Tracking details updated successfully",
+      order,
+    });
+  })
+);
+
 // ✅ Generate invoice per order
 router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
@@ -380,7 +414,6 @@ router.get("/invoice/:orderId", async (req, res) => {
   }
 });
 
-
 router.get(
   "/admin-dashboard-summary",
   catchAsyncErrors(async (req, res, next) => {
@@ -412,7 +445,8 @@ router.get(
       let vendorTrend = 0;
       if (lastMonthVendorsCount > 0) {
         vendorTrend =
-          ((newVendorsCount - lastMonthVendorsCount) / lastMonthVendorsCount) * 100;
+          ((newVendorsCount - lastMonthVendorsCount) / lastMonthVendorsCount) *
+          100;
       } else if (newVendorsCount > 0) {
         vendorTrend = 100;
       }
@@ -431,7 +465,9 @@ router.get(
       let instituteTrend = 0;
       if (lastMonthInstitutesCount > 0) {
         instituteTrend =
-          ((newInstitutesCount - lastMonthInstitutesCount) / lastMonthInstitutesCount) * 100;
+          ((newInstitutesCount - lastMonthInstitutesCount) /
+            lastMonthInstitutesCount) *
+          100;
       } else if (newInstitutesCount > 0) {
         instituteTrend = 100;
       }
@@ -450,7 +486,8 @@ router.get(
       let orderTrend = 0;
       if (lastMonthOrdersCount > 0) {
         orderTrend =
-          ((newOrdersCount - lastMonthOrdersCount) / lastMonthOrdersCount) * 100;
+          ((newOrdersCount - lastMonthOrdersCount) / lastMonthOrdersCount) *
+          100;
       } else if (newOrdersCount > 0) {
         orderTrend = 100;
       }
@@ -493,7 +530,5 @@ router.get(
     }
   })
 );
-
-
 
 module.exports = router;
