@@ -11,6 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
 const Manufacturer  = require("../model/manufacturer");
+const addActivityLog = require("../utils/activityLogHelper");
 
 //creatre product v2
 router.post(
@@ -99,6 +100,14 @@ router.post(
 
     savedProduct.variants = savedVariants.map((v) => v._id);
     await savedProduct.save();
+    await addActivityLog({
+      userId:shopId,
+      userType:"Shop",
+      action:"Product Added",
+      entityType:"Product",
+      entityId:savedProduct._id,
+      description:shop.businessName +" added the product " + savedProduct.name
+    })
 
     res.status(201).json(savedProduct);
   }),
