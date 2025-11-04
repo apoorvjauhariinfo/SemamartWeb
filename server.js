@@ -40,6 +40,10 @@ const allowedOriginsCors = [
   "http://localhost:5173",
   "http://test.semamart.com",
   "https://test.semamart.com",
+  "https://live.semamart.com",
+  "http://live.semamart.com",
+  "https://www.semamart.com",
+  "http://www.semamart.com",
 ]
 
 app.use(
