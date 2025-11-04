@@ -1,5 +1,7 @@
 const mongoose = require("mongoose");
 
+// need to add platform commision in order
+
 const orderStatusHistorySchema = new mongoose.Schema({
   status: {
     type: String,
@@ -47,6 +49,14 @@ const orderSchema = new mongoose.Schema({
     required: true,
   },
   totalPrice: {
+    type: Number,
+    required: true,
+  },
+  tax:{
+    type: Number,
+    required: true,
+  },
+  unitPrice:{
     type: Number,
     required: true,
   },

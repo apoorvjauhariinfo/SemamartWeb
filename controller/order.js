@@ -32,13 +32,13 @@ router.post(
       for (const item of cart) {
         const order = await Order.create({
           shop: item.shopId,
-          // product: item.productId,
           variant: item.variantId || null,
           qty: item.qty,
-          // cart: [item], // legacy support
           shippingAddress,
           user,
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
+          tax: item.tax,
+          unitPrice: item.unitPrice,
           paymentInfo,
           statusHistory: [{ status: "Processing", updatedAt: new Date() }],
         });
@@ -375,37 +375,151 @@ router.get("/invoice/:orderId", async (req, res) => {
     doc.fontSize(20).text("Invoice", { align: "center" });
     doc.moveDown();
 
-    doc.fontSize(12).text(`Seller: ${order.shop.businessName}`);
-    doc.text(`Address: ${order.variant.productId.dispatchLocation}`);
-    doc.text(
-      `Invoice: ${new Date(order.createdAt).toLocaleDateString("en-IN")}`
-    );
-    doc.moveDown();
+    // ===== SELLER & BUYER INFO SIDE BY SIDE =====
+    let startY = doc.y; // capture current Y position
 
-    doc.fontSize(12).text("Buyer:" + order.user.instituteName);
-    doc.fontSize(12).text("Shipping Address:");
-    const address = order.shippingAddress;
-    if (address) {
+    // Seller info (Left side)
+    doc
+      .fontSize(12)
+      .text(`Seller: ${order.shop.businessName}`, 50, startY)
+      .text(`Address: ${order.variant.productId?.dispatchLocation || "N/A"}`)
+      .text(`GSTIN: ${order.shop.gstin || "N/A"}`)
+      .text(
+        `Invoice Date: ${new Date(order.createdAt).toLocaleDateString("en-IN")}`
+      )
+      .text(`Invoice No: INV-${orderId.slice(-6).toUpperCase()}`);
+
+    // Buyer info (Right side)
+    const buyerX = 400; // adjust this value depending on alignment (A4 width ~595)
+    doc
+      .fontSize(12)
+      .text(`Buyer: ${order.user?.instituteName || "N/A"}`, buyerX, startY)
+      .text("Shipping Address:", buyerX)
+      .text(
+        `${order.shippingAddress?.instituteAddress1 || ""}, ${
+          order.shippingAddress?.instituteAddress2 || ""
+        }`,
+        buyerX
+      )
+      .text(
+        `${order.shippingAddress?.district || ""}, ${
+          order.shippingAddress?.state || ""
+        } - ${order.shippingAddress?.pincode || ""}`,
+        buyerX
+      )
+      .text(`Landmark: ${order.shippingAddress?.landmark || "N/A"}`, buyerX);
+
+    doc.moveDown(2);
+
+    const startX = 20;
+    startY = doc.y + 5;
+
+    // Column widths (Description, HSN, Qty, Rate, Tax, Total)
+    const colWidths = [200, 80, 60, 80, 60, 80];
+    const tableWidth = colWidths.reduce((a, b) => a + b, 0);
+    const rowHeight = 25;
+
+    // Table headers
+    const headers = ["Description", "HSN", "Qty", "Rate", "Tax", "Total"];
+
+    // Sample data (you can add more items easily)
+    const items = [
+      {
+        description: order.variant.productId?.name || "N/A",
+        hsn: order.variant.productId?.hsn || "N/A",
+        qty: order.qty || 1,
+        rate: order.unitPrice || 0,
+        tax: order.tax,
+        total: order.totalPrice || 0,
+      },
+    ];
+
+    // Calculate total table height (header + rows)
+    const totalRows = items.length + 1; // +1 for header
+    const tableHeight = totalRows * rowHeight;
+
+    // Draw vertical grid lines (spanning entire table)
+    let x = startX;
+    doc.strokeColor("#000").lineWidth(0.5);
+    doc
+      .moveTo(x, startY)
+      .lineTo(x, startY + tableHeight)
+      .stroke();
+    colWidths.forEach((w) => {
+      x += w;
       doc
-        .fontSize(12)
-        .text(`${address.instituteAddress1}, ${address.instituteAddress2}`);
-      doc.text(`${address.district}, ${address.state} - ${address.pincode}`);
-      doc.text(`Landmark: ${address.landmark}`);
-    }
-    doc.moveDown();
+        .moveTo(x, startY)
+        .lineTo(x, startY + tableHeight)
+        .stroke();
+    });
 
-    doc
-      .fontSize(12)
-      .text("Description of Goods: " + order.variant.productId?.name);
-    doc.text("HSN code: " + order.variant.productId?.hsn);
-    doc.text("Quantity: " + order.qty);
-    doc.text("Price: " + order.totalPrice);
+    // Draw header background
+    doc.rect(startX, startY, tableWidth, rowHeight).fill("#f0f0f0").stroke();
+    doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
 
+    // Draw header text
+    x = startX;
+    headers.forEach((header, i) => {
+      doc.text(header, x + 5, startY + 7, {
+        width: colWidths[i] - 10,
+        align: "center",
+      });
+      x += colWidths[i];
+    });
+
+    // Horizontal line below header
     doc
-      .moveDown(2)
-      .fontSize(12)
-      .text(`For ${order.shop.businessName}`, { align: "right" })
-      .text("(Authorized Signatory)", { align: "right" });
+      .moveTo(startX, startY + rowHeight)
+      .lineTo(startX + tableWidth, startY + rowHeight)
+      .stroke();
+
+    startY += rowHeight;
+
+    // Draw data rows
+    doc.font("Helvetica").fontSize(10).fillColor("#000");
+
+    items.forEach((item, rowIndex) => {
+      x = startX;
+      const y = startY + rowIndex * rowHeight;
+      const cells = [
+        item.description,
+        item.hsn,
+        item.qty.toString(),
+        item.rate.toFixed(2),
+        item.tax + " %",
+        item.total.toFixed(2),
+      ];
+      const heights = cells.map((cell, i) =>
+        doc.heightOfString(cell, { width: colWidths[i] - 10 })
+      );
+      const cellHeight = Math.max(...heights, rowHeight) + 15;
+
+      // Draw vertical borders for this row
+      let lineX = startX;
+      for (let i = 0; i <= colWidths.length; i++) {
+        doc
+          .moveTo(lineX, y)
+          .lineTo(lineX, y + cellHeight)
+          .stroke();
+        if (i < colWidths.length) lineX += colWidths[i];
+      }
+
+      // Draw bottom horizontal border
+      doc
+        .moveTo(startX, y + cellHeight)
+        .lineTo(startX + tableWidth, y + cellHeight)
+        .stroke();
+
+      // Draw text inside each cell
+      x = startX;
+      cells.forEach((cell, i) => {
+        doc.text(cell, x + 5, y + 7, {
+          width: colWidths[i] - 10,
+          align: i >= 2 ? "right" : "left",
+        });
+        x += colWidths[i];
+      });
+    });
 
     doc.end();
   } catch (err) {

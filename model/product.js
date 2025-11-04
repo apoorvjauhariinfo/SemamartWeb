@@ -164,6 +164,7 @@ const productSchema = new mongoose.Schema(
     },
     taxClass: {
       type: Number,
+      default:0
     },
     unitOfMeasure: {
       type: String,
