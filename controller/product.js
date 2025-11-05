@@ -554,4 +554,33 @@ router.put(
   }),
 );
 
+router.get(
+  "/get-products-by-category/:CategoryId",
+  async (req, res, next) => {
+    try {
+      const { CategoryId } = req.params;
+
+      if (!mongoose.isValidObjectId(CategoryId)) {
+        return res.status(400).json({ message: "Invalid CategoryId" });
+      }
+      const products = await Product.find({ category: CategoryId })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      if (!products || products.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 module.exports = router;
