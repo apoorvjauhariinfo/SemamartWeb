@@ -5,7 +5,7 @@ const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const { upload, uploadV2, uploadDocUpdate } = require("../multer");
+const {  uploadV2  } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 const path = require("path");
@@ -44,7 +44,7 @@ router.post(
         email,
         phone,
         origin,
-      });
+      })
       await manufacturer.save();
     }
 
@@ -54,7 +54,7 @@ router.post(
     product.variants = [];
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
     product.tags = req.body.tags.map((v) => v);
-
+    
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
@@ -554,6 +554,7 @@ router.put(
   }),
 );
 
+<<<<<<< HEAD
 // backend: product.routes.js (or wherever you keep product routes)
 // Add this route near your existing /search and /get-all-products-shop routes
 
@@ -616,4 +617,35 @@ router.get(
 );
 
 
+=======
+router.get(
+  "/get-products-by-category/:CategoryId",
+  async (req, res, next) => {
+    try {
+      const { CategoryId } = req.params;
+
+      if (!mongoose.isValidObjectId(CategoryId)) {
+        return res.status(400).json({ message: "Invalid CategoryId" });
+      }
+      const products = await Product.find({ category: CategoryId })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      if (!products || products.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+>>>>>>> d1fc9abd868e95c424bdbd92ae36f7a41bbf802e
 module.exports = router;

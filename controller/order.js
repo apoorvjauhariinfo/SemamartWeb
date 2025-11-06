@@ -6,8 +6,14 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
+const User = require("../model/user");
 const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
+function getMonthDateRange(year, monthIndex) {
+  const start = new Date(year, monthIndex, 1);
+  const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
 
 // ✅ Create new order(s)
 router.post(
@@ -34,6 +40,7 @@ router.post(
           user,
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
           paymentInfo,
+          statusHistory: [{ status: "Processing", updatedAt: new Date() }],
         });
         orders.push(order);
       }
@@ -50,7 +57,7 @@ router.get(
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId).populate(
       "cart.productId",
-      "variants name"
+      "variants name manufacturerName"
     );
 
     if (!order) {
@@ -142,6 +149,10 @@ router.put(
       }
 
       order.status = req.body.status;
+      order.statusHistory.push({
+        status: req.body.status,
+        updatedAt: new Date(),
+      });
 
       if (req.body.status === "Delivered") {
         order.deliveredAt = Date.now();
@@ -299,15 +310,54 @@ router.put(
   })
 );
 
+router.put(
+  "/update-tracking-details/:id",
+  isSeller,
+  catchAsyncErrors(async (req, res) => {
+    const { id } = req.params;
+    const { logisticPartner, trackingNumber, pickupPerson, pickupPersonPhone } =
+      req.body;
+
+    if (!logisticPartner || !trackingNumber) {
+      throw new ErrorHandler("Bad Request", 402);
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      throw new ErrorHandler("Order not found", 404);
+    }
+
+    order.trackingDetails = {
+      logisticPartner,
+      trackingNumber,
+      pickupPerson,
+      pickupPersonPhone,
+    };
+
+    await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Tracking details updated successfully",
+      order,
+    });
+  })
+);
+
 // ✅ Generate invoice per order
 router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
 
   try {
     const order = await Order.findById(orderId)
-      .populate("product")
-      .populate("variant")
-      .populate("user");
+      .populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+        },
+      })
+      .populate("user")
+      .populate("shop");
 
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
@@ -322,17 +372,18 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     doc.pipe(res);
 
-    // 📄 Header
     doc.fontSize(20).text("Invoice", { align: "center" });
     doc.moveDown();
 
-    doc.fontSize(12).text(`Order ID: ${order._id}`);
-    doc.text(`Order Date: ${new Date(order.createdAt).toLocaleString()}`);
-    doc.text(`Order Status: ${order.status}`);
+    doc.fontSize(12).text(`Seller: ${order.shop.businessName}`);
+    doc.text(`Address: ${order.variant.productId.dispatchLocation}`);
+    doc.text(
+      `Invoice: ${new Date(order.createdAt).toLocaleDateString("en-IN")}`
+    );
     doc.moveDown();
 
-    // 📦 Shipping Address
-    doc.fontSize(14).text("Shipping Address:", { underline: true });
+    doc.fontSize(12).text("Buyer:" + order.user.instituteName);
+    doc.fontSize(12).text("Shipping Address:");
     const address = order.shippingAddress;
     if (address) {
       doc
@@ -343,32 +394,18 @@ router.get("/invoice/:orderId", async (req, res) => {
     }
     doc.moveDown();
 
-    // 💳 Payment Info
-    doc.fontSize(14).text("Payment Info:", { underline: true });
-    const payment = order.paymentInfo || {};
-    doc.fontSize(12).text(`Method: ${payment.method || "N/A"}`);
-    doc.text(`Status: ${payment.status || "N/A"}`);
-    doc.text(
-      `Paid At: ${
-        order.paidAt ? new Date(order.paidAt).toLocaleString() : "N/A"
-      }`
-    );
-    doc.moveDown();
-
-    // 🛍️ Item
-    doc.fontSize(14).text("Item:", { underline: true });
     doc
       .fontSize(12)
-      .text(
-        `${order.product?.name || "Unknown Product"} - ₹${order.totalPrice} × ${
-          order.qty
-        } = ₹${order.totalPrice * order.qty}`
-      );
+      .text("Description of Goods: " + order.variant.productId?.name);
+    doc.text("HSN code: " + order.variant.productId?.hsn);
+    doc.text("Quantity: " + order.qty);
+    doc.text("Price: " + order.totalPrice);
 
-    doc.moveDown();
     doc
-      .fontSize(14)
-      .text(`Total Price: ₹${order.totalPrice}`, { align: "right" });
+      .moveDown(2)
+      .fontSize(12)
+      .text(`For ${order.shop.businessName}`, { align: "right" })
+      .text("(Authorized Signatory)", { align: "right" });
 
     doc.end();
   } catch (err) {
@@ -376,5 +413,122 @@ router.get("/invoice/:orderId", async (req, res) => {
     res.status(500).json({ error: "Failed to generate invoice" });
   }
 });
+
+router.get(
+  "/admin-dashboard-summary",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const now = new Date();
+      const year = now.getFullYear();
+
+      // Helper to get start and end of month
+      function getMonthDateRange(year, monthIndex) {
+        const start = new Date(year, monthIndex, 1);
+        const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
+        return { start, end };
+      }
+
+      // Calculate start/end dates for current and last month
+      const startOfThisMonth = new Date(year, now.getMonth(), 1);
+      const startOfLastMonth = new Date(year, now.getMonth() - 1, 1);
+      const endOfLastMonth = new Date(year, now.getMonth(), 0, 23, 59, 59, 999);
+
+      // --- Vendors ---
+      const newVendorsCount = await Shop.countDocuments({
+        createdAt: { $gte: startOfThisMonth },
+      });
+
+      const lastMonthVendorsCount = await Shop.countDocuments({
+        createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+      });
+
+      let vendorTrend = 0;
+      if (lastMonthVendorsCount > 0) {
+        vendorTrend =
+          ((newVendorsCount - lastMonthVendorsCount) / lastMonthVendorsCount) *
+          100;
+      } else if (newVendorsCount > 0) {
+        vendorTrend = 100;
+      }
+
+      const totalVendorsCount = await Shop.countDocuments();
+
+      // --- Institutes (Users) ---
+      const newInstitutesCount = await User.countDocuments({
+        createdAt: { $gte: startOfThisMonth },
+      });
+
+      const lastMonthInstitutesCount = await User.countDocuments({
+        createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+      });
+
+      let instituteTrend = 0;
+      if (lastMonthInstitutesCount > 0) {
+        instituteTrend =
+          ((newInstitutesCount - lastMonthInstitutesCount) /
+            lastMonthInstitutesCount) *
+          100;
+      } else if (newInstitutesCount > 0) {
+        instituteTrend = 100;
+      }
+
+      const totalInstitutesCount = await User.countDocuments();
+
+      // --- Orders ---
+      const newOrdersCount = await Order.countDocuments({
+        createdAt: { $gte: startOfThisMonth },
+      });
+
+      const lastMonthOrdersCount = await Order.countDocuments({
+        createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+      });
+
+      let orderTrend = 0;
+      if (lastMonthOrdersCount > 0) {
+        orderTrend =
+          ((newOrdersCount - lastMonthOrdersCount) / lastMonthOrdersCount) *
+          100;
+      } else if (newOrdersCount > 0) {
+        orderTrend = 100;
+      }
+
+      const totalOrdersCount = await Order.countDocuments();
+
+      // Aggregate monthly orders count for the last 12 months (including this month)
+      const monthsToFetch = 12;
+      const monthlyOrders = [];
+
+      for (let i = monthsToFetch - 1; i >= 0; i--) {
+        const { start, end } = getMonthDateRange(year, now.getMonth() - i);
+        const count = await Order.countDocuments({
+          createdAt: { $gte: start, $lte: end },
+        });
+        const monthName = start.toLocaleString("default", { month: "short" });
+        monthlyOrders.push({ month: monthName, orders: count });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          newVendors: newVendorsCount,
+          vendors: totalVendorsCount,
+          vendorTrend: vendorTrend.toFixed(1),
+
+          newInstitutes: newInstitutesCount,
+          institutes: totalInstitutesCount,
+          instituteTrend: instituteTrend.toFixed(1),
+
+          newOrders: newOrdersCount,
+          orders: totalOrdersCount,
+          orderTrend: orderTrend.toFixed(1),
+
+          monthlyOrders,
+        },
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
 
 module.exports = router;

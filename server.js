@@ -19,8 +19,8 @@ const app = express();
 connectDatabase();
 
 // create server
-const server = app.listen(process.env.PORT, () => {
-  console.log(`Server is running on http://localhost:${process.env.PORT}`);
+const server = app.listen(8000, () => {
+  console.log(`Server is running on http://localhost:${8000}`);
 });
 
 const uploadPath = path.join(__dirname, "uploads")
@@ -40,6 +40,10 @@ const allowedOriginsCors = [
   "http://localhost:5173",
   "http://test.semamart.com",
   "https://test.semamart.com",
+  "https://semamart.com",
+  "http://semamart.com",
+  "https://www.semamart.com",
+  "http://www.semamart.com",
 ]
 
 app.use(
@@ -89,8 +93,9 @@ const withdraw = require("./controller/withdraw");
 const category = require("./controller/category");
 const subCategory = require("./controller/subcategory");
 const specialPackageRoutes = require("./controller/specialityPackage");
-const productVariant = require("./controller/productVariant")
-const manufacturer = require("./controller/manufacturer")
+const productVariant = require("./controller/productVariant");
+const manufacturer = require("./controller/manufacturer");
+const adminsummary = require("./controller/admin");
 
 
 
@@ -111,6 +116,7 @@ app.use("/api/v2/sub-category", subCategory);
 app.use("/api/v2/special-package", specialPackageRoutes);
 app.use("/api/v2/product-variant", productVariant);
 app.use("/api/v2/manufacturer", manufacturer);
+app.use("/api/v2/adminsummary", adminsummary);
 
 // it'for errhendel
 app.use(ErrorHandler);
