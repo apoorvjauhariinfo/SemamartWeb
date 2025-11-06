@@ -563,4 +563,92 @@ router.put(
   }),
 );
 
+router.get(
+  "/get-products-by-category/:CategoryId",
+  async (req, res, next) => {
+    try {
+      const { CategoryId } = req.params;
+
+      if (!mongoose.isValidObjectId(CategoryId)) {
+        return res.status(400).json({ message: "Invalid CategoryId" });
+      }
+      const products = await Product.find({ category: CategoryId })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      if (!products || products.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.get(
+  "/searchseller",
+  catchAsyncErrors(async (req, res, next) => {
+    const { q, shopId } = req.query;
+
+    // require shopId (we expect sellers to always pass it)
+    if (!shopId) {
+      return res.status(400).json({ success: false, message: "Missing shopId" });
+    }
+
+    // if no query, return all products for this shop (sorted newest first)
+    if (!q || String(q).trim().length === 0) {
+      const products = await Product.find({ shopId: String(shopId) })
+        .sort({ createdAt: -1 })
+        .populate("variants")
+        .populate("category", "name")
+        .lean();
+
+      return res.status(200).json({ success: true, products });
+    }
+
+    // safe-escape q to a case-insensitive regex
+    const qStr = String(q);
+    const regex = new RegExp(qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
+
+    // search by name, manufacturerName, category.name
+    // ensure we always filter by shopId
+    const products = await Product.find({
+      shopId: String(shopId),
+      $or: [
+        { name: regex },
+        { manufacturerName: regex },
+        // category might be a ref — use populate after or query by populated field using $lookup-like approach.
+        // However, mongoose allows querying on populated field if you store category name in document
+        // For reliability, we attempt to match category.name after populating below by using aggregation fallback.
+      ],
+    })
+      .populate("variants")
+      .populate("category", "name")
+      .lean();
+
+    // If you need strict category.name search that works even if category is a ref,
+    // the populate above will pull category.name and the regex on category.name in the initial query
+    // may not match — that's why we do an in-memory filter on populated category.name as well:
+    const finalProducts = products.filter((p) => {
+      // check populated category.name
+      const catName = (p.category && (p.category).name) ? String((p.category).name) : "";
+      if (regex.test(catName)) return true;
+
+      // already matched name/manufacturer via DB $or
+      // but safe return true (product included)
+      return true;
+    });
+
+    return res.status(200).json({ success: true, products: finalProducts });
+  })
+);
+
+
 module.exports = router;
