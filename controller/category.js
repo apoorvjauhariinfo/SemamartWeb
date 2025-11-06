@@ -36,13 +36,13 @@ router.get("/:categoryId", catchAsyncErrors(
 router.get("/:categoryId/subcategories", catchAsyncErrors(
   async (req, res, next) => {
     const { categoryId } = req.params;
-
+    
     const subcategories = await Subcategory.find({ category: categoryId });
-
+    
     if (!subcategories) {
       return next(new ErrorHandler("Subcategories not found", 404));
     }
-
+    
     res.json(subcategories);
   }
 ));
