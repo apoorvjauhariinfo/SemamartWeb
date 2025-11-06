@@ -554,9 +554,34 @@ router.put(
   }),
 );
 
-<<<<<<< HEAD
-// backend: product.routes.js (or wherever you keep product routes)
-// Add this route near your existing /search and /get-all-products-shop routes
+router.get(
+  "/get-products-by-category/:CategoryId",
+  async (req, res, next) => {
+    try {
+      const { CategoryId } = req.params;
+
+      if (!mongoose.isValidObjectId(CategoryId)) {
+        return res.status(400).json({ message: "Invalid CategoryId" });
+      }
+      const products = await Product.find({ category: CategoryId })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      if (!products || products.length === 0) {
+        return res.status(200).json([]);
+      }
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.get(
   "/searchseller",
@@ -617,35 +642,4 @@ router.get(
 );
 
 
-=======
-router.get(
-  "/get-products-by-category/:CategoryId",
-  async (req, res, next) => {
-    try {
-      const { CategoryId } = req.params;
-
-      if (!mongoose.isValidObjectId(CategoryId)) {
-        return res.status(400).json({ message: "Invalid CategoryId" });
-      }
-      const products = await Product.find({ category: CategoryId })
-        .populate("shopId")
-        .populate({
-          path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
-        })
-        .lean();
-
-      if (!products || products.length === 0) {
-        return res.status(200).json([]);
-      }
-
-      res.status(200).json(products);
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
->>>>>>> d1fc9abd868e95c424bdbd92ae36f7a41bbf802e
 module.exports = router;
