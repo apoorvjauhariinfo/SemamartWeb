@@ -99,6 +99,12 @@ router.post(
     );
 
     savedProduct.variants = savedVariants.map((v) => v._id);
+
+    savedProduct.commissionHistory=[{
+      commission: savedProduct.commission,
+      updatedAt: new Date()
+    }]
+
     await savedProduct.save();
     await addActivityLog({
       userId:shopId,
@@ -557,6 +563,11 @@ router.put(
     if (!product) throw new ErrorHandler("Product not found", 404);
 
     product.commission = req.body.commission;
+    product.commissionHistory.push({
+      commission:req.body.commission,
+      updatedAt: new Date()
+    })
+
     await product.save();
 
     res.status(200).json({ success: true });

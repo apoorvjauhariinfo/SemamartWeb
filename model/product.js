@@ -1,5 +1,16 @@
 const mongoose = require("mongoose");
 
+const commisionHistorySchema = new mongoose.Schema({
+  commission:{
+    type:Number,
+    required:true
+  },
+  updatedAt:{
+    type:Date,
+    default:Date.now
+  }
+})
+
 const variantSchema = new mongoose.Schema({
   productId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -287,6 +298,9 @@ const productSchema = new mongoose.Schema(
       default: 5,
       required: true,
     },
+    commissionHistory:{
+      type:[commisionHistorySchema],
+    }
   },
   {
     timestamps: true,
