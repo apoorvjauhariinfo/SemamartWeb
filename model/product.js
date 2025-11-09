@@ -78,7 +78,7 @@ const productSchema = new mongoose.Schema(
     },
     gtin: {
       type: String,
-      required: true,
+      // required: true,
     },
     hsn: {
       type: String,
@@ -98,12 +98,12 @@ const productSchema = new mongoose.Schema(
     specialityPackage: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SpecialityPackage",
-      required: true,
+      // required: true,
     },
     specialityPackageType: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SpecialityPackageType",
-      required: true,
+      // required: true,
     },
     //////
     manufacturerName: {
