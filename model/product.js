@@ -188,7 +188,7 @@ const productSchema = new mongoose.Schema(
       type: String, // TODO: make it a number ?
     },
     warranty: {
-      type: String, // TODO:
+      type: Number, // TODO:
     },
     enableStockManagement: {
       type: Boolean,
