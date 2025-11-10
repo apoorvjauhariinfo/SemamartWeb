@@ -11,8 +11,6 @@ async function addActivityLog({
 }) {
   try {
 
-    throw new Error("testing")
-
     await ActivityLog.create({
       user: userId,
       userType: userType,

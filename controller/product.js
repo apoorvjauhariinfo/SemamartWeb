@@ -32,7 +32,7 @@ router.post(
     const shop = await Shop.findById(shopId);
 
     if (!shop) {
-      throw new ErrorHandler("Shop not found", 402);
+      throw new ErrorHandler("Shop not found", 404);
     }
 
     const { manufacturerName, email, phone, origin, ...product } = req.body;
