@@ -300,6 +300,14 @@ const productSchema = new mongoose.Schema(
     },
     commissionHistory:{
       type:[commisionHistorySchema],
+    },
+    visibilityByAdmin:{
+      type:Boolean,
+      default:false
+    },
+    visibilityBySeller:{
+      type:Boolean,
+      default:true
     }
   },
   {

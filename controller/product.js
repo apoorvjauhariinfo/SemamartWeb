@@ -5,12 +5,12 @@ const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
-const {  uploadV2  } = require("../multer");
+const { uploadV2 } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
 const path = require("path");
 const mongoose = require("mongoose");
-const Manufacturer  = require("../model/manufacturer");
+const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
 //creatre product v2
@@ -45,7 +45,7 @@ router.post(
         email,
         phone,
         origin,
-      })
+      });
       await manufacturer.save();
     }
 
@@ -55,7 +55,7 @@ router.post(
     product.variants = [];
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
     product.tags = req.body.tags.map((v) => v);
-    
+
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
@@ -80,12 +80,12 @@ router.post(
     }
     if (req.files.productCompilance) {
       product.productCompilance = req.files.productCompilance.map(
-        (e) => e.filename,
+        (e) => e.filename
       );
     }
     if (req.files.msds_ifu_leaflet) {
       product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
-        (e) => e.filename,
+        (e) => e.filename
       );
     }
     if (req.files.amc_cms) {
@@ -95,28 +95,31 @@ router.post(
     const savedProduct = await Product.create(product);
 
     const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id })),
+      variants.map((v) => ({ ...v, productId: savedProduct._id }))
     );
 
     savedProduct.variants = savedVariants.map((v) => v._id);
 
-    savedProduct.commissionHistory=[{
-      commission: savedProduct.commission,
-      updatedAt: new Date()
-    }]
+    savedProduct.commissionHistory = [
+      {
+        commission: savedProduct.commission,
+        updatedAt: new Date(),
+      },
+    ];
 
     await savedProduct.save();
     await addActivityLog({
-      userId:shopId,
-      userType:"Shop",
-      action:"Product Added",
-      entityType:"Product",
-      entityId:savedProduct._id,
-      description:shop.businessName +" added the product " + savedProduct.name
-    })
+      userId: shopId,
+      userType: "Shop",
+      action: "Product Added",
+      entityType: "Product",
+      entityId: savedProduct._id,
+      description:
+        shop.businessName + " added the product " + savedProduct.name,
+    });
 
     res.status(201).json(savedProduct);
-  }),
+  })
 );
 
 // get all products of a shop
@@ -127,7 +130,7 @@ router.get(
       const products = await Product.find({ shopId: req.params.id })
         .sort({ createdAt: -1 })
         .populate("variants")
-        .select("name variants createdAt commission sku");
+        .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
 
       res.status(201).json({
         success: true,
@@ -136,7 +139,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // delete product of a shop
@@ -173,7 +176,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // get all products
@@ -198,7 +201,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 router.get(
@@ -216,7 +219,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  }),
+  })
 );
 
 router.get(
@@ -234,7 +237,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  }),
+  })
 );
 
 router.get(
@@ -252,7 +255,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  }),
+  })
 );
 
 // get product details of product with id
@@ -261,7 +264,9 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
     try {
-      const product = await Product.findById(id).populate("shopId variants manufacturer");
+      const product = await Product.findById(id).populate(
+        "shopId variants manufacturer"
+      );
 
       if (!product) throw new Error("not found");
 
@@ -270,7 +275,7 @@ router.get(
       console.error(error);
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // review for a product
@@ -291,13 +296,13 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id,
+        (rev) => rev.user._id === req.user._id
       );
 
       if (isReviewed) {
         product.reviews.forEach((rev) => {
           if (rev.user._id === req.user._id) {
-            ((rev.rating = rating), (rev.comment = comment), (rev.user = user));
+            (rev.rating = rating), (rev.comment = comment), (rev.user = user);
           }
         });
       } else {
@@ -317,7 +322,7 @@ router.put(
       await Order.findByIdAndUpdate(
         orderId,
         { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true },
+        { arrayFilters: [{ "elem._id": productId }], new: true }
       );
 
       res.status(200).json({
@@ -327,7 +332,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  }),
+  })
 );
 
 // all products --- for admin
@@ -345,7 +350,7 @@ router.get(
       success: true,
       products,
     });
-  }),
+  })
 );
 
 router.get(
@@ -358,7 +363,7 @@ router.get(
 
     const regex = new RegExp(
       q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i",
+      "i"
     );
 
     // Populate category to get its name
@@ -373,7 +378,7 @@ router.get(
       });
 
     res.status(200).json({ success: true, products });
-  }),
+  })
 );
 
 router.get(
@@ -402,7 +407,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  },
+  }
 );
 
 router.put(
@@ -445,7 +450,7 @@ router.put(
       message: "Document replaced successfully",
       product,
     });
-  }),
+  })
 );
 
 router.put(
@@ -475,7 +480,7 @@ router.put(
     await product.save();
 
     res.json({ success: true, product });
-  }),
+  })
 );
 
 router.put(
@@ -493,7 +498,7 @@ router.put(
 
     await product.save();
     res.json({ success: true });
-  }),
+  })
 );
 
 router.get(
@@ -521,7 +526,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  },
+  }
 );
 
 router.get(
@@ -551,7 +556,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  },
+  }
 );
 
 router.put(
@@ -564,44 +569,40 @@ router.put(
 
     product.commission = req.body.commission;
     product.commissionHistory.push({
-      commission:req.body.commission,
-      updatedAt: new Date()
-    })
+      commission: req.body.commission,
+      updatedAt: new Date(),
+    });
 
     await product.save();
 
     res.status(200).json({ success: true });
-  }),
+  })
 );
 
-router.get(
-  "/get-products-by-category/:CategoryId",
-  async (req, res, next) => {
-    try {
-      const { CategoryId } = req.params;
+router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
+  try {
+    const { CategoryId } = req.params;
 
-      if (!mongoose.isValidObjectId(CategoryId)) {
-        return res.status(400).json({ message: "Invalid CategoryId" });
-      }
-      const products = await Product.find({ category: CategoryId })
-        .populate("shopId")
-        .populate({
-          path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
-        })
-        .lean();
-
-      if (!products || products.length === 0) {
-        return res.status(200).json([]);
-      }
-
-      res.status(200).json(products);
-    } catch (error) {
-      next(error);
+    if (!mongoose.isValidObjectId(CategoryId)) {
+      return res.status(400).json({ message: "Invalid CategoryId" });
     }
-  },
-);
+    const products = await Product.find({ category: CategoryId })
+      .populate("shopId")
+      .populate({
+        path: "variants",
+        select: "thumbnail originalPrice discountPrice stock colorOption size",
+      })
+      .lean();
+
+    if (!products || products.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    res.status(200).json(products);
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.get(
   "/searchseller",
@@ -610,7 +611,9 @@ router.get(
 
     // require shopId (we expect sellers to always pass it)
     if (!shopId) {
-      return res.status(400).json({ success: false, message: "Missing shopId" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing shopId" });
     }
 
     // if no query, return all products for this shop (sorted newest first)
@@ -626,7 +629,10 @@ router.get(
 
     // safe-escape q to a case-insensitive regex
     const qStr = String(q);
-    const regex = new RegExp(qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
+    const regex = new RegExp(
+      qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
+      "i"
+    );
 
     // search by name, manufacturerName, category.name
     // ensure we always filter by shopId
@@ -649,7 +655,8 @@ router.get(
     // may not match — that's why we do an in-memory filter on populated category.name as well:
     const finalProducts = products.filter((p) => {
       // check populated category.name
-      const catName = (p.category && (p.category).name) ? String((p.category).name) : "";
+      const catName =
+        p.category && p.category.name ? String(p.category.name) : "";
       if (regex.test(catName)) return true;
 
       // already matched name/manufacturer via DB $or
@@ -661,5 +668,32 @@ router.get(
   })
 );
 
+router.put(
+  "/admin-visibility",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const { productIds, isVisible } = req.body;
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { visibilityByAdmin: isVisible } }
+    );
+    res.json({ success: true });
+  })
+);
+
+router.put(
+  "/seller-visibility",
+  isAuthenticated,
+  isSeller,
+  catchAsyncErrors(async (req, res) => {
+    const { productIds, isVisible } = req.body;
+    await Product.updateMany(
+      { _id: { $in: productIds } },
+      { $set: { visibilityBySeller: isVisible } }
+    );
+    res.json({ success: true });
+  })
+);
 
 module.exports = router;
