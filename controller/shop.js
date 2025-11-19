@@ -6,22 +6,19 @@ const jwt = require("jsonwebtoken");
 const sendMail = require("../utils/sendMail");
 const Shop = require("../model/shop");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
-const {  uploadV2 } = require("../multer");
+const { uploadV2 } = require("../multer");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
 const mongoose = require("mongoose");
 
 const sendShopToken = require("../utils/shopToken");
 const user = require("../model/user");
-
+const addActivityLog = require("../utils/activityLogHelper");
 
 // create shop (seller email verification)
 router.post(
   "/create-shop",
-  uploadV2.fields([
-    { name: "profilePic" },
-    { name: "banner" },
-  ]),
+  uploadV2.fields([{ name: "profilePic" }, { name: "banner" }]),
   async (req, res, next) => {
     try {
       const { email } = req.body;
@@ -30,7 +27,9 @@ router.post(
       if (existingSeller) {
         // Delete uploaded files if duplicate
         if (req.files["profilePic"]) {
-          fs.unlinkSync(`uploads/images/${req.files["profilePic"][0].filename}`);
+          fs.unlinkSync(
+            `uploads/images/${req.files["profilePic"][0].filename}`,
+          );
         }
         return next(new ErrorHandler("Seller already exists", 400));
       }
@@ -63,8 +62,8 @@ router.post(
         (process.env.NODE_ENV === "PRODUCTION"
           ? "https://semamart.com"
           : process.env.NODE_ENV === "TEST"
-          ? "http://test.semamart.com"
-          : "http://localhost:5173");
+            ? "http://test.semamart.com"
+            : "http://localhost:5173");
 
       const activationUrl = `${frontendBaseUrl}/seller/activation/${activationToken}`;
 
@@ -96,7 +95,7 @@ router.post(
       console.error("❌ Error during seller creation:", error);
       return next(new ErrorHandler(error.message, 400));
     }
-  }
+  },
 );
 
 // create activation token
@@ -114,7 +113,7 @@ router.post(
       const { activation_token } = req.body;
       const decodedSeller = jwt.verify(
         activation_token,
-        process.env.ACTIVATION_SECRET
+        process.env.ACTIVATION_SECRET,
       );
 
       if (!decodedSeller) {
@@ -158,6 +157,15 @@ router.post(
         banner,
       });
 
+      await addActivityLog({
+        userId: seller._id,
+        userType: "Shop",
+        action: "Vendor Add",
+        entityType: "Shop",
+        entityId: seller._id,
+        description: seller.businessName + " registered",
+      });
+
       console.log("✅ Seller verified successfully:", email);
       res.status(201).json({
         success: true,
@@ -168,10 +176,8 @@ router.post(
       console.error("❌ Activation error:", error);
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
-
-
 
 // login shop
 router.post(
@@ -285,6 +291,21 @@ router.put(
         avatar: fileUrl,
       });
 
+      await addActivityLog({
+        userId: seller._id,
+        userType: "Shop",
+        action: "Vendor Update",
+        entityType: "Shop",
+        entityId: seller._id,
+        description: seller.businessName + " updated shop avatar to " + fileUrl,
+        metaData: {
+          avatar: {
+            oldValue: existsUser.avatar,
+            newValue: seller.avatar,
+          },
+        },
+      });
+
       res.status(200).json({
         success: true,
         seller,
@@ -300,30 +321,45 @@ router.put(
   "/update-seller-info",
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
-    try {
-      const { name, description, address, phoneNumber, zipCode } = req.body;
+    const { name, description, address, phoneNumber, zipCode } = req.body;
 
-      const shop = await Shop.findOne(req.seller._id);
+    const shop = await Shop.findOne(req.seller._id);
 
-      if (!shop) {
-        return next(new ErrorHandler("User not found", 400));
+    const fields = ["name", "description", "address", "phoneNumber", "zipCode"];
+    const metaData = {};
+    fields.forEach((f) => {
+      if (shop[f] !== req.body[f]) {
+        metaData[f] = {
+          oldValue: shop[f],
+          newValue: req.body[f],
+        };
       }
+    });
 
-      shop.name = name;
-      shop.description = description;
-      shop.address = address;
-      shop.phoneNumber = phoneNumber;
-      shop.zipCode = zipCode;
-
-      await shop.save();
-
-      res.status(201).json({
-        success: true,
-        shop,
-      });
-    } catch (error) {
-      return next(new ErrorHandler(error.message, 500));
+    if (!shop) {
+      throw new ErrorHandler("User not found", 400);
     }
+    shop.name = name;
+    shop.description = description;
+    shop.address = address;
+    shop.phoneNumber = phoneNumber;
+    shop.zipCode = zipCode;
+
+    await shop.save();
+    await addActivityLog({
+      userId: shop._id,
+      userType: "Shop",
+      action: "Vendor Update",
+      entityType: "Shop",
+      entityId: shop._id,
+      description: `${shop.businessName} updated shop profile information`,
+      metaData: metaData,
+    });
+
+    res.status(201).json({
+      success: true,
+      shop,
+    });
   }),
 );
 
@@ -376,17 +412,9 @@ router.get(
 //admin verifying seller
 router.post(
   "/verify-seller/",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
-    // const a = await Shop.find();
-    // a.forEach(async (b) => {
-    //   b.verified = false;
-    //   await b.save();
-    // });
-    // res.json({ nin: "aa" });
-    // return;
-
     const { sellerId } = req.body;
     try {
       const seller = await Shop.findById(sellerId);
@@ -396,6 +424,14 @@ router.post(
       }
       seller.verified = true;
       await seller.save();
+      await addActivityLog({
+        userId: req.user._id,
+        userType: "User",
+        action: "Vendor Verify",
+        entityType: "Shop",
+        entityId: seller._id,
+        description: "Admin verified seller " + seller.businessName,
+      });
       res.status(201).json({ message: "seller is verified successfully" });
     } catch (err) {
       return next(new ErrorHandler(err.message, 500));
@@ -406,8 +442,8 @@ router.post(
 // delete seller ---admin
 router.delete(
   "/delete-seller/:id",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const seller = await Shop.findById(req.params.id);
@@ -419,6 +455,20 @@ router.delete(
       }
 
       await Shop.findByIdAndDelete(req.params.id);
+      await addActivityLog({
+        userId: req.user._id,
+        userType: "User",
+        action: "Vendor Delete",
+        entityType: "Shop",
+        entityId: seller._id,
+        description: "Admin deleted seller " + seller.businessName,
+        metadata: {
+          seller: {
+            oldValue: seller,
+            newValue: null,
+          },
+        },
+      });
 
       res.status(201).json({
         success: true,
@@ -495,8 +545,7 @@ router.get(
       success: true,
       seller,
     });
-  })
+  }),
 );
-
 
 module.exports = router;

@@ -19,10 +19,12 @@ const activityLogSchema = new mongoose.Schema(
     entityType: {
       type: String,
       required: true, // user, shop, order, product etc
+      enum: ["User", "Shop", "Product", "Order", "ProductVariant"],
     },
 
     entityId: {
       type: mongoose.Schema.Types.ObjectId, // _id of the thing on which action is taken
+      refPath: "entityType",
       required: true,
     },
 
@@ -35,7 +37,7 @@ const activityLogSchema = new mongoose.Schema(
       type: String,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("ActivityLog", activityLogSchema);
