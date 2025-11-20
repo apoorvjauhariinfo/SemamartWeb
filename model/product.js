@@ -1,15 +1,15 @@
 const mongoose = require("mongoose");
 
 const commisionHistorySchema = new mongoose.Schema({
-  commission:{
-    type:Number,
-    required:true
+  commission: {
+    type: Number,
+    required: true,
   },
-  updatedAt:{
-    type:Date,
-    default:Date.now
-  }
-})
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
 const variantSchema = new mongoose.Schema({
   productId: {
@@ -106,22 +106,22 @@ const productSchema = new mongoose.Schema(
       // required: true,
     },
     //////
-    manufacturerName: {
-      type: String,
-    },
-    email: {
-      type: String,
-    },
-    phone: {
-      type: String,
-    },
-    origin: {
-      type: String,
-    },
+    // manufacturerName: {
+    //   type: String,
+    // },
+    // email: {
+    //   type: String,
+    // },
+    // phone: {
+    //   type: String,
+    // },
+    // origin: {
+    //   type: String,
+    // },
     manufacturer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Manufacturer",
-      //required: true,
+      required: true,
     },
     /////
     shortdescription: {
@@ -175,7 +175,7 @@ const productSchema = new mongoose.Schema(
     },
     taxClass: {
       type: Number,
-      default:0
+      default: 0,
     },
     unitOfMeasure: {
       type: String,
@@ -295,20 +295,20 @@ const productSchema = new mongoose.Schema(
     },
     commission: {
       type: Number,
-      default: 5,
+      default: 100,
       required: true,
     },
-    commissionHistory:{
-      type:[commisionHistorySchema],
+    commissionHistory: {
+      type: [commisionHistorySchema],
     },
-    visibilityByAdmin:{
-      type:Boolean,
-      default:false
+    visibilityByAdmin: {
+      type: Boolean,
+      default: false,
     },
-    visibilityBySeller:{
-      type:Boolean,
-      default:true
-    }
+    visibilityBySeller: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,

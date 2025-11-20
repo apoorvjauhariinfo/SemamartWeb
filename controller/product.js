@@ -80,12 +80,12 @@ router.post(
     }
     if (req.files.productCompilance) {
       product.productCompilance = req.files.productCompilance.map(
-        (e) => e.filename
+        (e) => e.filename,
       );
     }
     if (req.files.msds_ifu_leaflet) {
       product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
-        (e) => e.filename
+        (e) => e.filename,
       );
     }
     if (req.files.amc_cms) {
@@ -95,7 +95,7 @@ router.post(
     const savedProduct = await Product.create(product);
 
     const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id }))
+      variants.map((v) => ({ ...v, productId: savedProduct._id })),
     );
 
     savedProduct.variants = savedVariants.map((v) => v._id);
@@ -111,7 +111,7 @@ router.post(
     await addActivityLog({
       userId: shopId,
       userType: "Shop",
-      action: "Product Added",
+      action: "Product Add",
       entityType: "Product",
       entityId: savedProduct._id,
       description:
@@ -119,7 +119,7 @@ router.post(
     });
 
     res.status(201).json(savedProduct);
-  })
+  }),
 );
 
 // get all products of a shop
@@ -130,7 +130,9 @@ router.get(
       const products = await Product.find({ shopId: req.params.id })
         .sort({ createdAt: -1 })
         .populate("variants")
-        .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
+        .select(
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller",
+        );
 
       res.status(201).json({
         success: true,
@@ -139,7 +141,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // delete product of a shop
@@ -176,7 +178,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // get all products
@@ -201,7 +203,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -219,7 +221,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -237,7 +239,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 router.get(
@@ -255,7 +257,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message || error, 400));
     }
-  })
+  }),
 );
 
 // get product details of product with id
@@ -265,7 +267,7 @@ router.get(
     const { id } = req.params;
     try {
       const product = await Product.findById(id).populate(
-        "shopId variants manufacturer"
+        "shopId variants manufacturer",
       );
 
       if (!product) throw new Error("not found");
@@ -275,7 +277,7 @@ router.get(
       console.error(error);
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // review for a product
@@ -296,13 +298,13 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id
+        (rev) => rev.user._id === req.user._id,
       );
 
       if (isReviewed) {
         product.reviews.forEach((rev) => {
           if (rev.user._id === req.user._id) {
-            (rev.rating = rating), (rev.comment = comment), (rev.user = user);
+            ((rev.rating = rating), (rev.comment = comment), (rev.user = user));
           }
         });
       } else {
@@ -322,7 +324,7 @@ router.put(
       await Order.findByIdAndUpdate(
         orderId,
         { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true }
+        { arrayFilters: [{ "elem._id": productId }], new: true },
       );
 
       res.status(200).json({
@@ -332,7 +334,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error, 400));
     }
-  })
+  }),
 );
 
 // all products --- for admin
@@ -350,7 +352,7 @@ router.get(
       success: true,
       products,
     });
-  })
+  }),
 );
 
 router.get(
@@ -363,7 +365,7 @@ router.get(
 
     const regex = new RegExp(
       q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
+      "i",
     );
 
     // Populate category to get its name
@@ -378,7 +380,7 @@ router.get(
       });
 
     res.status(200).json({ success: true, products });
-  })
+  }),
 );
 
 router.get(
@@ -407,11 +409,12 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.put(
   "/upload-doc/:productId",
+  isSeller,
   uploadV2.single("file"),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
@@ -422,9 +425,18 @@ router.put(
     }
 
     const product = await Product.findById(productId);
+
     if (!product) {
       throw new ErrorHandler("Product not found", 404);
     }
+    if (req.seller._id.toString() !== product.shopId.toString()) {
+      throw new ErrorHandler("Not authorized", 402);
+    }
+
+    const metaData = {};
+    metaData[docType] = {
+      oldValue: product[docType],
+    };
     // Delete old file if exists
     const oldFile =
       idx !== undefined ? product[docType][parseInt(idx)] : product[docType];
@@ -443,14 +455,26 @@ router.put(
       product[docType] = filePath;
     }
 
+    metaData[docType].newValue = product[docType];
+
     await product.save();
+    await addActivityLog({
+      userId: req.seller._id,
+      userType: "Shop",
+      action: "Product Update",
+      entityType: "Product",
+      entityId: product._id,
+      description:
+        req.seller.businessName + " updated the product document " + docType,
+      metaData: metaData,
+    });
 
     res.status(200).json({
       success: true,
       message: "Document replaced successfully",
       product,
     });
-  })
+  }),
 );
 
 router.put(
@@ -462,6 +486,12 @@ router.put(
 
     const product = await Product.findById(productId);
     if (!product) return res.status(404).json({ message: "Product not found" });
+
+    const metaData = {
+      images: {
+        oldValue: product.images,
+      },
+    };
 
     const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null;
     if (oldFile) {
@@ -477,28 +507,58 @@ router.put(
     } else {
       product.images.push(req.file.filename);
     }
+
     await product.save();
 
+    metaData.images.newValue = product.images;
+    await addActivityLog({
+      userId: req.seller._id,
+      userType: "Shop",
+      action: "Product Update",
+      entityType: "Product",
+      entityId: product._id,
+      description: req.seller.businessName + " updated the product images",
+      metaData: metaData,
+    });
+
     res.json({ success: true, product });
-  })
+  }),
 );
 
 router.put(
   "/update-product/:productId",
+  isSeller,
   uploadV2.none(),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
     const product = await Product.findById(productId);
     if (!product) throw new ErrorHandler("product not found", 404);
 
+    const metaData = {};
     const updates = req.body;
+
     Object.keys(updates).forEach((k) => {
+      if (product[k] !== updates[k]) {
+        metaData[k] = {
+          newValue: updates[k],
+          oldValue: product[k],
+        };
+      }
       product[k] = updates[k];
     });
 
     await product.save();
+    await addActivityLog({
+      userId: req.seller._id,
+      userType: "Shop",
+      action: "Product Update",
+      entityType: "Product",
+      entityId: product._id,
+      description: req.seller.businessName + " updated the product field",
+      metaData: metaData,
+    });
     res.json({ success: true });
-  })
+  }),
 );
 
 router.get(
@@ -526,7 +586,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.get(
@@ -556,7 +616,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  },
 );
 
 router.put(
@@ -566,6 +626,15 @@ router.put(
   catchAsyncErrors(async (req, res) => {
     const product = await Product.findById(req.params.productId);
     if (!product) throw new ErrorHandler("Product not found", 404);
+    if (!req.body.commission)
+      throw new ErrorHandler("Commission is required", 403);
+
+    const metaData = {
+      commission: {
+        oldValue: product.commission,
+        newValue: req.body.commission,
+      },
+    };
 
     product.commission = req.body.commission;
     product.commissionHistory.push({
@@ -573,10 +642,20 @@ router.put(
       updatedAt: new Date(),
     });
 
+    await addActivityLog({
+      userId: req.user._id,
+      userType: "User",
+      action: "Seam-Commission Update",
+      entityType: "Product",
+      entityId: product._id,
+      description:
+        "Admin updated the sema-commission for the product: " + product.name,
+      metaData: metaData,
+    });
     await product.save();
 
     res.status(200).json({ success: true });
-  })
+  }),
 );
 
 router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
@@ -631,7 +710,7 @@ router.get(
     const qStr = String(q);
     const regex = new RegExp(
       qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
+      "i",
     );
 
     // search by name, manufacturerName, category.name
@@ -665,7 +744,7 @@ router.get(
     });
 
     return res.status(200).json({ success: true, products: finalProducts });
-  })
+  }),
 );
 
 router.put(
@@ -676,10 +755,20 @@ router.put(
     const { productIds, isVisible } = req.body;
     await Product.updateMany(
       { _id: { $in: productIds } },
-      { $set: { visibilityByAdmin: isVisible } }
+      { $set: { visibilityByAdmin: isVisible } },
     );
+
+    // await addActivityLog({
+    //   userId: req.user._id,
+    //   userType: "User",
+    //   action: "Seam-Commission Update",
+    //   entityType: "Product",
+    //   entityId: product._id,
+    //   description:`Admin updated the visibility of product: ${}`,
+    // });
+
     res.json({ success: true });
-  })
+  }),
 );
 
 router.put(
@@ -690,10 +779,10 @@ router.put(
     const { productIds, isVisible } = req.body;
     await Product.updateMany(
       { _id: { $in: productIds } },
-      { $set: { visibilityBySeller: isVisible } }
+      { $set: { visibilityBySeller: isVisible } },
     );
     res.json({ success: true });
-  })
+  }),
 );
 
 module.exports = router;
