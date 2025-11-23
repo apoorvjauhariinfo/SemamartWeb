@@ -1,3 +1,4 @@
+// backend/controller/product.js
 const express = require("express");
 const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
@@ -13,7 +14,14 @@ const mongoose = require("mongoose");
 const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
-//creatre product v2
+/**
+ * NOTE:
+ * - Public/user-facing GET endpoints below only return products where
+ *   visibilityByAdmin === true && visibilityBySeller === true
+ * - Seller/admin endpoints (create, seller listing, toggles) remain unaffected.
+ */
+
+/* ------------------ CREATE PRODUCT (seller) ------------------ */
 router.post(
   "/create-product-v2",
   uploadV2.fields([
@@ -51,18 +59,18 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    const variants = JSON.parse(product.variants);
+    // Ensure variants parsed correctly
+    const variants = JSON.parse(product.variants || "[]");
     product.variants = [];
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
-    product.tags = req.body.tags.map((v) => v);
+    product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
 
     if (req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
     if (req.files.thumbnail) {
-      // product.thumbnail = req.files.thumbnail[0].filename
       req.files.thumbnail.forEach((el, i) => {
-        variants[i].thumbnail = el.filename;
+        if (variants[i]) variants[i].thumbnail = el.filename;
       });
     }
     if (req.files.shortVideo) {
@@ -122,7 +130,8 @@ router.post(
   })
 );
 
-// get all products of a shop
+/* ------------------ SELLER: get all products of a shop (seller portal) ------------------ */
+/* This returns all products for a shop (used in seller portal). Not filtered by public visibility. */
 router.get(
   "/get-all-products-shop/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -132,7 +141,7 @@ router.get(
         .populate("variants")
         .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         products,
       });
@@ -142,7 +151,7 @@ router.get(
   })
 );
 
-// delete product of a shop
+/* ------------------ SELLER: delete product ------------------ */
 router.delete(
   "/delete-shop-product/:id",
   isSeller,
@@ -152,16 +161,18 @@ router.delete(
 
       const productData = await Product.findById(productId);
 
-      productData.images.forEach((imageUrl) => {
-        const filename = imageUrl;
-        const filePath = `uploads/${filename}`;
+      if (productData && Array.isArray(productData.images)) {
+        productData.images.forEach((imageUrl) => {
+          const filename = imageUrl;
+          const filePath = `uploads/${filename}`;
 
-        fs.unlink(filePath, (err) => {
-          if (err) {
-            console.log(err);
-          }
+          fs.unlink(filePath, (err) => {
+            if (err) {
+              console.log(err);
+            }
+          });
         });
-      });
+      }
 
       const product = await Product.findByIdAndDelete(productId);
 
@@ -169,7 +180,7 @@ router.delete(
         return next(new ErrorHandler("Product not found with this id!", 500));
       }
 
-      res.status(201).json({
+      res.status(200).json({
         success: true,
         message: "Product Deleted successfully!",
       });
@@ -179,16 +190,20 @@ router.delete(
   })
 );
 
-// get all products
+/* ------------------ PUBLIC: get all products (user portal) ------------------ */
+/* Returns only products that are visible by BOTH seller and admin */
 router.get(
   "/get-all-products",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const products = await Product.find()
+      const products = await Product.find({
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
         .populate("shopId", "name")
         .populate({
-          path: "variants", // field in Product
-          model: "ProductVariant", // force it to use ProductVariant collection
+          path: "variants",
+          model: "ProductVariant",
           select:
             "thumbnail originalPrice discountPrice stock colorOption size",
         })
@@ -204,13 +219,17 @@ router.get(
   })
 );
 
+/* ------------------ PUBLIC: filtered product lists (by type) ------------------ */
 router.get(
   "/get-consumable-products",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
         productType: "Consumables",
-      }).sort({ createdAt: -1 });
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .sort({ createdAt: -1 });
 
       res.status(200).json({
         success: true,
@@ -228,6 +247,8 @@ router.get(
     try {
       const products = await Product.find({
         productType: "Equipment",
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
       }).sort({ createdAt: -1 });
 
       res.status(200).json({
@@ -246,6 +267,8 @@ router.get(
     try {
       const products = await Product.find({
         productType: "Pharmaceutical",
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
       }).sort({ createdAt: -1 });
 
       res.status(200).json({
@@ -258,27 +281,33 @@ router.get(
   })
 );
 
-// get product details of product with id
+/* ------------------ PUBLIC: product detail (user) ------------------ */
+/* Only returns product if both visibility flags true */
 router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      return next(new ErrorHandler("Invalid product id", 400));
+    }
     try {
-      const product = await Product.findById(id).populate(
-        "shopId variants manufacturer"
-      );
+      const product = await Product.findOne({
+        _id: id,
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      }).populate("shopId variants manufacturer");
 
-      if (!product) throw new Error("not found");
+      if (!product) return next(new ErrorHandler("Product not found", 404));
 
       res.status(200).json(product);
     } catch (error) {
       console.error(error);
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message || error, 400));
     }
   })
 );
 
-// review for a product
+/* ------------------ AUTH: create review (user) ------------------ */
 router.put(
   "/create-new-review",
   isAuthenticated,
@@ -287,6 +316,7 @@ router.put(
       const { user, rating, comment, productId, orderId } = req.body;
 
       const product = await Product.findById(productId);
+      if (!product) return next(new ErrorHandler("Product not found", 404));
 
       const review = {
         user,
@@ -296,13 +326,15 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => rev.user._id === req.user._id
+        (rev) => String(rev.user._id) === String(req.user._id)
       );
 
       if (isReviewed) {
         product.reviews.forEach((rev) => {
-          if (rev.user._id === req.user._id) {
-            (rev.rating = rating), (rev.comment = comment), (rev.user = user);
+          if (String(rev.user._id) === String(req.user._id)) {
+            rev.rating = rating;
+            rev.comment = comment;
+            rev.user = user;
           }
         });
       } else {
@@ -310,7 +342,6 @@ router.put(
       }
 
       let avg = 0;
-
       product.reviews.forEach((rev) => {
         avg += rev.rating;
       });
@@ -319,25 +350,29 @@ router.put(
 
       await product.save({ validateBeforeSave: false });
 
-      await Order.findByIdAndUpdate(
-        orderId,
-        { $set: { "cart.$[elem].isReviewed": true } },
-        { arrayFilters: [{ "elem._id": productId }], new: true }
-      );
+      if (orderId) {
+        await Order.findByIdAndUpdate(
+          orderId,
+          { $set: { "cart.$[elem].isReviewed": true } },
+          { arrayFilters: [{ "elem._id": productId }], new: true }
+        );
+      }
 
       res.status(200).json({
         success: true,
-        message: "Reviwed succesfully!",
+        message: "Reviewed successfully!",
       });
     } catch (error) {
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message || error, 400));
     }
   })
 );
 
-// --- admin-all-products (updated) ---
+/* ------------------ ADMIN: admin-all-products (for admin portal) ------------------ */
+/* Admin expects visibility fields included */
 router.get(
   "/admin-all-products",
+  // keep auth commented if you want public access for admin UI devs; uncomment in prod
   // isAuthenticated,
   // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
@@ -349,7 +384,6 @@ router.get(
           model: "ProductVariant",
           select: "thumbnail originalPrice discountPrice stock colorOption size",
         })
-        // explicitly include visibility flags + useful display fields
         .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
 
       res.status(200).json({
@@ -362,7 +396,8 @@ router.get(
   })
 );
 
-
+/* ------------------ PUBLIC SEARCH (user portal) ------------------ */
+/* This search returns only products visible by both seller+admin */
 router.get(
   "/search",
   catchAsyncErrors(async (req, res, next) => {
@@ -371,36 +406,97 @@ router.get(
       return res.status(200).json({ success: true, products: [] });
     }
 
-    const regex = new RegExp(
-      q.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
-    );
+    const term = String(q).trim();
+    const regex = new RegExp(term.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
 
-    // Populate category to get its name
-    const products = await Product.find()
+    const products = await Product.find({
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+      $or: [{ name: regex }, { manufacturerName: regex }],
+    })
       .populate("category", "name")
-      .where({
-        $or: [
-          { name: regex },
-          { manufacturerName: regex },
-          { "category.name": regex }, // search by category name
-        ],
-      });
+      .populate({
+        path: "variants",
+        model: "ProductVariant",
+        select: "thumbnail originalPrice discountPrice stock colorOption size",
+      })
+      .lean();
 
-    res.status(200).json({ success: true, products });
+    // additionally filter by category name if needed (case where category is populated)
+    const finalProducts = products.filter((p) => {
+      if (!p) return false;
+      if (regex.test(p.name || "")) return true;
+      if (p.manufacturerName && regex.test(p.manufacturerName)) return true;
+      if (Array.isArray(p.category)) {
+        if (p.category.some((c) => c && regex.test(String(c.name || "")))) return true;
+      } else if (p.category && p.category.name && regex.test(String(p.category.name))) return true;
+      return false;
+    });
+
+    return res.status(200).json({ success: true, products: finalProducts });
   })
 );
 
+/* ------------------ SELLER SEARCH (seller portal) ------------------ */
+/* Keep this unfiltered for sellers (they need to see all their products) */
+router.get(
+  "/searchseller",
+  catchAsyncErrors(async (req, res, next) => {
+    const { q, shopId } = req.query;
+
+    if (!shopId) {
+      return res.status(400).json({ success: false, message: "Missing shopId" });
+    }
+
+    // no query => return all products of shop
+    if (!q || String(q).trim().length === 0) {
+      const products = await Product.find({ shopId: String(shopId) })
+        .sort({ createdAt: -1 })
+        .populate("variants")
+        .populate("category", "name")
+        .lean();
+
+      return res.status(200).json({ success: true, products });
+    }
+
+    const qStr = String(q);
+    const regex = new RegExp(qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
+
+    const products = await Product.find({
+      shopId: String(shopId),
+      $or: [{ name: regex }, { manufacturerName: regex }],
+    })
+      .populate("variants")
+      .populate("category", "name")
+      .lean();
+
+    // final in-memory filter covering category.name
+    const finalProducts = products.filter((p) => {
+      const catName = p.category && p.category.name ? String(p.category.name) : "";
+      if (regex.test(catName)) return true;
+      return true; // keep product if already matched name/manufacturer
+    });
+
+    return res.status(200).json({ success: true, products: finalProducts });
+  })
+);
+
+/* ------------------ PUBLIC: get-products-by-subcategory (user) ------------------ */
+/* Return only visible products */
 router.get(
   "/get-products-by-subcategory/:subCategoryId",
-  async (req, res, next) => {
+  catchAsyncErrors(async (req, res, next) => {
     try {
       const { subCategoryId } = req.params;
 
       if (!mongoose.isValidObjectId(subCategoryId)) {
         return res.status(400).json({ message: "Invalid subCategoryId" });
       }
-      const products = await Product.find({ subCategory: subCategoryId })
+      const products = await Product.find({
+        subCategory: subCategoryId,
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
         .populate("shopId")
         .populate({
           path: "variants",
@@ -417,9 +513,103 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
+/* ------------------ PUBLIC: get-products-by-category (user) ------------------ */
+router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
+  try {
+    const { CategoryId } = req.params;
+
+    if (!mongoose.isValidObjectId(CategoryId)) {
+      return res.status(400).json({ message: "Invalid CategoryId" });
+    }
+    const products = await Product.find({
+      category: CategoryId,
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+    })
+      .populate("shopId")
+      .populate({
+        path: "variants",
+        select: "thumbnail originalPrice discountPrice stock colorOption size",
+      })
+      .lean();
+
+    if (!products || products.length === 0) {
+      return res.status(200).json([]);
+    }
+
+    res.status(200).json(products);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/* ------------------ PUBLIC: speciality package endpoints (user) ------------------ */
+router.get(
+  "/get-products-by-speciality-package/:specialityPackageId",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { specialityPackageId } = req.params;
+
+      if (!mongoose.isValidObjectId(specialityPackageId)) {
+        return res.status(400).json({ message: "Invalid specialityPackageId" });
+      }
+
+      const products = await Product.find({
+        specialityPackage: specialityPackageId,
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  })
+);
+
+router.get(
+  "/get-products-by-speciality-package-type/:specialityPackageTypeId",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { specialityPackageTypeId } = req.params;
+
+      if (!mongoose.isValidObjectId(specialityPackageTypeId)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid specialityPackageTypeId" });
+      }
+
+      const products = await Product.find({
+        specialityPackageType: specialityPackageTypeId,
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .populate("shopId")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      res.status(200).json(products);
+    } catch (error) {
+      next(error);
+    }
+  })
+);
+
+/* ------------------ UPLOAD / UPDATE helpers (admin/seller) ------------------ */
 router.put(
   "/upload-doc/:productId",
   uploadV2.single("file"),
@@ -493,6 +683,7 @@ router.put(
   })
 );
 
+/* ------------------ UPDATE PRODUCT (admin/seller) ------------------ */
 router.put(
   "/update-product/:productId",
   uploadV2.none(),
@@ -501,7 +692,7 @@ router.put(
     const product = await Product.findById(productId);
     if (!product) throw new ErrorHandler("product not found", 404);
 
-    const updates = req.body;
+    const updates = req.body || {};
     Object.keys(updates).forEach((k) => {
       product[k] = updates[k];
     });
@@ -511,64 +702,7 @@ router.put(
   })
 );
 
-router.get(
-  "/get-products-by-speciality-package/:specialityPackageId",
-  async (req, res, next) => {
-    try {
-      const { specialityPackageId } = req.params;
-
-      if (!mongoose.isValidObjectId(specialityPackageId)) {
-        return res.status(400).json({ message: "Invalid specialityPackageId" });
-      }
-
-      const products = await Product.find({
-        specialityPackage: specialityPackageId,
-      })
-        .populate("shopId")
-        .populate({
-          path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
-        })
-        .lean();
-
-      res.status(200).json(products);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-router.get(
-  "/get-products-by-speciality-package-type/:specialityPackageTypeId",
-  async (req, res, next) => {
-    try {
-      const { specialityPackageTypeId } = req.params;
-
-      if (!mongoose.isValidObjectId(specialityPackageTypeId)) {
-        return res
-          .status(400)
-          .json({ message: "Invalid specialityPackageTypeId" });
-      }
-
-      const products = await Product.find({
-        specialityPackageType: specialityPackageTypeId,
-      })
-        .populate("shopId")
-        .populate({
-          path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
-        })
-        .lean();
-
-      res.status(200).json(products);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
+/* ------------------ COMMISSION (admin) ------------------ */
 router.put(
   "/update-commission/:productId",
   isAuthenticated,
@@ -589,125 +723,17 @@ router.put(
   })
 );
 
-router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
-  try {
-    const { CategoryId } = req.params;
-
-    if (!mongoose.isValidObjectId(CategoryId)) {
-      return res.status(400).json({ message: "Invalid CategoryId" });
-    }
-    const products = await Product.find({ category: CategoryId })
-      .populate("shopId")
-      .populate({
-        path: "variants",
-        select: "thumbnail originalPrice discountPrice stock colorOption size",
-      })
-      .lean();
-
-    if (!products || products.length === 0) {
-      return res.status(200).json([]);
-    }
-
-    res.status(200).json(products);
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get(
-  "/searchseller",
-  catchAsyncErrors(async (req, res, next) => {
-    const { q, shopId } = req.query;
-
-    // require shopId (we expect sellers to always pass it)
-    if (!shopId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing shopId" });
-    }
-
-    // if no query, return all products for this shop (sorted newest first)
-    if (!q || String(q).trim().length === 0) {
-      const products = await Product.find({ shopId: String(shopId) })
-        .sort({ createdAt: -1 })
-        .populate("variants")
-        .populate("category", "name")
-        .lean();
-
-      return res.status(200).json({ success: true, products });
-    }
-
-    // safe-escape q to a case-insensitive regex
-    const qStr = String(q);
-    const regex = new RegExp(
-      qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
-    );
-
-    // search by name, manufacturerName, category.name
-    // ensure we always filter by shopId
-    const products = await Product.find({
-      shopId: String(shopId),
-      $or: [
-        { name: regex },
-        { manufacturerName: regex },
-        // category might be a ref — use populate after or query by populated field using $lookup-like approach.
-        // However, mongoose allows querying on populated field if you store category name in document
-        // For reliability, we attempt to match category.name after populating below by using aggregation fallback.
-      ],
-    })
-      .populate("variants")
-      .populate("category", "name")
-      .lean();
-
-    // If you need strict category.name search that works even if category is a ref,
-    // the populate above will pull category.name and the regex on category.name in the initial query
-    // may not match — that's why we do an in-memory filter on populated category.name as well:
-    const finalProducts = products.filter((p) => {
-      // check populated category.name
-      const catName =
-        p.category && p.category.name ? String(p.category.name) : "";
-      if (regex.test(catName)) return true;
-
-      // already matched name/manufacturer via DB $or
-      // but safe return true (product included)
-      return true;
-    });
-
-    return res.status(200).json({ success: true, products: finalProducts });
-  })
-);
-
-router.put(
-  "/admin-visibility",
-  isAuthenticated,
-  isAdmin("Admin"),
-  catchAsyncErrors(async (req, res) => {
-    const { productIds, isVisible } = req.body;
-    await Product.updateMany(
-      { _id: { $in: productIds } },
-      { $set: { visibilityByAdmin: isVisible } }
-    );
-    res.json({ success: true });
-  })
-);
-
-// seller visibility toggle - robust version
+/* ------------------ SELLER-VISIBILITY (seller toggles their products) ------------------ */
 router.put(
   "/seller-visibility",
   isAuthenticated,
   isSeller,
   catchAsyncErrors(async (req, res) => {
     try {
-      // Accept multiple possible names from frontend: productIds, proIds, productId
       let { productIds, proIds, productId, isVisible } = req.body;
 
-      // normalize isVisible (string "true"/"false" -> boolean)
-      if (typeof isVisible === "string") {
-        isVisible = isVisible === "true";
-      }
+      if (typeof isVisible === "string") isVisible = isVisible === "true";
 
-      // normalize ids to array
       let ids = [];
       if (Array.isArray(productIds) && productIds.length) ids = productIds;
       else if (Array.isArray(proIds) && proIds.length) ids = proIds;
@@ -716,17 +742,16 @@ router.put(
         return res.status(400).json({ success: false, message: "Missing productIds" });
       }
 
-      // sanitize/validate object ids
       ids = ids.map((id) => String(id)).filter(Boolean);
       if (ids.length === 0) {
         return res.status(400).json({ success: false, message: "No valid productIds provided" });
       }
 
-      // Optionally ensure user owns these products (extra safety)
-      // If you want to enforce seller-only update, uncomment the block below:
+      // OPTIONAL: enforce that seller can only change their own products
+      // Uncomment to enable ownership check
       /*
-      const owned = await Product.countDocuments({ _id: { $in: ids }, shopId: req.seller._id });
-      if (owned !== ids.length) {
+      const ownedCount = await Product.countDocuments({ _id: { $in: ids }, shopId: req.seller._id });
+      if (ownedCount !== ids.length) {
         return res.status(403).json({ success: false, message: "You can only update your own products" });
       }
       */
@@ -736,15 +761,12 @@ router.put(
         { $set: { visibilityBySeller: Boolean(isVisible) } }
       );
 
-      // result.nModified / result.modifiedCount depending on mongoose version
       const modified =
         (typeof result.modifiedCount === "number" && result.modifiedCount) ||
         (typeof result.nModified === "number" && result.nModified) ||
         0;
 
-      // log activity for each product (optional lightweight)
       try {
-        // addActivityLog is available in your file
         await addActivityLog({
           userId: req.seller._id,
           userType: "Shop",
@@ -769,24 +791,27 @@ router.put(
     }
   })
 );
+
+/* ------------------ ADMIN-VISIBILITY (admin toggles) ------------------ */
 router.put(
   "/admin-visibility",
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
     const { productIds, isVisible } = req.body;
-    console.log("DEBUG admin-visibility called by:", req.user ? {id: req.user._id, role: req.user.role} : null);
 
     if (!Array.isArray(productIds) || typeof isVisible !== "boolean") {
-      return res.status(400).json({ success: false, message: "Invalid request body" });
+      return res.status(400).json({ success: false, message: "Invalid request body: productIds (array) and isVisible (boolean) required" });
     }
 
     const validIds = productIds.filter((id) => mongoose.isValidObjectId(id));
-    await Product.updateMany({ _id: { $in: validIds } }, { $set: { visibilityByAdmin: isVisible } });
+    await Product.updateMany(
+      { _id: { $in: validIds } },
+      { $set: { visibilityByAdmin: isVisible } }
+    );
 
     res.json({ success: true, productIds: validIds, visibilityByAdmin: isVisible });
   })
 );
-
 
 module.exports = router;
