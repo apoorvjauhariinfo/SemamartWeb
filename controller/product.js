@@ -335,23 +335,33 @@ router.put(
   })
 );
 
-// all products --- for admin
+// --- admin-all-products (updated) ---
 router.get(
   "/admin-all-products",
   // isAuthenticated,
   // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
-    const products = await Product.find()
-      .sort({ createdAt: -1 })
-      .populate("variants")
-      .select("name variants createdAt");
+    try {
+      const products = await Product.find()
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select: "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        // explicitly include visibility flags + useful display fields
+        .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
 
-    res.status(201).json({
-      success: true,
-      products,
-    });
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 500));
+    }
   })
 );
+
 
 router.get(
   "/search",
@@ -682,18 +692,101 @@ router.put(
   })
 );
 
+// seller visibility toggle - robust version
 router.put(
   "/seller-visibility",
   isAuthenticated,
   isSeller,
   catchAsyncErrors(async (req, res) => {
-    const { productIds, isVisible } = req.body;
-    await Product.updateMany(
-      { _id: { $in: productIds } },
-      { $set: { visibilityBySeller: isVisible } }
-    );
-    res.json({ success: true });
+    try {
+      // Accept multiple possible names from frontend: productIds, proIds, productId
+      let { productIds, proIds, productId, isVisible } = req.body;
+
+      // normalize isVisible (string "true"/"false" -> boolean)
+      if (typeof isVisible === "string") {
+        isVisible = isVisible === "true";
+      }
+
+      // normalize ids to array
+      let ids = [];
+      if (Array.isArray(productIds) && productIds.length) ids = productIds;
+      else if (Array.isArray(proIds) && proIds.length) ids = proIds;
+      else if (productId) ids = [productId];
+      else {
+        return res.status(400).json({ success: false, message: "Missing productIds" });
+      }
+
+      // sanitize/validate object ids
+      ids = ids.map((id) => String(id)).filter(Boolean);
+      if (ids.length === 0) {
+        return res.status(400).json({ success: false, message: "No valid productIds provided" });
+      }
+
+      // Optionally ensure user owns these products (extra safety)
+      // If you want to enforce seller-only update, uncomment the block below:
+      /*
+      const owned = await Product.countDocuments({ _id: { $in: ids }, shopId: req.seller._id });
+      if (owned !== ids.length) {
+        return res.status(403).json({ success: false, message: "You can only update your own products" });
+      }
+      */
+
+      const result = await Product.updateMany(
+        { _id: { $in: ids } },
+        { $set: { visibilityBySeller: Boolean(isVisible) } }
+      );
+
+      // result.nModified / result.modifiedCount depending on mongoose version
+      const modified =
+        (typeof result.modifiedCount === "number" && result.modifiedCount) ||
+        (typeof result.nModified === "number" && result.nModified) ||
+        0;
+
+      // log activity for each product (optional lightweight)
+      try {
+        // addActivityLog is available in your file
+        await addActivityLog({
+          userId: req.seller._id,
+          userType: "Shop",
+          action: "Vendor Update",
+          entityType: "Product",
+          entityId: ids.length === 1 ? ids[0] : null,
+          description: `${req.seller.businessName} set seller-visibility=${isVisible} for ${ids.length} product(s)`,
+          metaData: { productIds: ids, visibilityBySeller: isVisible },
+        });
+      } catch (logErr) {
+        console.warn("Activity log failed:", logErr.message || logErr);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Updated ${modified} product(s)`,
+        modifiedCount: modified,
+      });
+    } catch (err) {
+      console.error("seller-visibility error:", err);
+      return res.status(500).json({ success: false, message: err.message || "Server error" });
+    }
   })
 );
+router.put(
+  "/admin-visibility",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const { productIds, isVisible } = req.body;
+    console.log("DEBUG admin-visibility called by:", req.user ? {id: req.user._id, role: req.user.role} : null);
+
+    if (!Array.isArray(productIds) || typeof isVisible !== "boolean") {
+      return res.status(400).json({ success: false, message: "Invalid request body" });
+    }
+
+    const validIds = productIds.filter((id) => mongoose.isValidObjectId(id));
+    await Product.updateMany({ _id: { $in: validIds } }, { $set: { visibilityByAdmin: isVisible } });
+
+    res.json({ success: true, productIds: validIds, visibilityByAdmin: isVisible });
+  })
+);
+
 
 module.exports = router;
