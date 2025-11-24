@@ -32,7 +32,7 @@ router.post(
       for (const item of cart) {
         const order = await Order.create({
           shop: item.shopId,
-          variant: item.variantId || null,
+          variant: item.variantId,
           qty: item.qty,
           shippingAddress,
           user,
@@ -40,7 +40,7 @@ router.post(
           tax: item.tax,
           unitPrice: item.unitPrice,
           paymentInfo,
-          statusHistory: [{ status: "Processing", updatedAt: new Date() }],
+          statusHistory: [{ status: "Created", updatedAt: new Date() }],
         });
         orders.push(order);
       }
