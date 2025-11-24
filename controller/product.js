@@ -824,7 +824,6 @@ router.put(
 
 router.put(
   "/seller-visibility",
-  isAuthenticated,
   isSeller,
   catchAsyncErrors(async (req, res) => {
     const { productIds, isVisible } = req.body;
