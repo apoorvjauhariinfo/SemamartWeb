@@ -105,6 +105,107 @@ const createActivationToken = (seller) => {
   });
 };
 
+// replace the existing "/update-seller-info" handler with this
+router.put(
+  "/update-seller-info",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      // Allowed updatable fields — keep this list minimal and explicit
+      const allowedFields = [
+        "firstName",
+        "lastName",
+        "businessName",
+        "gstNumber",
+        "description",
+        "address",
+        "phoneNumber",
+        "zipCode",
+      ];
+
+      // Build update object only with keys actually present in req.body
+      const update = {};
+      allowedFields.forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+          // only set if key exists on request body (even if empty string is intentionally sent)
+          update[key] = req.body[key];
+        }
+      });
+
+      if (Object.keys(update).length === 0) {
+        return next(new ErrorHandler("No valid fields provided to update", 400));
+      }
+
+      // Perform partial update safely
+      const shop = await Shop.findByIdAndUpdate(
+        req.seller._id,
+        { $set: update },
+        { new: true, runValidators: true }
+      );
+
+      if (!shop) return next(new ErrorHandler("User not found", 400));
+
+      // Record activity log (optional — keep your existing metadata logic if you want)
+      await addActivityLog({
+        userId: shop._id,
+        userType: "Shop",
+        action: "Vendor Update",
+        entityType: "Shop",
+        entityId: shop._id,
+        description: `${shop.businessName} updated shop profile information`,
+        metaData: update,
+      });
+
+      res.status(201).json({
+        success: true,
+        shop,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// PUT /api/v2/shop/update-seller-password
+router.put(
+  "/update-seller-password",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      // Ensure request contains required fields
+      const { currentPassword, newPassword, confirmPassword } = req.body;
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        return next(new ErrorHandler("Please provide all password fields", 400));
+      }
+
+      if (newPassword !== confirmPassword) {
+        return next(new ErrorHandler("New password and confirm password do not match", 400));
+      }
+
+      // Find seller with password field selected
+      const seller = await Shop.findById(req.seller._id).select("+password");
+      if (!seller) return next(new ErrorHandler("Seller not found", 404));
+
+      const isMatch = await seller.comparePassword(currentPassword);
+      if (!isMatch) {
+        return next(new ErrorHandler("Current password is incorrect", 400));
+      }
+
+      // Set new password (this triggers your pre-save hook to hash it)
+      seller.password = newPassword;
+      await seller.save();
+
+      res.status(200).json({
+        success: true,
+        message: "Password updated successfully!",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+
 // activate seller
 router.post(
   "/activation",
@@ -547,5 +648,82 @@ router.get(
     });
   }),
 );
+// Seller visibility toggle - update products' visibilityBySeller
+// PUT /api/v2/product/seller-visibility
+router.put(
+  "/seller-visibility",
+  isAuthenticated,
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      // Accept either productIds or proIds for compatibility
+      const incomingIds = req.body.productIds || req.body.proIds || req.body.proIds;
+      const isVisible = req.body.isVisible;
+
+      // Basic validation
+      if (!Array.isArray(incomingIds) || incomingIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "productIds (non-empty array) is required",
+        });
+      }
+      if (typeof isVisible !== "boolean") {
+        return res.status(400).json({
+          success: false,
+          message: "isVisible must be a boolean",
+        });
+      }
+
+      // Ensure all ids are valid ObjectId strings
+      const validIds = incomingIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+      if (validIds.length === 0) {
+        return res.status(400).json({ success: false, message: "No valid product ids provided" });
+      }
+
+      // Restrict update to products owned by this seller
+      const sellerId = req.seller._id;
+
+      const result = await Product.updateMany(
+        { _id: { $in: validIds }, shopId: sellerId },
+        { $set: { visibilityBySeller: isVisible } }
+      );
+
+      // result.nModified or result.modifiedCount depending on mongoose version
+      const modifiedCount = result.modifiedCount ?? result.nModified ?? 0;
+
+      // Optional: find which product ids were actually updated (owned by seller)
+      const affectedProducts = await Product.find({
+        _id: { $in: validIds },
+        shopId: sellerId,
+      }).select("_id name");
+
+      // Activity log
+      await addActivityLog({
+        userId: sellerId,
+        userType: "Shop",
+        action: isVisible ? "Product Publish (Seller)" : "Product Unpublish (Seller)",
+        entityType: "Product",
+        entityId: affectedProducts.map((p) => p._id),
+        description: `${req.seller.businessName} set visibilityBySeller=${isVisible} for ${affectedProducts.length} products.`,
+        metaData: {
+          requestedIds: validIds,
+          updatedCount: modifiedCount,
+          updatedProducts: affectedProducts.map((p) => ({ id: p._id, name: p.name })),
+        },
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `Updated ${modifiedCount} product(s) visibilityBySeller=${isVisible}`,
+        modifiedCount,
+        updatedProducts: affectedProducts,
+      });
+    } catch (err) {
+      console.error("seller-visibility error:", err);
+      return next(new ErrorHandler(err.message || "Something went wrong", 500));
+    }
+  })
+);
+
 
 module.exports = router;
