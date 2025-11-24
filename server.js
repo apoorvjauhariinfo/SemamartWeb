@@ -31,6 +31,11 @@ if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath + "/docs", { recursive: true })
 }
 
+const paymentDocUploadPath = path.join(__dirname, "uploads/payment-docs")
+if (!fs.existsSync(paymentDocUploadPath)) {
+  fs.mkdirSync(paymentDocUploadPath + "/payment-docs", { recursive: true })
+}
+
 // middlewares
 app.use(express.json());
 app.use(cookieParser());

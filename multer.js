@@ -28,6 +28,7 @@ const subFolders = {
   profilePic: "images",
   banner: "images",
   image: "images",
+  payment_file:"payment-docs"
 };
 
 const storageV2 = multer.diskStorage({
