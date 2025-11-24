@@ -783,7 +783,7 @@ router.put(
     await addActivityLog({
       userId: req.user._id,
       userType: "User",
-      action: "Seam-Commission Update",
+      action: "Sema-Commission Update",
       entityType: "Product",
       entityId: product._id,
       description:
