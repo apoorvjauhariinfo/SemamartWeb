@@ -15,11 +15,54 @@ const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
 /**
- * NOTE:
- * - Public/user-facing GET endpoints below only return products where
- *   visibilityByAdmin === true && visibilityBySeller === true
- * - Seller/admin endpoints (create, seller listing, toggles) remain unaffected.
+ * Helper: parse attributes that might come as:
+ * - undefined
+ * - a single JSON string
+ * - an array of JSON strings
+ *
+ * Returns array of parsed objects (skips invalid JSON).
  */
+function parseAttributesFromReqBody(bodyOrRaw) {
+  // Accept either the full req.body or just req.body.attributes (to be flexible)
+  const raw = bodyOrRaw?.attributes !== undefined ? bodyOrRaw.attributes : bodyOrRaw;
+  if (!raw) return [];
+  try {
+    if (Array.isArray(raw)) {
+      return raw
+        .map((s) => {
+          try {
+            if (typeof s === "string") return JSON.parse(s);
+            return s;
+          } catch {
+            // If parsing failed, try to treat "key:value" style used accidentally
+            if (typeof s === "string" && s.includes(":")) {
+              const [k, ...rest] = s.split(":");
+              return { [k.trim()]: rest.join(":").trim() };
+            }
+            return null;
+          }
+        })
+        .filter(Boolean);
+    } else if (typeof raw === "string") {
+      try {
+        return [JSON.parse(raw)];
+      } catch {
+        if (raw.includes(":")) {
+          const [k, ...rest] = raw.split(":");
+          return [{ [k.trim()]: rest.join(":").trim() }];
+        }
+        // fallback: wrap as value
+        return [{ value: raw }];
+      }
+    } else if (typeof raw === "object") {
+      return [raw];
+    } else {
+      return [];
+    }
+  } catch (err) {
+    return [];
+  }
+}
 
 /* ------------------ CREATE PRODUCT (seller) ------------------ */
 router.post(
@@ -43,8 +86,17 @@ router.post(
       throw new ErrorHandler("Shop not found", 404);
     }
 
+    // destructure incoming fields but keep rest in product object
     const { manufacturerName, email, phone, origin, ...product } = req.body;
 
+    // normalize & validate brand (required)
+    const incomingBrand = String(req.body.brand ?? "").trim();
+    if (!incomingBrand) {
+      throw new ErrorHandler("Brand is required", 400);
+    }
+    product.brand = incomingBrand;
+
+    // find or create manufacturer
     let manufacturer = await Manufacturer.findOne({ manufacturerName });
 
     if (!manufacturer) {
@@ -59,55 +111,76 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    // Ensure variants parsed correctly
-    const variants = JSON.parse(product.variants || "[]");
-    product.variants = [];
-    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
+    // Ensure variants parsed correctly (variants sent as JSON string)
+    const variants = (() => {
+      try {
+        return JSON.parse(product.variants || "[]");
+      } catch (e) {
+        return [];
+      }
+    })();
+    product.variants = []; // will be set after creating variant docs
+
+    // ---------- Robustly parse attributes ----------
+    product.attributes = parseAttributesFromReqBody(req.body); // now always an array
+
+    // tags: ensure array
     product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
 
-    if (req.files.images) {
+    // files -> attach filenames where applicable (defensive checks)
+    if (req.files && req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
-    if (req.files.thumbnail) {
+    if (req.files && req.files.thumbnail) {
+      // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
         if (variants[i]) variants[i].thumbnail = el.filename;
       });
     }
-    if (req.files.shortVideo) {
+    if (req.files && req.files.shortVideo) {
       product.shortVideo = req.files.shortVideo[0].filename;
     }
-    if (req.files.certificate) {
+    if (req.files && req.files.certificate) {
       product.certificate = req.files.certificate.map((c) => c.filename);
     }
-    if (req.files.oemLetter) {
+    if (req.files && req.files.oemLetter) {
       product.oemLetter = req.files.oemLetter[0].filename;
     }
-    if (req.files.prodcutComparisionSheet) {
-      product.prodcutComparisionSheet =
-        req.files.prodcutComparisionSheet[0].filename;
+    if (req.files && req.files.productComparisionSheet) {
+      product.productComparisionSheet =
+        req.files.productComparisionSheet[0].filename;
     }
-    if (req.files.productCompilance) {
+    if (req.files && req.files.productCompilance) {
       product.productCompilance = req.files.productCompilance.map(
         (e) => e.filename
       );
     }
-    if (req.files.msds_ifu_leaflet) {
+    if (req.files && req.files.msds_ifu_leaflet) {
       product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
         (e) => e.filename
       );
     }
-    if (req.files.amc_cms) {
+    if (req.files && req.files.amc_cms) {
       product.amc_cms = req.files.amc_cms[0].filename;
     }
 
+    // --- DEBUG logs (helpful while testing) ---
+    // console.log("create-product payload keys:", Object.keys(req.body));
+    // console.log("create-product normalized product.brand:", product.brand);
+
+    // Create product document
     const savedProduct = await Product.create(product);
 
-    const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id }))
-    );
+    // Create product variants (if any)
+    let savedVariants = [];
+    if (Array.isArray(variants) && variants.length > 0) {
+      savedVariants = await ProductVariant.insertMany(
+        variants.map((v) => ({ ...v, productId: savedProduct._id }))
+      );
+      savedProduct.variants = savedVariants.map((v) => v._id);
+    }
 
-    savedProduct.variants = savedVariants.map((v) => v._id);
-
+    // initial commission history
     savedProduct.commissionHistory = [
       {
         commission: savedProduct.commission,
@@ -116,15 +189,22 @@ router.post(
     ];
 
     await savedProduct.save();
-    await addActivityLog({
-      userId: shopId,
-      userType: "Shop",
-      action: "Product Added",
-      entityType: "Product",
-      entityId: savedProduct._id,
-      description:
-        shop.businessName + " added the product " + savedProduct.name,
-    });
+
+    // add activity log (best-effort)
+    try {
+      await addActivityLog({
+        userId: shopId,
+        userType: "Shop",
+        action: "Product Added",
+        entityType: "Product",
+        entityId: savedProduct._id,
+        description:
+          shop.businessName + " added the product " + savedProduct.name,
+      });
+    } catch (err) {
+      // don't crash product creation if logging fails
+      console.warn("Activity log error:", err.message || err);
+    }
 
     res.status(201).json(savedProduct);
   })
@@ -191,7 +271,6 @@ router.delete(
 );
 
 /* ------------------ PUBLIC: get all products (user portal) ------------------ */
-/* Returns only products that are visible by BOTH seller and admin */
 router.get(
   "/get-all-products",
   catchAsyncErrors(async (req, res, next) => {
@@ -282,7 +361,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC: product detail (user) ------------------ */
-/* Only returns product if both visibility flags true */
 router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -298,6 +376,10 @@ router.get(
       }).populate("shopId variants manufacturer");
 
       if (!product) return next(new ErrorHandler("Product not found", 404));
+
+      // ensure attributes exists (defensive): model pre-save covers it, but for read we normalise
+      product.attributes = product.attributes || [];
+      product.brand = product.brand || null;
 
       res.status(200).json(product);
     } catch (error) {
@@ -369,7 +451,6 @@ router.put(
 );
 
 /* ------------------ ADMIN: admin-all-products (for admin portal) ------------------ */
-/* Admin expects visibility fields included */
 router.get(
   "/admin-all-products",
   // keep auth commented if you want public access for admin UI devs; uncomment in prod
@@ -397,7 +478,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC SEARCH (user portal) ------------------ */
-/* This search returns only products visible by both seller+admin */
 router.get(
   "/search",
   catchAsyncErrors(async (req, res, next) => {
@@ -438,7 +518,6 @@ router.get(
 );
 
 /* ------------------ SELLER SEARCH (seller portal) ------------------ */
-/* Keep this unfiltered for sellers (they need to see all their products) */
 router.get(
   "/searchseller",
   catchAsyncErrors(async (req, res, next) => {
@@ -482,7 +561,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC: get-products-by-subcategory (user) ------------------ */
-/* Return only visible products */
 router.get(
   "/get-products-by-subcategory/:subCategoryId",
   catchAsyncErrors(async (req, res, next) => {
@@ -693,7 +771,24 @@ router.put(
     if (!product) throw new ErrorHandler("product not found", 404);
 
     const updates = req.body || {};
+
+    // If attributes are present in form-data, parse them correctly
+    if (updates.hasOwnProperty("attributes")) {
+      // updates may be string/array/object; parse into array of objects
+      updates.attributes = parseAttributesFromReqBody(updates);
+    }
+
+    // If brand is being provided in update, enforce non-empty & trim
+    if (updates.hasOwnProperty("brand")) {
+      if (!updates.brand || String(updates.brand).trim() === "") {
+        throw new ErrorHandler("Brand is required", 400);
+      }
+      updates.brand = String(updates.brand).trim();
+    }
+
+    // Apply updates (small whitelist would be safer, but keeping current approach)
     Object.keys(updates).forEach((k) => {
+      // for certain keys you might need type coercion; leaving assignment as-is
       product[k] = updates[k];
     });
 
@@ -797,7 +892,7 @@ router.put(
   "/admin-visibility",
   isAuthenticated,
   isAdmin("Admin"),
-  catchAsyncErrors(async (req, res) => {
+  catchAsyncErrors(async (req, res, next) => {
     const { productIds, isVisible } = req.body;
 
     if (!Array.isArray(productIds) || typeof isVisible !== "boolean") {
