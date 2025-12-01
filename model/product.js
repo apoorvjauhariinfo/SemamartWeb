@@ -48,7 +48,7 @@ const productSchema = new mongoose.Schema(
     },
       brand: {
       type: String,
-      required: [true, "Please enter your product brand name!"],
+  default: null,
     },
     category: [
       {

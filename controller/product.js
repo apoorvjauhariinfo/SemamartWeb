@@ -371,7 +371,6 @@ router.get(
     try {
       const product = await Product.findOne({
         _id: id,
-        visibilityByAdmin: true,
         visibilityBySeller: true,
       }).populate("shopId variants manufacturer");
 
@@ -762,40 +761,195 @@ router.put(
 );
 
 /* ------------------ UPDATE PRODUCT (admin/seller) ------------------ */
+// Replace existing route handler temporarily with this debug version
+// TEMP DEBUG handler - no multer
+// Replace existing PUT /update-product/:productId with this
 router.put(
   "/update-product/:productId",
-  uploadV2.none(),
+  uploadV2.any(), // parse multipart form-data (files + fields)
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
     const product = await Product.findById(productId);
-    if (!product) throw new ErrorHandler("product not found", 404);
+    if (!product) return res.status(404).json({ success: false, message: "product not found" });
 
-    const updates = req.body || {};
+    // helper: safe has
+    const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
 
-    // If attributes are present in form-data, parse them correctly
-    if (updates.hasOwnProperty("attributes")) {
-      // updates may be string/array/object; parse into array of objects
-      updates.attributes = parseAttributesFromReqBody(updates);
-    }
-
-    // If brand is being provided in update, enforce non-empty & trim
-    if (updates.hasOwnProperty("brand")) {
-      if (!updates.brand || String(updates.brand).trim() === "") {
-        throw new ErrorHandler("Brand is required", 400);
+    // helper: normalize array-like values
+    const normalizeArrayField = (val) => {
+      if (val === undefined || val === null) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === "string") {
+        // if it's JSON array in a string
+        try {
+          const parsed = JSON.parse(val);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {}
+        // comma separated or single
+        if (val.includes(",")) return val.split(",").map((s) => s.trim()).filter(Boolean);
+        return [val];
       }
-      updates.brand = String(updates.brand).trim();
+      // fallback
+      return [val];
+    };
+
+    // --- parse brand ---
+    if (has(req.body, "brand")) {
+      const incomingBrand = req.body.brand;
+      try {
+        const parsed = typeof incomingBrand === "string" && incomingBrand.trim().startsWith("{")
+          ? JSON.parse(incomingBrand)
+          : incomingBrand;
+        if (parsed && typeof parsed === "object") {
+          product.brand = parsed.name || parsed.brand || String(parsed._id || parsed) || product.brand;
+        } else {
+          product.brand = String(parsed || "").trim() || product.brand;
+        }
+      } catch {
+        product.brand = String(incomingBrand || "").trim() || product.brand;
+      }
     }
 
-    // Apply updates (small whitelist would be safer, but keeping current approach)
-    Object.keys(updates).forEach((k) => {
-      // for certain keys you might need type coercion; leaving assignment as-is
-      product[k] = updates[k];
+    // --- parse attributes robustly ---
+    if (has(req.body, "attributes") || has(req.body, "attribute")) {
+      const rawAttr = req.body.attributes ?? req.body.attribute;
+
+      let parsedAttrs = [];
+
+      if (Array.isArray(rawAttr)) {
+        // array of strings / objects
+        parsedAttrs = rawAttr.map((a) => {
+          if (typeof a === "string") {
+            try { return JSON.parse(a); } catch {
+              if (a.includes(":")) {
+                const [k, ...rest] = a.split(":");
+                return { [k.trim()]: rest.join(":").trim() };
+              }
+              return { value: a };
+            }
+          }
+          return a;
+        });
+      } else if (typeof rawAttr === "string") {
+        // could be JSON array, JSON object or key:value or simple text
+        try {
+          const p = JSON.parse(rawAttr);
+          if (Array.isArray(p)) parsedAttrs = p;
+          else if (p && typeof p === "object") parsedAttrs = [p];
+          else parsedAttrs = [{ value: String(p) }];
+        } catch {
+          // not JSON: check for repeated delimiter or key:value
+          if (rawAttr.includes(",")) {
+            parsedAttrs = rawAttr.split(",").map((s) => {
+              const t = s.trim();
+              if (t.includes(":")) {
+                const [k, ...rest] = t.split(":");
+                return { [k.trim()]: rest.join(":").trim() };
+              }
+              return { value: t };
+            });
+          } else if (rawAttr.includes(":")) {
+            const [k, ...rest] = rawAttr.split(":");
+            parsedAttrs = [{ [k.trim()]: rest.join(":").trim() }];
+          } else {
+            parsedAttrs = [{ value: rawAttr }];
+          }
+        }
+      } else if (typeof rawAttr === "object") {
+        parsedAttrs = Array.isArray(rawAttr) ? rawAttr : [rawAttr];
+      }
+
+      if (parsedAttrs.length) product.attributes = parsedAttrs;
+    }
+
+    // --- handle arrays & scalar fields ---
+    const arrayKeys = new Set(["category", "subCategory", "tags", "upsells", "crosssells"]);
+
+    Object.keys(req.body || {}).forEach((k) => {
+      if (k === "brand" || k === "attributes" || k === "attribute") return;
+      const val = req.body[k];
+
+      if (arrayKeys.has(k)) {
+        product[k] = normalizeArrayField(val);
+      } else {
+        // coerce numbers for known numeric fields optionally
+        if (["shippingWeight", "unitsPerCarton", "dispatchPinCode", "warranty", "taxClass"].includes(k)) {
+          // only set if value not empty
+          if (val !== undefined && val !== null && String(val).trim() !== "") {
+            const num = Number(val);
+            if (!Number.isNaN(num)) product[k] = num;
+          }
+        } else if (k === "visibilityBySeller" || k === "visibilityByAdmin") {
+          // boolean-ish string handling
+          if (typeof val === "string") {
+            const low = val.trim().toLowerCase();
+            product[k] = ["true", "1", "yes"].includes(low);
+          } else if (typeof val === "boolean") {
+            product[k] = val;
+          } else if (typeof val === "number") {
+            product[k] = val === 1;
+          }
+        } else {
+          product[k] = val;
+        }
+      }
     });
 
+    // --- files handling (images, thumbnails, certificates etc) ---
+    if (req.files && req.files.length > 0) {
+      // group files by fieldname
+      const filesByField = req.files.reduce((acc, f) => {
+        acc[f.fieldname] = acc[f.fieldname] || [];
+        acc[f.fieldname].push(f);
+        return acc;
+      }, {});
+
+      if (filesByField["images"]) {
+        // append or replace images depending on your desired semantics
+        const newImgs = filesByField["images"].map((f) => f.filename);
+        product.images = Array.isArray(product.images) ? product.images.concat(newImgs) : newImgs;
+      }
+      if (filesByField["thumbnail"]) {
+        // if multiple thumbnails present, assign them to variants or main thumbnail
+        // We'll set product.thumbnail to the first thumbnail uploaded (adjust if you need variant-level mapping)
+        product.thumbnail = filesByField["thumbnail"][0].filename;
+      }
+      if (filesByField["shortVideo"]) {
+        product.shortVideo = filesByField["shortVideo"][0].filename;
+      }
+      if (filesByField["certificate"]) {
+        const certs = filesByField["certificate"].map((f) => f.filename);
+        product.certificate = Array.isArray(product.certificate) ? product.certificate.concat(certs) : certs;
+      }
+      if (filesByField["productCompilance"]) {
+        const pcs = filesByField["productCompilance"].map((f) => f.filename);
+        product.productCompilance = Array.isArray(product.productCompilance) ? product.productCompilance.concat(pcs) : pcs;
+      }
+      if (filesByField["msds_ifu_leaflet"]) {
+        const msds = filesByField["msds_ifu_leaflet"].map((f) => f.filename);
+        product.msds_ifu_leaflet = Array.isArray(product.msds_ifu_leaflet) ? product.msds_ifu_leaflet.concat(msds) : msds;
+      }
+      if (filesByField["oemLetter"]) {
+        product.oemLetter = filesByField["oemLetter"][0].filename;
+      }
+      if (filesByField["productComparisionSheet"]) {
+        product.productComparisionSheet = filesByField["productComparisionSheet"][0].filename;
+      }
+      if (filesByField["amc_cms"]) {
+        product.amc_cms = filesByField["amc_cms"][0].filename;
+      }
+    }
+
+    // Save and return updated product
     await product.save();
-    res.json({ success: true });
+
+    // Respond with updated product so frontend can refresh cache / UI
+    return res.status(200).json({ success: true, product });
   })
 );
+
+
+
 
 /* ------------------ COMMISSION (admin) ------------------ */
 router.put(
