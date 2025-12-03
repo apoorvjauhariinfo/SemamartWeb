@@ -767,7 +767,7 @@ router.put(
 router.put(
   "/update-product/:productId",
   isAuthenticated,
-  
+  isSeller,
   uploadV2.any(), // parse multipart form-data (files + fields)
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
