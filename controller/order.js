@@ -319,6 +319,7 @@ router.put(
     if (!order) throw new ErrorHandler("Order not found", 404);
     if(order.paymentFile) throw new ErrorHandler("Payment verification still pending", 402)
     order.paymentFile=req.file.filename
+    order.status="Paid"
     await order.save()
     res.status(200).json(order)
   })
