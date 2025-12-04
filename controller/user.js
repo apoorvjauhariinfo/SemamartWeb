@@ -1,3 +1,4 @@
+// routes/user.js  (drop-in replacement)
 const express = require("express");
 const path = require("path");
 const User = require("../model/user");
@@ -9,6 +10,7 @@ const sendMail = require("../utils/sendMail");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const sendToken = require("../utils/jwtToken");
 const { isAuthenticated, isAdmin } = require("../middleware/auth");
+const crypto = require("crypto"); // <-- added for reset token generation
 
 const router = express.Router();
 
@@ -32,8 +34,8 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
     const activationToken = createActivationToken(userTokenData);
 
    // With this cleaner one:
-const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
+    const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
 
     // ✅ Create new user document
     const user = await User.create({
@@ -43,7 +45,7 @@ const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
       password,
       phoneNumber,
       instituteName,
-      addresses: req.body.addresses.map((addr) => ({
+      addresses: (req.body.addresses || []).map((addr) => ({
         reciever_name: addr.reciever_name,
         instituteAddress1: addr.instituteAddress1,
         instituteAddress2: addr.instituteAddress2 || "",
@@ -95,7 +97,6 @@ const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
     return next(new ErrorHandler(err.message, 400));
   }
 });
-
 
 // create activation token
 const createActivationToken = (user) => {
@@ -256,6 +257,30 @@ compare the provided password with the stored password for authentication purpos
   }),
 );
 
+// NEW: partial profile update (no password required) - recommended for ProfileForm
+router.patch(
+  "/update-profile",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      // Only allow specific fields
+      const allowed = ["firstName", "lastName", "email", "phoneNumber", "instituteName", "name"];
+      const updates = {};
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+
+      const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
+
+      if (!user) return next(new ErrorHandler("User not found", 404));
+
+      res.status(200).json({ success: true, user });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
 // update user avatar
 router.put(
   "/update-avatar",
@@ -402,6 +427,109 @@ router.put(
   }),
 );
 
+// Forgot password - send reset email
+router.post(
+  "/forgot-password",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      if (!email) return next(new ErrorHandler("Email is required", 400));
+
+      const user = await User.findOne({ email });
+      // Always respond with success message to avoid email enumeration
+      if (!user) {
+        return res.status(200).json({
+          success: true,
+          message: "If an account with this email exists, a reset link has been sent.",
+        });
+      }
+
+      // create reset token (plain token to send by email)
+      const resetToken = crypto.randomBytes(20).toString("hex");
+      const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+
+      // set token and expiry on user
+      user.resetPasswordToken = hashedToken;
+      user.resetPasswordTime = Date.now() + 60 * 60 * 1000; // 1 hour
+      await user.save({ validateBeforeSave: false });
+
+      // prepare reset URL
+      const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const resetUrl = `${frontendBaseUrl}/auth/reset-password/${resetToken}`;
+
+      const messageHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Reset your password</h3>
+          <p>If you requested a password reset, click the button below to set a new password. If you didn't request this, please ignore this email.</p>
+          <a href="${resetUrl}" style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
+            Reset Password
+          </a>
+          <p style="margin-top:10px">This link will expire in 1 hour.</p>
+        </div>
+      `;
+
+      try {
+        await sendMail({
+          email: user.email,
+          subject: "Semamart Password Reset",
+          html: messageHtml,
+        });
+      } catch (emailErr) {
+        // cleanup tokens on failure
+        user.resetPasswordToken = undefined;
+        user.resetPasswordTime = undefined;
+        await user.save({ validateBeforeSave: false });
+        console.error("Failed to send reset email:", emailErr.message);
+        return next(new ErrorHandler("Failed to send reset email", 500));
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "If an account with this email exists, a reset link has been sent.",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+// Reset password using token
+router.post(
+  "/reset-password",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { token, newPassword } = req.body;
+      if (!token || !newPassword) {
+        return next(new ErrorHandler("Token and newPassword are required", 400));
+      }
+
+      const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+      const user = await User.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordTime: { $gt: Date.now() },
+      }).select("+password");
+
+      if (!user) {
+        return next(new ErrorHandler("Invalid or expired token", 400));
+      }
+
+      user.password = newPassword;
+      user.resetPasswordToken = undefined;
+      user.resetPasswordTime = undefined;
+
+      await user.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Password reset successful",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
 // find user infoormation with the userId
 router.get(
   "/user-info/:id",
@@ -497,8 +625,6 @@ router.post('/:userId/addresses', async (req, res) => {
   }
 });
 
-
-
 // Update address by address id
 router.put('/:userId/addresses/:addressId', async (req, res) => {
   try {
@@ -543,7 +669,6 @@ router.delete('/:userId/addresses/:addressId', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 router.get('/:userId/addresses', async (req, res) => {
   try {

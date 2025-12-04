@@ -1,15 +1,16 @@
+// backend/model/product.js
 const mongoose = require("mongoose");
 
 const commisionHistorySchema = new mongoose.Schema({
-  commission:{
-    type:Number,
-    required:true
+  commission: {
+    type: Number,
+    required: true,
   },
-  updatedAt:{
-    type:Date,
-    default:Date.now
-  }
-})
+  updatedAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
 const variantSchema = new mongoose.Schema({
   productId: {
@@ -44,6 +45,10 @@ const productSchema = new mongoose.Schema(
     name: {
       type: String,
       required: [true, "Please enter your product name!"],
+    },
+      brand: {
+      type: String,
+  default: null,
     },
     category: [
       {
@@ -105,7 +110,10 @@ const productSchema = new mongoose.Schema(
       ref: "SpecialityPackageType",
       // required: true,
     },
+
     //////
+
+    // Manufacturer fields
     manufacturerName: {
       type: String,
     },
@@ -121,9 +129,10 @@ const productSchema = new mongoose.Schema(
     manufacturer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Manufacturer",
-      //required: true,
+      required: true,
     },
-    /////
+
+    ///// Descriptions
     shortdescription: {
       type: String,
       required: [true, "Please enter your product short description!"],
@@ -132,11 +141,16 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please enter your product description!"],
     },
+
+    /* ---------- ATTRIBUTES & BRAND ---------- */
     attributes: [
       {
         type: mongoose.Schema.Types.Mixed,
       },
     ],
+  
+
+    /* ---------- REST ---------- */
     weight: {
       type: String,
       required: true,
@@ -175,7 +189,7 @@ const productSchema = new mongoose.Schema(
     },
     taxClass: {
       type: Number,
-      default:0
+      default: 0,
     },
     unitOfMeasure: {
       type: String,
@@ -270,7 +284,7 @@ const productSchema = new mongoose.Schema(
       type: String, // sheet pdf name
     },
 
-    /////
+    ///// Reviews
     allowProductReviews: {
       type: Boolean,
       default: true,
@@ -295,25 +309,32 @@ const productSchema = new mongoose.Schema(
     },
     commission: {
       type: Number,
-      default: 5,
+      default: 100,
       required: true,
     },
-    commissionHistory:{
-      type:[commisionHistorySchema],
+    commissionHistory: {
+      type: [commisionHistorySchema],
     },
-    visibilityByAdmin:{
-      type:Boolean,
-      default:false
+    visibilityByAdmin: {
+      type: Boolean,
+      default: false,
     },
-    visibilityBySeller:{
-      type:Boolean,
-      default:true
-    }
+    visibilityBySeller: {
+      type: Boolean,
+      default: true,
+    },
   },
   {
     timestamps: true,
   },
 );
+
+// Ensure attributes always exist (in case older docs don't have the field)
+productSchema.pre("save", function (next) {
+  if (!this.attributes) this.attributes = [];
+  if (this.brand === undefined) this.brand = null;
+  next();
+});
 
 const Product = mongoose.model("Product", productSchema);
 const ProductVariant = mongoose.model("ProductVariant", variantSchema);
