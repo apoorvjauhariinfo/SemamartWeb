@@ -101,6 +101,10 @@ const orderSchema = new mongoose.Schema({
     pickupPersonPhone: { type: Number, trim: true },
     trackingNumber: { type: String, trim: true },
   },
+  paymentFile:{
+    type:String,
+    default:null
+  }
 });
 
 module.exports = mongoose.model("Order", orderSchema);
