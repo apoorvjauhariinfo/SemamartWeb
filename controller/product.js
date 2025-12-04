@@ -15,11 +15,54 @@ const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
 /**
- * NOTE:
- * - Public/user-facing GET endpoints below only return products where
- *   visibilityByAdmin === true && visibilityBySeller === true
- * - Seller/admin endpoints (create, seller listing, toggles) remain unaffected.
+ * Helper: parse attributes that might come as:
+ * - undefined
+ * - a single JSON string
+ * - an array of JSON strings
+ *
+ * Returns array of parsed objects (skips invalid JSON).
  */
+function parseAttributesFromReqBody(bodyOrRaw) {
+  // Accept either the full req.body or just req.body.attributes (to be flexible)
+  const raw = bodyOrRaw?.attributes !== undefined ? bodyOrRaw.attributes : bodyOrRaw;
+  if (!raw) return [];
+  try {
+    if (Array.isArray(raw)) {
+      return raw
+        .map((s) => {
+          try {
+            if (typeof s === "string") return JSON.parse(s);
+            return s;
+          } catch {
+            // If parsing failed, try to treat "key:value" style used accidentally
+            if (typeof s === "string" && s.includes(":")) {
+              const [k, ...rest] = s.split(":");
+              return { [k.trim()]: rest.join(":").trim() };
+            }
+            return null;
+          }
+        })
+        .filter(Boolean);
+    } else if (typeof raw === "string") {
+      try {
+        return [JSON.parse(raw)];
+      } catch {
+        if (raw.includes(":")) {
+          const [k, ...rest] = raw.split(":");
+          return [{ [k.trim()]: rest.join(":").trim() }];
+        }
+        // fallback: wrap as value
+        return [{ value: raw }];
+      }
+    } else if (typeof raw === "object") {
+      return [raw];
+    } else {
+      return [];
+    }
+  } catch (err) {
+    return [];
+  }
+}
 
 /* ------------------ CREATE PRODUCT (seller) ------------------ */
 router.post(
@@ -43,8 +86,17 @@ router.post(
       throw new ErrorHandler("Shop not found", 404);
     }
 
+    // destructure incoming fields but keep rest in product object
     const { manufacturerName, email, phone, origin, ...product } = req.body;
 
+    // normalize & validate brand (required)
+    const incomingBrand = String(req.body.brand ?? "").trim();
+    if (!incomingBrand) {
+      throw new ErrorHandler("Brand is required", 400);
+    }
+    product.brand = incomingBrand;
+
+    // find or create manufacturer
     let manufacturer = await Manufacturer.findOne({ manufacturerName });
 
     if (!manufacturer) {
@@ -59,55 +111,76 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    // Ensure variants parsed correctly
-    const variants = JSON.parse(product.variants || "[]");
-    product.variants = [];
-    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
+    // Ensure variants parsed correctly (variants sent as JSON string)
+    const variants = (() => {
+      try {
+        return JSON.parse(product.variants || "[]");
+      } catch (e) {
+        return [];
+      }
+    })();
+    product.variants = []; // will be set after creating variant docs
+
+    // ---------- Robustly parse attributes ----------
+    product.attributes = parseAttributesFromReqBody(req.body); // now always an array
+
+    // tags: ensure array
     product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
 
-    if (req.files.images) {
+    // files -> attach filenames where applicable (defensive checks)
+    if (req.files && req.files.images) {
       product.images = req.files.images.map((e) => e.filename);
     }
-    if (req.files.thumbnail) {
+    if (req.files && req.files.thumbnail) {
+      // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
         if (variants[i]) variants[i].thumbnail = el.filename;
       });
     }
-    if (req.files.shortVideo) {
+    if (req.files && req.files.shortVideo) {
       product.shortVideo = req.files.shortVideo[0].filename;
     }
-    if (req.files.certificate) {
+    if (req.files && req.files.certificate) {
       product.certificate = req.files.certificate.map((c) => c.filename);
     }
-    if (req.files.oemLetter) {
+    if (req.files && req.files.oemLetter) {
       product.oemLetter = req.files.oemLetter[0].filename;
     }
-    if (req.files.prodcutComparisionSheet) {
-      product.prodcutComparisionSheet =
-        req.files.prodcutComparisionSheet[0].filename;
+    if (req.files && req.files.productComparisionSheet) {
+      product.productComparisionSheet =
+        req.files.productComparisionSheet[0].filename;
     }
-    if (req.files.productCompilance) {
+    if (req.files && req.files.productCompilance) {
       product.productCompilance = req.files.productCompilance.map(
         (e) => e.filename,
       );
     }
-    if (req.files.msds_ifu_leaflet) {
+    if (req.files && req.files.msds_ifu_leaflet) {
       product.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map(
         (e) => e.filename,
       );
     }
-    if (req.files.amc_cms) {
+    if (req.files && req.files.amc_cms) {
       product.amc_cms = req.files.amc_cms[0].filename;
     }
 
+    // --- DEBUG logs (helpful while testing) ---
+    // console.log("create-product payload keys:", Object.keys(req.body));
+    // console.log("create-product normalized product.brand:", product.brand);
+
+    // Create product document
     const savedProduct = await Product.create(product);
 
-    const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id })),
-    );
+    // Create product variants (if any)
+    let savedVariants = [];
+    if (Array.isArray(variants) && variants.length > 0) {
+      savedVariants = await ProductVariant.insertMany(
+        variants.map((v) => ({ ...v, productId: savedProduct._id }))
+      );
+      savedProduct.variants = savedVariants.map((v) => v._id);
+    }
 
-    savedProduct.variants = savedVariants.map((v) => v._id);
-
+    // initial commission history
     savedProduct.commissionHistory = [
       {
         commission: savedProduct.commission,
@@ -193,7 +266,6 @@ router.delete(
 );
 
 /* ------------------ PUBLIC: get all products (user portal) ------------------ */
-/* Returns only products that are visible by BOTH seller and admin */
 router.get(
   "/get-all-products",
   catchAsyncErrors(async (req, res, next) => {
@@ -284,7 +356,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC: product detail (user) ------------------ */
-/* Only returns product if both visibility flags true */
 router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -295,11 +366,14 @@ router.get(
     try {
       const product = await Product.findOne({
         _id: id,
-        visibilityByAdmin: true,
         visibilityBySeller: true,
       }).populate("shopId variants manufacturer");
 
       if (!product) return next(new ErrorHandler("Product not found", 404));
+
+      // ensure attributes exists (defensive): model pre-save covers it, but for read we normalise
+      product.attributes = product.attributes || [];
+      product.brand = product.brand || null;
 
       res.status(200).json(product);
     } catch (error) {
@@ -371,7 +445,6 @@ router.put(
 );
 
 /* ------------------ ADMIN: admin-all-products (for admin portal) ------------------ */
-/* Admin expects visibility fields included */
 router.get(
   "/admin-all-products",
   // keep auth commented if you want public access for admin UI devs; uncomment in prod
@@ -395,7 +468,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC SEARCH (user portal) ------------------ */
-/* This search returns only products visible by both seller+admin */
 router.get(
   "/search",
   catchAsyncErrors(async (req, res, next) => {
@@ -436,7 +508,6 @@ router.get(
 );
 
 /* ------------------ SELLER SEARCH (seller portal) ------------------ */
-/* Keep this unfiltered for sellers (they need to see all their products) */
 router.get(
   "/searchseller",
   catchAsyncErrors(async (req, res, next) => {
@@ -480,7 +551,6 @@ router.get(
 );
 
 /* ------------------ PUBLIC: get-products-by-subcategory (user) ------------------ */
-/* Return only visible products */
 router.get(
   "/get-products-by-subcategory/:subCategoryId",
   catchAsyncErrors(async (req, res, next) => {
@@ -722,6 +792,9 @@ router.put(
 );
 
 /* ------------------ UPDATE PRODUCT (admin/seller) ------------------ */
+// Replace existing route handler temporarily with this debug version
+// TEMP DEBUG handler - no multer
+// Replace existing PUT /update-product/:productId with this
 router.put(
   "/update-product/:productId",
   isSeller,
@@ -729,7 +802,7 @@ router.put(
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
     const product = await Product.findById(productId);
-    if (!product) throw new ErrorHandler("product not found", 404);
+    if (!product) return res.status(404).json({ success: false, message: "product not found" });
 
     const updates = req.body || {};
     Object.keys(updates).forEach((k) => {
@@ -742,6 +815,52 @@ router.put(
       product[k] = updates[k];
     });
 
+    // --- files handling (images, thumbnails, certificates etc) ---
+    if (req.files && req.files.length > 0) {
+      // group files by fieldname
+      const filesByField = req.files.reduce((acc, f) => {
+        acc[f.fieldname] = acc[f.fieldname] || [];
+        acc[f.fieldname].push(f);
+        return acc;
+      }, {});
+
+      if (filesByField["images"]) {
+        // append or replace images depending on your desired semantics
+        const newImgs = filesByField["images"].map((f) => f.filename);
+        product.images = Array.isArray(product.images) ? product.images.concat(newImgs) : newImgs;
+      }
+      if (filesByField["thumbnail"]) {
+        // if multiple thumbnails present, assign them to variants or main thumbnail
+        // We'll set product.thumbnail to the first thumbnail uploaded (adjust if you need variant-level mapping)
+        product.thumbnail = filesByField["thumbnail"][0].filename;
+      }
+      if (filesByField["shortVideo"]) {
+        product.shortVideo = filesByField["shortVideo"][0].filename;
+      }
+      if (filesByField["certificate"]) {
+        const certs = filesByField["certificate"].map((f) => f.filename);
+        product.certificate = Array.isArray(product.certificate) ? product.certificate.concat(certs) : certs;
+      }
+      if (filesByField["productCompilance"]) {
+        const pcs = filesByField["productCompilance"].map((f) => f.filename);
+        product.productCompilance = Array.isArray(product.productCompilance) ? product.productCompilance.concat(pcs) : pcs;
+      }
+      if (filesByField["msds_ifu_leaflet"]) {
+        const msds = filesByField["msds_ifu_leaflet"].map((f) => f.filename);
+        product.msds_ifu_leaflet = Array.isArray(product.msds_ifu_leaflet) ? product.msds_ifu_leaflet.concat(msds) : msds;
+      }
+      if (filesByField["oemLetter"]) {
+        product.oemLetter = filesByField["oemLetter"][0].filename;
+      }
+      if (filesByField["productComparisionSheet"]) {
+        product.productComparisionSheet = filesByField["productComparisionSheet"][0].filename;
+      }
+      if (filesByField["amc_cms"]) {
+        product.amc_cms = filesByField["amc_cms"][0].filename;
+      }
+    }
+
+    // Save and return updated product
     await product.save();
     await addActivityLog({
       userId: req.seller._id,
@@ -755,6 +874,9 @@ router.put(
     res.json({ success: true });
   }),
 );
+
+
+
 
 /* ------------------ COMMISSION (admin) ------------------ */
 router.put(
@@ -889,7 +1011,7 @@ router.put(
   "/admin-visibility",
   isAuthenticated,
   isAdmin("Admin"),
-  catchAsyncErrors(async (req, res) => {
+  catchAsyncErrors(async (req, res, next) => {
     const { productIds, isVisible } = req.body;
     await Product.updateMany(
       { _id: { $in: productIds } },

@@ -1,3 +1,4 @@
+// backend/model/product.js
 const mongoose = require("mongoose");
 
 const commisionHistorySchema = new mongoose.Schema({
@@ -44,6 +45,10 @@ const productSchema = new mongoose.Schema(
     name: {
       type: String,
       required: [true, "Please enter your product name!"],
+    },
+      brand: {
+      type: String,
+  default: null,
     },
     category: [
       {
@@ -105,25 +110,29 @@ const productSchema = new mongoose.Schema(
       ref: "SpecialityPackageType",
       // required: true,
     },
+
     //////
-    // manufacturerName: {
-    //   type: String,
-    // },
-    // email: {
-    //   type: String,
-    // },
-    // phone: {
-    //   type: String,
-    // },
-    // origin: {
-    //   type: String,
-    // },
+
+    // Manufacturer fields
+    manufacturerName: {
+      type: String,
+    },
+    email: {
+      type: String,
+    },
+    phone: {
+      type: String,
+    },
+    origin: {
+      type: String,
+    },
     manufacturer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Manufacturer",
       required: true,
     },
-    /////
+
+    ///// Descriptions
     shortdescription: {
       type: String,
       required: [true, "Please enter your product short description!"],
@@ -132,11 +141,16 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please enter your product description!"],
     },
+
+    /* ---------- ATTRIBUTES & BRAND ---------- */
     attributes: [
       {
         type: mongoose.Schema.Types.Mixed,
       },
     ],
+  
+
+    /* ---------- REST ---------- */
     weight: {
       type: String,
       required: true,
@@ -270,7 +284,7 @@ const productSchema = new mongoose.Schema(
       type: String, // sheet pdf name
     },
 
-    /////
+    ///// Reviews
     allowProductReviews: {
       type: Boolean,
       default: true,
@@ -314,6 +328,13 @@ const productSchema = new mongoose.Schema(
     timestamps: true,
   },
 );
+
+// Ensure attributes always exist (in case older docs don't have the field)
+productSchema.pre("save", function (next) {
+  if (!this.attributes) this.attributes = [];
+  if (this.brand === undefined) this.brand = null;
+  next();
+});
 
 const Product = mongoose.model("Product", productSchema);
 const ProductVariant = mongoose.model("ProductVariant", variantSchema);
