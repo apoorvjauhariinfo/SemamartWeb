@@ -724,6 +724,28 @@ router.put(
     }
   })
 );
+router.get(
+  "/getSeller/:id",
+   // only admins can fetch any seller by ID
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const sellerId = req.params.id;
+      const seller = await Shop.findById(sellerId);
+
+      if (!seller) {
+        return next(new ErrorHandler("Seller not found", 404));
+      }
+
+      res.status(200).json({
+        success: true,
+        seller,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
 
 
 module.exports = router;

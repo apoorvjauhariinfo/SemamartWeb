@@ -96,6 +96,7 @@ const specialPackageRoutes = require("./controller/specialityPackage");
 const productVariant = require("./controller/productVariant");
 const manufacturer = require("./controller/manufacturer");
 const adminsummary = require("./controller/admin");
+const adminSlider = require("./controller/slider");
 
 
 
@@ -117,6 +118,8 @@ app.use("/api/v2/special-package", specialPackageRoutes);
 app.use("/api/v2/product-variant", productVariant);
 app.use("/api/v2/manufacturer", manufacturer);
 app.use("/api/v2/adminsummary", adminsummary);
+app.use("/api/v2/adminslider", adminSlider);
+
 
 // it'for errhendel
 app.use(ErrorHandler);
