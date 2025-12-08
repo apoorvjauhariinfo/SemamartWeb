@@ -3,9 +3,6 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
-const { isAuthenticated, isAdmin } = require("../middleware/auth");
-
-
 
 const Order = require("../model/order");
 const Shop = require("../model/shop");
@@ -125,36 +122,6 @@ router.get(
     }
   })
 );
-
-// inside your product router file (where you currently have /admin-visibility and /seller-visibility)
-const { Product } = require("../model/product"); // ensure this is imported
-
-// ADMIN: set visibilityByAdmin for many products
-router.put(
-  "/admin-visibility",
-  isAuthenticated,
-  isAdmin("Admin"),
-  catchAsyncErrors(async (req, res) => {
-    const { productIds, isVisible } = req.body;
-    console.log("DEBUG admin-visibility called by:", req.user ? {id: req.user._id, role: req.user.role} : null);
-
-    if (!Array.isArray(productIds) || typeof isVisible !== "boolean") {
-      return res.status(400).json({ success: false, message: "Invalid request body: productIds (array) and isVisible (boolean) required" });
-    }
-
-    // optionally filter only valid ObjectIds to avoid Mongo errors
-    const validIds = productIds.filter((id) => mongoose.isValidObjectId(id));
-
-    await Product.updateMany(
-      { _id: { $in: validIds } },
-      { $set: { visibilityByAdmin: isVisible } }
-    );
-
-    res.json({ success: true, productIds: validIds, visibilityByAdmin: isVisible });
-  })
-);
-
-
 
 
 

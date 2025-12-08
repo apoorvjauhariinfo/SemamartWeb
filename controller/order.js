@@ -9,6 +9,7 @@ const Shop = require("../model/shop");
 const User = require("../model/user");
 const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
+const { uploadV2 } = require("../multer");
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -32,7 +33,7 @@ router.post(
       for (const item of cart) {
         const order = await Order.create({
           shop: item.shopId,
-          variant: item.variantId || null,
+          variant: item.variantId,
           qty: item.qty,
           shippingAddress,
           user,
@@ -40,7 +41,7 @@ router.post(
           tax: item.tax,
           unitPrice: item.unitPrice,
           paymentInfo,
-          statusHistory: [{ status: "Processing", updatedAt: new Date() }],
+          statusHistory: [{ status: "Created", updatedAt: new Date() }],
         });
         orders.push(order);
       }
@@ -296,8 +297,8 @@ router.get(
 
 router.put(
   "/update-order-status-admin/:id",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.id);
 
@@ -309,6 +310,20 @@ router.put(
     res.status(201).json(order);
   })
 );
+
+router.put(
+  "/update-order-payment/:id",
+  uploadV2.single("payment_file"),
+  catchAsyncErrors(async (req,res)=>{
+    const order = await Order.findById(req.params.id);
+    if (!order) throw new ErrorHandler("Order not found", 404);
+    if(order.paymentFile) throw new ErrorHandler("Payment verification still pending", 402)
+    order.paymentFile=req.file.filename
+    order.status="Paid"
+    await order.save()
+    res.status(200).json(order)
+  })
+)
 
 router.put(
   "/update-tracking-details/:id",
@@ -644,5 +659,11 @@ router.get(
     }
   })
 );
+
+router.put("/add-order-payment",
+  catchAsyncErrors(async(req,res)=>{
+    res.send("nnnn")
+  })
+)
 
 module.exports = router;

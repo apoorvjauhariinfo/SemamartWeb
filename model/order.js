@@ -6,6 +6,8 @@ const orderStatusHistorySchema = new mongoose.Schema({
   status: {
     type: String,
     enum: [
+      "Created",
+      "Paid",
       "Processing",
       "Packed",
       "Shipped",
@@ -62,8 +64,10 @@ const orderSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    default: "Processing",
+    default: "Created",
     enum: [
+      "Created",
+      "Paid",
       "Processing",
       "Packed",
       "Shipped",
@@ -97,6 +101,10 @@ const orderSchema = new mongoose.Schema({
     pickupPersonPhone: { type: Number, trim: true },
     trackingNumber: { type: String, trim: true },
   },
+  paymentFile:{
+    type:String,
+    default:null
+  }
 });
 
 module.exports = mongoose.model("Order", orderSchema);

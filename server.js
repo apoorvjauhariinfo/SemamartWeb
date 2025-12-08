@@ -4,7 +4,7 @@ const cookieParser = require("cookie-parser");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const path = require("path");
-const fs = require("fs")
+const fs = require("fs");
 
 // config
 if (process.env.NODE_ENV !== "PRODUCTION") {
@@ -23,12 +23,17 @@ const server = app.listen(8000, () => {
   console.log(`Server is running on http://localhost:${8000}`);
 });
 
-const uploadPath = path.join(__dirname, "uploads")
+const uploadPath = path.join(__dirname, "uploads");
 
 if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath + "/images", { recursive: true })
-  fs.mkdirSync(uploadPath + "/videos", { recursive: true })
-  fs.mkdirSync(uploadPath + "/docs", { recursive: true })
+  fs.mkdirSync(uploadPath + "/images", { recursive: true });
+  fs.mkdirSync(uploadPath + "/videos", { recursive: true });
+  fs.mkdirSync(uploadPath + "/docs", { recursive: true });
+}
+
+const paymentDocUploadPath = path.join(__dirname, "uploads/payment-docs")
+if (!fs.existsSync(paymentDocUploadPath)) {
+  fs.mkdirSync(paymentDocUploadPath + "/payment-docs", { recursive: true })
 }
 
 // middlewares
@@ -44,7 +49,7 @@ const allowedOriginsCors = [
   "http://semamart.com",
   "https://www.semamart.com",
   "http://www.semamart.com",
-]
+];
 
 app.use(
   cors({
@@ -56,12 +61,10 @@ app.use(
       }
     },
     credentials: true,
-  })
+  }),
 );
 
-
 app.use("/", express.static("uploads"));
-
 
 app.use(bodyParser.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -75,7 +78,7 @@ if (process.env.NODE_ENV !== "PRODUCTION") {
   });
 }
 
-app.get("/", (req, res) => {
+app.get("/test", (req, res) => {
   res.send("Hello World!");
 });
 
@@ -97,9 +100,6 @@ const productVariant = require("./controller/productVariant");
 const manufacturer = require("./controller/manufacturer");
 const adminsummary = require("./controller/admin");
 const adminSlider = require("./controller/slider");
-
-
-
 
 // end points
 app.use("/api/v2/withdraw", withdraw);
