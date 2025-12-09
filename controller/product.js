@@ -576,16 +576,21 @@ router.get(
       if (!mongoose.isValidObjectId(subCategoryId)) {
         return res.status(400).json({ message: "Invalid subCategoryId" });
       }
-      const products = await Product.find({
+
+      // populate variants & shopId; also try to populate manufacturer directly
+      let products = await Product.find({
         subCategory: subCategoryId,
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
         .populate("shopId")
         .populate({
+          path: "manufacturer",
+          select: "manufacturerName email phone origin",
+        })
+        .populate({
           path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: "thumbnail originalPrice discountPrice stock colorOption size",
         })
         .lean();
 
@@ -593,14 +598,80 @@ router.get(
         return res.status(200).json([]);
       }
 
-      res.status(200).json(products);
+      // Collect any manufacturer ids that are still raw strings (in case some docs store string)
+      const remainingManufacturerIds = [
+        ...new Set(
+          products
+            .map((p) => p.manufacturer)
+            .filter(
+              (m) =>
+                m &&
+                typeof m === "string" &&
+                mongoose.isValidObjectId(m)
+            )
+        ),
+      ];
+
+      // Batch-fetch Manufacturer docs for those leftover ids (only when needed)
+      let manufacturerMap = {};
+      if (remainingManufacturerIds.length > 0) {
+        const Manufacturer = mongoose.model("Manufacturer");
+        const manufacturers = await Manufacturer.find(
+          { _id: { $in: remainingManufacturerIds } },
+          "manufacturerName email phone origin"
+        ).lean();
+
+        manufacturerMap = manufacturers.reduce((acc, m) => {
+          acc[m._id.toString()] = m;
+          return acc;
+        }, {});
+      }
+
+      // Normalize every product: ensure p.manufacturer is an object with manufacturerName
+      products = products.map((p) => {
+        // If manufacturer is an object (populated) => ok
+        if (p.manufacturer && typeof p.manufacturer === "object") {
+          return p;
+        }
+
+        // If manufacturer is a raw id string and we fetched it, replace with object
+        if (p.manufacturer && typeof p.manufacturer === "string") {
+          const found = manufacturerMap[p.manufacturer];
+          if (found) {
+            p.manufacturer = found;
+            return p;
+          }
+        }
+
+        // If no manufacturer object but top-level manufacturerName exists, inject a manufacturer object
+        if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
+          p.manufacturer = {
+            manufacturerName: p.manufacturerName,
+            email: p.email || "",
+            phone: p.phone || "",
+            origin: p.origin || "",
+            _id: null,
+          };
+          return p;
+        }
+
+        // final fallback: if manufacturer is still an id or missing, set a safe placeholder
+        if (!p.manufacturer || typeof p.manufacturer !== "object") {
+          p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
+        }
+        return p;
+      });
+
+      return res.status(200).json(products);
     } catch (error) {
       next(error);
     }
-  }),
+  })
 );
 
+
 /* ------------------ PUBLIC: get-products-by-category (user) ------------------ */
+// GET /api/.../get-products-by-category/:CategoryId
 router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
   try {
     const { CategoryId } = req.params;
@@ -608,12 +679,18 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
     if (!mongoose.isValidObjectId(CategoryId)) {
       return res.status(400).json({ message: "Invalid CategoryId" });
     }
-    const products = await Product.find({
+
+    // Fetch products and try to populate manufacturer & variants
+    let products = await Product.find({
       category: CategoryId,
       visibilityByAdmin: true,
       visibilityBySeller: true,
     })
       .populate("shopId")
+      .populate({
+        path: "manufacturer",
+        select: "manufacturerName email phone origin",
+      })
       .populate({
         path: "variants",
         select: "thumbnail originalPrice discountPrice stock colorOption size",
@@ -624,11 +701,72 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       return res.status(200).json([]);
     }
 
-    res.status(200).json(products);
+    // Collect any manufacturer values that are still raw ObjectId strings
+    const remainingManufacturerIds = [
+      ...new Set(
+        products
+          .map((p) => p.manufacturer)
+          .filter(
+            (m) => m && typeof m === "string" && mongoose.isValidObjectId(m)
+          )
+      ),
+    ];
+
+    // Batch-load Manufacturer docs for leftover ids (if any)
+    let manufacturerMap = {};
+    if (remainingManufacturerIds.length > 0) {
+      const Manufacturer = mongoose.model("Manufacturer");
+      const manufacturers = await Manufacturer.find(
+        { _id: { $in: remainingManufacturerIds } },
+        "manufacturerName email phone origin"
+      ).lean();
+
+      manufacturerMap = manufacturers.reduce((acc, m) => {
+        acc[m._id.toString()] = m;
+        return acc;
+      }, {});
+    }
+
+    // Normalize every product so `p.manufacturer` is always an object with manufacturerName
+    products = products.map((p) => {
+      // already populated object -> OK
+      if (p.manufacturer && typeof p.manufacturer === "object") return p;
+
+      // manufacturer is a raw id string and we fetched the doc -> replace it
+      if (p.manufacturer && typeof p.manufacturer === "string") {
+        const found = manufacturerMap[p.manufacturer];
+        if (found) {
+          p.manufacturer = found;
+          return p;
+        }
+      }
+
+      // fallback: if top-level manufacturerName exists, inject an object
+      if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
+        p.manufacturer = {
+          manufacturerName: p.manufacturerName,
+          email: p.email || "",
+          phone: p.phone || "",
+          origin: p.origin || "",
+          _id: null,
+        };
+        return p;
+      }
+
+      // final fallback: ensure a predictable shape (avoid exposing raw id)
+      if (!p.manufacturer || typeof p.manufacturer !== "object") {
+        p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
+      }
+
+      return p;
+    });
+
+    return res.status(200).json(products);
   } catch (error) {
     next(error);
   }
 });
+
 
 /* ------------------ PUBLIC: speciality package endpoints (user) ------------------ */
 router.get(
