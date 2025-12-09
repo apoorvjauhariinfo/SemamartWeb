@@ -14,57 +14,6 @@ const mongoose = require("mongoose");
 const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
-/**
- * Helper: parse attributes that might come as:
- * - undefined
- * - a single JSON string
- * - an array of JSON strings
- *
- * Returns array of parsed objects (skips invalid JSON).
- */
-function parseAttributesFromReqBody(bodyOrRaw) {
-  // Accept either the full req.body or just req.body.attributes (to be flexible)
-  const raw = bodyOrRaw?.attributes !== undefined ? bodyOrRaw.attributes : bodyOrRaw;
-  if (!raw) return [];
-  try {
-    if (Array.isArray(raw)) {
-      return raw
-        .map((s) => {
-          try {
-            if (typeof s === "string") return JSON.parse(s);
-            return s;
-          } catch {
-            // If parsing failed, try to treat "key:value" style used accidentally
-            if (typeof s === "string" && s.includes(":")) {
-              const [k, ...rest] = s.split(":");
-              return { [k.trim()]: rest.join(":").trim() };
-            }
-            return null;
-          }
-        })
-        .filter(Boolean);
-    } else if (typeof raw === "string") {
-      try {
-        return [JSON.parse(raw)];
-      } catch {
-        if (raw.includes(":")) {
-          const [k, ...rest] = raw.split(":");
-          return [{ [k.trim()]: rest.join(":").trim() }];
-        }
-        // fallback: wrap as value
-        return [{ value: raw }];
-      }
-    } else if (typeof raw === "object") {
-      return [raw];
-    } else {
-      return [];
-    }
-  } catch (err) {
-    return [];
-  }
-}
-
-/* ------------------ CREATE PRODUCT (seller) ------------------ */
 router.post(
   "/create-product-v2",
   uploadV2.fields([
@@ -111,18 +60,11 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    // Ensure variants parsed correctly (variants sent as JSON string)
-    const variants = (() => {
-      try {
-        return JSON.parse(product.variants || "[]");
-      } catch (e) {
-        return [];
-      }
-    })();
+    const variants = JSON.parse(product.variants);
+
     product.variants = []; // will be set after creating variant docs
 
-    // ---------- Robustly parse attributes ----------
-    product.attributes = parseAttributesFromReqBody(req.body); // now always an array
+    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
 
     // tags: ensure array
     product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
@@ -134,7 +76,7 @@ router.post(
     if (req.files && req.files.thumbnail) {
       // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
-        if (variants[i]) variants[i].thumbnail = el.filename;
+        variants[i].thumbnail = el.filename;
       });
     }
     if (req.files && req.files.shortVideo) {
@@ -171,14 +113,11 @@ router.post(
     // Create product document
     const savedProduct = await Product.create(product);
 
-    // Create product variants (if any)
-    let savedVariants = [];
-    if (Array.isArray(variants) && variants.length > 0) {
-      savedVariants = await ProductVariant.insertMany(
-        variants.map((v) => ({ ...v, productId: savedProduct._id }))
-      );
-      savedProduct.variants = savedVariants.map((v) => v._id);
-    }
+    const savedVariants = await ProductVariant.insertMany(
+      variants.map((v) => ({ ...v, productId: savedProduct._id })),
+    );
+
+    savedProduct.variants = savedVariants.map((v) => v._id);
 
     // initial commission history
     savedProduct.commissionHistory = [
@@ -302,8 +241,7 @@ router.get(
         productType: "Consumables",
         visibilityByAdmin: true,
         visibilityBySeller: true,
-      })
-        .sort({ createdAt: -1 });
+      }).sort({ createdAt: -1 });
 
       res.status(200).json({
         success: true,
@@ -402,7 +340,7 @@ router.put(
       };
 
       const isReviewed = product.reviews.find(
-        (rev) => String(rev.user._id) === String(req.user._id)
+        (rev) => String(rev.user._id) === String(req.user._id),
       );
 
       if (isReviewed) {
@@ -430,7 +368,7 @@ router.put(
         await Order.findByIdAndUpdate(
           orderId,
           { $set: { "cart.$[elem].isReviewed": true } },
-          { arrayFilters: [{ "elem._id": productId }], new: true }
+          { arrayFilters: [{ "elem._id": productId }], new: true },
         );
       }
 
@@ -451,20 +389,22 @@ router.get(
   // isAuthenticated,
   // isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
-      const products = await Product.find()
-        .sort({ createdAt: -1 })
-        .populate({
-          path: "variants",
-          model: "ProductVariant",
-          select: "thumbnail originalPrice discountPrice stock colorOption size",
-        })
-        .select("name variants createdAt commission sku visibilityByAdmin visibilityBySeller");
+    const products = await Product.find()
+      .sort({ createdAt: -1 })
+      .populate({
+        path: "variants",
+        model: "ProductVariant",
+        select: "thumbnail originalPrice discountPrice stock colorOption size",
+      })
+      .select(
+        "name variants createdAt commission sku visibilityByAdmin visibilityBySeller",
+      );
 
     res.status(201).json({
       success: true,
       products,
     });
-  })
+  }),
 );
 
 /* ------------------ PUBLIC SEARCH (user portal) ------------------ */
@@ -477,7 +417,10 @@ router.get(
     }
 
     const term = String(q).trim();
-    const regex = new RegExp(term.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
+    const regex = new RegExp(
+      term.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
+      "i",
+    );
 
     const products = await Product.find({
       visibilityByAdmin: true,
@@ -498,13 +441,19 @@ router.get(
       if (regex.test(p.name || "")) return true;
       if (p.manufacturerName && regex.test(p.manufacturerName)) return true;
       if (Array.isArray(p.category)) {
-        if (p.category.some((c) => c && regex.test(String(c.name || "")))) return true;
-      } else if (p.category && p.category.name && regex.test(String(p.category.name))) return true;
+        if (p.category.some((c) => c && regex.test(String(c.name || ""))))
+          return true;
+      } else if (
+        p.category &&
+        p.category.name &&
+        regex.test(String(p.category.name))
+      )
+        return true;
       return false;
     });
 
     return res.status(200).json({ success: true, products: finalProducts });
-  })
+  }),
 );
 
 /* ------------------ SELLER SEARCH (seller portal) ------------------ */
@@ -514,7 +463,9 @@ router.get(
     const { q, shopId } = req.query;
 
     if (!shopId) {
-      return res.status(400).json({ success: false, message: "Missing shopId" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Missing shopId" });
     }
 
     // no query => return all products of shop
@@ -529,7 +480,10 @@ router.get(
     }
 
     const qStr = String(q);
-    const regex = new RegExp(qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"), "i");
+    const regex = new RegExp(
+      qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
+      "i",
+    );
 
     const products = await Product.find({
       shopId: String(shopId),
@@ -541,13 +495,14 @@ router.get(
 
     // final in-memory filter covering category.name
     const finalProducts = products.filter((p) => {
-      const catName = p.category && p.category.name ? String(p.category.name) : "";
+      const catName =
+        p.category && p.category.name ? String(p.category.name) : "";
       if (regex.test(catName)) return true;
       return true; // keep product if already matched name/manufacturer
     });
 
     return res.status(200).json({ success: true, products: finalProducts });
-  })
+  }),
 );
 
 /* ------------------ PUBLIC: get-products-by-subcategory (user) ------------------ */
@@ -560,16 +515,21 @@ router.get(
       if (!mongoose.isValidObjectId(subCategoryId)) {
         return res.status(400).json({ message: "Invalid subCategoryId" });
       }
-      const products = await Product.find({
+
+      // populate variants & shopId; also try to populate manufacturer directly
+      let products = await Product.find({
         subCategory: subCategoryId,
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
         .populate("shopId")
         .populate({
+          path: "manufacturer",
+          select: "manufacturerName email phone origin",
+        })
+        .populate({
           path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: "thumbnail originalPrice discountPrice stock colorOption size",
         })
         .lean();
 
@@ -577,14 +537,80 @@ router.get(
         return res.status(200).json([]);
       }
 
-      res.status(200).json(products);
+      // Collect any manufacturer ids that are still raw strings (in case some docs store string)
+      const remainingManufacturerIds = [
+        ...new Set(
+          products
+            .map((p) => p.manufacturer)
+            .filter(
+              (m) =>
+                m &&
+                typeof m === "string" &&
+                mongoose.isValidObjectId(m)
+            )
+        ),
+      ];
+
+      // Batch-fetch Manufacturer docs for those leftover ids (only when needed)
+      let manufacturerMap = {};
+      if (remainingManufacturerIds.length > 0) {
+        const Manufacturer = mongoose.model("Manufacturer");
+        const manufacturers = await Manufacturer.find(
+          { _id: { $in: remainingManufacturerIds } },
+          "manufacturerName email phone origin"
+        ).lean();
+
+        manufacturerMap = manufacturers.reduce((acc, m) => {
+          acc[m._id.toString()] = m;
+          return acc;
+        }, {});
+      }
+
+      // Normalize every product: ensure p.manufacturer is an object with manufacturerName
+      products = products.map((p) => {
+        // If manufacturer is an object (populated) => ok
+        if (p.manufacturer && typeof p.manufacturer === "object") {
+          return p;
+        }
+
+        // If manufacturer is a raw id string and we fetched it, replace with object
+        if (p.manufacturer && typeof p.manufacturer === "string") {
+          const found = manufacturerMap[p.manufacturer];
+          if (found) {
+            p.manufacturer = found;
+            return p;
+          }
+        }
+
+        // If no manufacturer object but top-level manufacturerName exists, inject a manufacturer object
+        if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
+          p.manufacturer = {
+            manufacturerName: p.manufacturerName,
+            email: p.email || "",
+            phone: p.phone || "",
+            origin: p.origin || "",
+            _id: null,
+          };
+          return p;
+        }
+
+        // final fallback: if manufacturer is still an id or missing, set a safe placeholder
+        if (!p.manufacturer || typeof p.manufacturer !== "object") {
+          p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
+        }
+        return p;
+      });
+
+      return res.status(200).json(products);
     } catch (error) {
       next(error);
     }
   })
 );
 
+
 /* ------------------ PUBLIC: get-products-by-category (user) ------------------ */
+// GET /api/.../get-products-by-category/:CategoryId
 router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
   try {
     const { CategoryId } = req.params;
@@ -592,12 +618,18 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
     if (!mongoose.isValidObjectId(CategoryId)) {
       return res.status(400).json({ message: "Invalid CategoryId" });
     }
-    const products = await Product.find({
+
+    // Fetch products and try to populate manufacturer & variants
+    let products = await Product.find({
       category: CategoryId,
       visibilityByAdmin: true,
       visibilityBySeller: true,
     })
       .populate("shopId")
+      .populate({
+        path: "manufacturer",
+        select: "manufacturerName email phone origin",
+      })
       .populate({
         path: "variants",
         select: "thumbnail originalPrice discountPrice stock colorOption size",
@@ -608,11 +640,72 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       return res.status(200).json([]);
     }
 
-    res.status(200).json(products);
+    // Collect any manufacturer values that are still raw ObjectId strings
+    const remainingManufacturerIds = [
+      ...new Set(
+        products
+          .map((p) => p.manufacturer)
+          .filter(
+            (m) => m && typeof m === "string" && mongoose.isValidObjectId(m)
+          )
+      ),
+    ];
+
+    // Batch-load Manufacturer docs for leftover ids (if any)
+    let manufacturerMap = {};
+    if (remainingManufacturerIds.length > 0) {
+      const Manufacturer = mongoose.model("Manufacturer");
+      const manufacturers = await Manufacturer.find(
+        { _id: { $in: remainingManufacturerIds } },
+        "manufacturerName email phone origin"
+      ).lean();
+
+      manufacturerMap = manufacturers.reduce((acc, m) => {
+        acc[m._id.toString()] = m;
+        return acc;
+      }, {});
+    }
+
+    // Normalize every product so `p.manufacturer` is always an object with manufacturerName
+    products = products.map((p) => {
+      // already populated object -> OK
+      if (p.manufacturer && typeof p.manufacturer === "object") return p;
+
+      // manufacturer is a raw id string and we fetched the doc -> replace it
+      if (p.manufacturer && typeof p.manufacturer === "string") {
+        const found = manufacturerMap[p.manufacturer];
+        if (found) {
+          p.manufacturer = found;
+          return p;
+        }
+      }
+
+      // fallback: if top-level manufacturerName exists, inject an object
+      if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
+        p.manufacturer = {
+          manufacturerName: p.manufacturerName,
+          email: p.email || "",
+          phone: p.phone || "",
+          origin: p.origin || "",
+          _id: null,
+        };
+        return p;
+      }
+
+      // final fallback: ensure a predictable shape (avoid exposing raw id)
+      if (!p.manufacturer || typeof p.manufacturer !== "object") {
+        p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
+      }
+
+      return p;
+    });
+
+    return res.status(200).json(products);
   } catch (error) {
     next(error);
   }
 });
+
 
 /* ------------------ PUBLIC: speciality package endpoints (user) ------------------ */
 router.get(
@@ -642,7 +735,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  })
+  }),
 );
 
 router.get(
@@ -674,7 +767,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  })
+  }),
 );
 
 /* ------------------ UPLOAD / UPDATE helpers (admin/seller) ------------------ */
@@ -802,11 +895,15 @@ router.put(
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
     const product = await Product.findById(productId);
-    if (!product) return res.status(404).json({ success: false, message: "product not found" });
+    if (!product) throw new ErrorHandler("product not found", 404);
 
     const updates = req.body || {};
+    const metaData = {};
     Object.keys(updates).forEach((k) => {
       if (product[k] !== updates[k]) {
+        if (k === "attributes") {
+          updates[k] = updates[k].map((v) => JSON.parse(v));
+        }
         metaData[k] = {
           newValue: updates[k],
           oldValue: product[k],
@@ -815,52 +912,6 @@ router.put(
       product[k] = updates[k];
     });
 
-    // --- files handling (images, thumbnails, certificates etc) ---
-    if (req.files && req.files.length > 0) {
-      // group files by fieldname
-      const filesByField = req.files.reduce((acc, f) => {
-        acc[f.fieldname] = acc[f.fieldname] || [];
-        acc[f.fieldname].push(f);
-        return acc;
-      }, {});
-
-      if (filesByField["images"]) {
-        // append or replace images depending on your desired semantics
-        const newImgs = filesByField["images"].map((f) => f.filename);
-        product.images = Array.isArray(product.images) ? product.images.concat(newImgs) : newImgs;
-      }
-      if (filesByField["thumbnail"]) {
-        // if multiple thumbnails present, assign them to variants or main thumbnail
-        // We'll set product.thumbnail to the first thumbnail uploaded (adjust if you need variant-level mapping)
-        product.thumbnail = filesByField["thumbnail"][0].filename;
-      }
-      if (filesByField["shortVideo"]) {
-        product.shortVideo = filesByField["shortVideo"][0].filename;
-      }
-      if (filesByField["certificate"]) {
-        const certs = filesByField["certificate"].map((f) => f.filename);
-        product.certificate = Array.isArray(product.certificate) ? product.certificate.concat(certs) : certs;
-      }
-      if (filesByField["productCompilance"]) {
-        const pcs = filesByField["productCompilance"].map((f) => f.filename);
-        product.productCompilance = Array.isArray(product.productCompilance) ? product.productCompilance.concat(pcs) : pcs;
-      }
-      if (filesByField["msds_ifu_leaflet"]) {
-        const msds = filesByField["msds_ifu_leaflet"].map((f) => f.filename);
-        product.msds_ifu_leaflet = Array.isArray(product.msds_ifu_leaflet) ? product.msds_ifu_leaflet.concat(msds) : msds;
-      }
-      if (filesByField["oemLetter"]) {
-        product.oemLetter = filesByField["oemLetter"][0].filename;
-      }
-      if (filesByField["productComparisionSheet"]) {
-        product.productComparisionSheet = filesByField["productComparisionSheet"][0].filename;
-      }
-      if (filesByField["amc_cms"]) {
-        product.amc_cms = filesByField["amc_cms"][0].filename;
-      }
-    }
-
-    // Save and return updated product
     await product.save();
     await addActivityLog({
       userId: req.seller._id,
@@ -874,9 +925,6 @@ router.put(
     res.json({ success: true });
   }),
 );
-
-
-
 
 /* ------------------ COMMISSION (admin) ------------------ */
 router.put(
@@ -970,7 +1018,7 @@ router.get(
     const qStr = String(q);
     const regex = new RegExp(
       qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i"
+      "i",
     );
 
     // search by name, manufacturerName, category.name
@@ -1004,7 +1052,7 @@ router.get(
     });
 
     return res.status(200).json({ success: true, products: finalProducts });
-  })
+  }),
 );
 
 router.put(
@@ -1015,10 +1063,10 @@ router.put(
     const { productIds, isVisible } = req.body;
     await Product.updateMany(
       { _id: { $in: productIds } },
-      { $set: { visibilityByAdmin: isVisible } }
+      { $set: { visibilityByAdmin: isVisible } },
     );
     res.json({ success: true });
-  })
+  }),
 );
 
 router.put(
@@ -1028,10 +1076,10 @@ router.put(
     const { productIds, isVisible } = req.body;
     await Product.updateMany(
       { _id: { $in: productIds } },
-      { $set: { visibilityBySeller: isVisible } }
+      { $set: { visibilityBySeller: isVisible } },
     );
     res.json({ success: true });
-  })
+  }),
 );
 
 module.exports = router;
