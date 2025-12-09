@@ -25,6 +25,7 @@ const server = app.listen(8000, () => {
 
 const uploadPath = path.join(__dirname, "uploads");
 
+
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath + "/images", { recursive: true });
   fs.mkdirSync(uploadPath + "/videos", { recursive: true });
@@ -100,6 +101,8 @@ const productVariant = require("./controller/productVariant");
 const manufacturer = require("./controller/manufacturer");
 const adminsummary = require("./controller/admin");
 const adminSlider = require("./controller/slider");
+const hero = require("./controller/hero");
+const sectionbanner = require("./controller/sectionbanner");
 
 // end points
 app.use("/api/v2/withdraw", withdraw);
@@ -119,6 +122,8 @@ app.use("/api/v2/product-variant", productVariant);
 app.use("/api/v2/manufacturer", manufacturer);
 app.use("/api/v2/adminsummary", adminsummary);
 app.use("/api/v2/adminslider", adminSlider);
+app.use("/api/v2/heroslider", hero);
+app.use("/api/v2/sectionbanner", sectionbanner);
 
 
 // it'for errhendel
