@@ -14,58 +14,6 @@ const mongoose = require("mongoose");
 const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 
-/**
- * Helper: parse attributes that might come as:
- * - undefined
- * - a single JSON string
- * - an array of JSON strings
- *
- * Returns array of parsed objects (skips invalid JSON).
- */
-function parseAttributesFromReqBody(bodyOrRaw) {
-  // Accept either the full req.body or just req.body.attributes (to be flexible)
-  const raw =
-    bodyOrRaw?.attributes !== undefined ? bodyOrRaw.attributes : bodyOrRaw;
-  if (!raw) return [];
-  try {
-    if (Array.isArray(raw)) {
-      return raw
-        .map((s) => {
-          try {
-            if (typeof s === "string") return JSON.parse(s);
-            return s;
-          } catch {
-            // If parsing failed, try to treat "key:value" style used accidentally
-            if (typeof s === "string" && s.includes(":")) {
-              const [k, ...rest] = s.split(":");
-              return { [k.trim()]: rest.join(":").trim() };
-            }
-            return null;
-          }
-        })
-        .filter(Boolean);
-    } else if (typeof raw === "string") {
-      try {
-        return [JSON.parse(raw)];
-      } catch {
-        if (raw.includes(":")) {
-          const [k, ...rest] = raw.split(":");
-          return [{ [k.trim()]: rest.join(":").trim() }];
-        }
-        // fallback: wrap as value
-        return [{ value: raw }];
-      }
-    } else if (typeof raw === "object") {
-      return [raw];
-    } else {
-      return [];
-    }
-  } catch (err) {
-    return [];
-  }
-}
-
-/* ------------------ CREATE PRODUCT (seller) ------------------ */
 router.post(
   "/create-product-v2",
   uploadV2.fields([
@@ -112,14 +60,8 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    // Ensure variants parsed correctly (variants sent as JSON string)
-    const variants = (() => {
-      try {
-        return JSON.parse(product.variants || "[]");
-      } catch (e) {
-        return [];
-      }
-    })();
+    const variants = JSON.parse(product.variants);
+
     product.variants = []; // will be set after creating variant docs
 
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
@@ -134,7 +76,7 @@ router.post(
     if (req.files && req.files.thumbnail) {
       // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
-        if (variants[i]) variants[i].thumbnail = el.filename;
+        variants[i].thumbnail = el.filename;
       });
     }
     if (req.files && req.files.shortVideo) {
@@ -171,14 +113,11 @@ router.post(
     // Create product document
     const savedProduct = await Product.create(product);
 
-    // Create product variants (if any)
-    let savedVariants = [];
-    if (Array.isArray(variants) && variants.length > 0) {
-      savedVariants = await ProductVariant.insertMany(
-        variants.map((v) => ({ ...v, productId: savedProduct._id })),
-      );
-      savedProduct.variants = savedVariants.map((v) => v._id);
-    }
+    const savedVariants = await ProductVariant.insertMany(
+      variants.map((v) => ({ ...v, productId: savedProduct._id })),
+    );
+
+    savedProduct.variants = savedVariants.map((v) => v._id);
 
     // initial commission history
     savedProduct.commissionHistory = [
@@ -821,11 +760,11 @@ router.put(
     if (!product) throw new ErrorHandler("product not found", 404);
 
     const updates = req.body || {};
-    const metaData =  {};
+    const metaData = {};
     Object.keys(updates).forEach((k) => {
       if (product[k] !== updates[k]) {
-        if(k === "attributes"){
-          updates[k] = updates[k].map(v => JSON.parse(v))
+        if (k === "attributes") {
+          updates[k] = updates[k].map((v) => JSON.parse(v));
         }
         metaData[k] = {
           newValue: updates[k],
