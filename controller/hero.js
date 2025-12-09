@@ -34,7 +34,7 @@ router.post("/", upload.array("heroImages"), async (req, res) => {
     }
 
     const fileMap = {};
-    files.forEach((f) => (fileMap[f.originalname] = `/hero/${f.filename}`));
+    files.forEach((f) => (fileMap[f.originalname] = `${f.filename}`));
 
     items.forEach((item) => {
       /* ---------- BANNERS ---------- */

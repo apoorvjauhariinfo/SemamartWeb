@@ -79,14 +79,14 @@ router.post(
             name: sec.left.name,
             link: sec.left.link,
             image: sectionFiles[i].leftFile
-              ? `/hero/${sectionFiles[i].leftFile.filename}`
+              ? `${sectionFiles[i].leftFile.filename}`
               : sec.left.image, // keep old if not uploaded
           },
           right: {
             name: sec.right.name,
             link: sec.right.link,
             image: sectionFiles[i].rightFile
-              ? `/hero/${sectionFiles[i].rightFile.filename}`
+              ? `${sectionFiles[i].rightFile.filename}`
               : sec.right.image, // keep old if not uploaded
           },
         })),
