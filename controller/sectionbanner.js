@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const SectionBanner = require("../model/sectionbanner");
+const { uploadV2 } = require("../multer");
 
 // Multer setup
 const storage = multer.diskStorage({
@@ -25,7 +26,7 @@ const upload = multer({ storage });
  */
 router.post(
   "/",
-  upload.fields([
+  uploadV2.fields([
     { name: "section1_left", maxCount: 1 },
     { name: "section1_right", maxCount: 1 },
     { name: "section2_left", maxCount: 1 },

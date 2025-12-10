@@ -4,6 +4,7 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 const HeroSection = require("../model/heroitem");
+const { uploadV2 } = require("../multer");
 
 /* ================= MULTER ================= */
 const storage = multer.diskStorage({
@@ -19,7 +20,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 /* ================= SAVE / UPDATE ================= */
-router.post("/", upload.array("heroImages"), async (req, res) => {
+router.post("/", uploadV2.array("heroImages"), async (req, res) => {
   try {
     const items = JSON.parse(req.body.heroData);
     const files = req.files;
