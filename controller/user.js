@@ -11,6 +11,10 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const sendToken = require("../utils/jwtToken");
 const { isAuthenticated, isAdmin } = require("../middleware/auth");
 const crypto = require("crypto"); // <-- added for reset token generation
+const mongoose = require("mongoose");
+const Order = require("../model/order"); // adjust path as needed
+const { Product, ProductVariant } = require("../model/product");
+
 
 const router = express.Router();
 
@@ -682,6 +686,79 @@ router.get('/:userId/addresses', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+router.get("/:userId/products", async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: "Invalid userId" });
+    }
+
+    const products = await Order.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(userId) } },
+      { $unwind: "$variant" },
+      {
+        $lookup: {
+          from: "productvariants",
+          localField: "variant",
+          foreignField: "_id",
+          as: "variantDetails"
+        }
+      },
+      { $unwind: "$variantDetails" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "variantDetails.productId",
+          foreignField: "_id",
+          as: "productDetails"
+        }
+      },
+      { $unwind: "$productDetails" },
+      // Include everything from Order, Variant, Product
+      {
+        $addFields: {
+          variantDetails: "$variantDetails",
+          productDetails: "$productDetails"
+        }
+      },
+      { $sort: { createdAt: -1 } } // sort by order date
+    ]);
+
+    res.status(200).json({
+      success: true,
+      count: products.length,
+      products
+    });
+
+  } catch (err) {
+    console.error("Error fetching user products:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
+router.get(
+  "/getUser/:id",
+  // only admins can fetch any seller by ID
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const userId = req.params.id;
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return next(new ErrorHandler("user not found", 404));
+      }
+
+      res.status(200).json({
+        success: true,
+        user,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
 
 
 module.exports = router;
