@@ -1,25 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 const HeroSection = require("../model/heroitem");
+const { uploadV2 } = require("../multer"); // your uploadV2 setup
 
-/* ================= MULTER ================= */
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, "../uploads/hero");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_, file, cb) =>
-    cb(null, Date.now() + "-" + file.originalname),
-});
-
-const upload = multer({ storage });
-
-/* ================= SAVE / UPDATE ================= */
-router.post("/", upload.array("heroImages"), async (req, res) => {
+/* ================= SAVE / UPDATE HERO SECTION ================= */
+router.post("/", uploadV2.array("heroImages"), async (req, res) => {
   try {
     const items = JSON.parse(req.body.heroData);
     const files = req.files;
@@ -33,18 +18,22 @@ router.post("/", upload.array("heroImages"), async (req, res) => {
       });
     }
 
+    // Map originalname -> saved filename
     const fileMap = {};
-    files.forEach((f) => (fileMap[f.originalname] = `${f.filename}`));
+    files.forEach((f) => {
+      fileMap[f.originalname] = f.filename; // only file name
+    });
 
     items.forEach((item) => {
-      /* ---------- BANNERS ---------- */
+      /* ---------- LEFT BANNER ---------- */
       if (item.type === "banner-left") {
         hero.leftBanner.name = item.name;
         hero.leftBanner.link = item.link;
         if (fileMap[item.fileName])
-          hero.leftBanner.imagePath = fileMap[item.fileName];
+          hero.leftBanner.imagePath = fileMap[item.fileName]; // only file name
       }
 
+      /* ---------- RIGHT BANNER ---------- */
       if (item.type === "banner-right") {
         hero.rightBanner.name = item.name;
         hero.rightBanner.link = item.link;
@@ -55,7 +44,6 @@ router.post("/", upload.array("heroImages"), async (req, res) => {
       /* ---------- SLIDERS ---------- */
       if (item.type === "slider") {
         if (item.id) {
-          // ✅ update existing
           const slider = hero.sliders.id(item.id);
           if (slider) {
             slider.name = item.name;
@@ -64,7 +52,6 @@ router.post("/", upload.array("heroImages"), async (req, res) => {
               slider.imagePath = fileMap[item.fileName];
           }
         } else {
-          // ✅ add new
           hero.sliders.push({
             name: item.name,
             link: item.link,
@@ -75,17 +62,22 @@ router.post("/", upload.array("heroImages"), async (req, res) => {
     });
 
     await hero.save();
-    res.json({ success: true });
+    res.json({ success: true, hero });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false });
   }
 });
 
-/* ================= FETCH ================= */
+/* ================= FETCH HERO SECTION ================= */
 router.get("/getallimg", async (_, res) => {
-  const data = await HeroSection.find().sort({ createdAt: -1 });
-  res.json({ success: true, data });
+  try {
+    const data = await HeroSection.find().sort({ createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
 });
 
 module.exports = router;
