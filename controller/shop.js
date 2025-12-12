@@ -14,6 +14,7 @@ const mongoose = require("mongoose");
 const sendShopToken = require("../utils/shopToken");
 const user = require("../model/user");
 const addActivityLog = require("../utils/activityLogHelper");
+const sentMailToAdmin = require("../utils/mailToAdmin");
 
 // create shop (seller email verification)
 router.post(
@@ -267,6 +268,21 @@ router.post(
         description: seller.businessName + " registered",
       });
 
+      const mailSubject = "New seller registered"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+          <h2 style="color: #2c3e50;">New Seller Registration</h2>
+          <p>A new seller has just registered on the platform. Please review their details and proceed with the verification process.</p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+            <p style="margin: 0;"><strong>Business Name:</strong> ${businessName}</p>
+            <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+            <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(seller.createdAt).toLocaleDateString("en-IN")}</p>
+          </div>
+        </div>
+      `;
+
+      await sentMailToAdmin(mailSubject,htmlBody)
+
       console.log("✅ Seller verified successfully:", email);
       res.status(201).json({
         success: true,
@@ -467,8 +483,8 @@ router.put(
 // all sellers --- for admin
 router.get(
   "/admin-all-sellers",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellers = await Shop.find().sort({
@@ -489,8 +505,8 @@ router.get(
 
 router.get(
   "/admin-verified-sellers",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellers = await Shop.find({ verified: true }).sort({
