@@ -277,8 +277,8 @@ router.get(
 
 router.get(
   "/get-order-details-admin/:orderId",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId).populate({
       path: "variant",
@@ -306,6 +306,10 @@ router.put(
     if (!order) throw new ErrorHandler("Order not found", 404);
 
     order.status = req.body.status;
+    order.statusHistory.push({
+      status: req.body.status,
+      updatedAt: new Date(),
+    });
 
     await order.save();
     res.status(201).json(order);
@@ -361,6 +365,12 @@ router.put(
 );
 
 // ✅ Generate invoice per order
+// Utility to write bold label + normal value on the same line
+function labeledText(doc, label, value, x, y) {
+  doc.fontSize(10).font("Helvetica-Bold").text(label, x, y);
+  const labelWidth = doc.widthOfString(label);
+  doc.font("Helvetica").text(value, x + labelWidth + 2, y);
+}
 router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
 
@@ -370,6 +380,7 @@ router.get("/invoice/:orderId", async (req, res) => {
         path: "variant",
         populate: {
           path: "productId",
+          select: "name hsn"
         },
       })
       .populate("user")
@@ -379,7 +390,7 @@ router.get("/invoice/:orderId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    const doc = new PDFDocument({ size: "A4", margin: 50 });
+    const doc = new PDFDocument({ size: "A4", margin: 20 });
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=invoice-${orderId}.pdf`
@@ -388,6 +399,9 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     doc.pipe(res);
 
+    const logoPath = path.join(__dirname, "../assets/Logo-imag.png");
+    doc.image(logoPath, 50, 25, { width: 70 });
+    doc.moveDown(3);
 
     doc.fontSize(20).text("Invoice", { align: "center" });
     doc.moveDown();
@@ -396,35 +410,72 @@ router.get("/invoice/:orderId", async (req, res) => {
     let startY = doc.y; // capture current Y position
 
     // Seller info (Left side)
-    doc
-      .fontSize(12)
-      .text(`Seller: ${order.shop.businessName}`, 50, startY)
-      .text(`Address: ${order.variant.productId?.dispatchLocation || "N/A"}`)
-      .text(`GSTIN: ${order.shop.gstin || "N/A"}`)
-      .text(
-        `Invoice Date: ${new Date(order.createdAt).toLocaleDateString("en-IN")}`
-      )
-      .text(`Invoice No: INV-${orderId.slice(-6).toUpperCase()}`);
+    let sellerY = startY;
+    labeledText(doc, "Seller: ", order.shop.businessName, 50, sellerY);
+    sellerY += 14;
+
+    labeledText(doc, "GSTIN: ", order.shop.gstNumber || "N/A", 50, sellerY);
+    sellerY += 14;
+
+    labeledText(
+      doc,
+      "Invoice Date: ",
+      new Date(order.createdAt).toLocaleDateString("en-IN"),
+      50,
+      sellerY
+    );
+    sellerY += 14;
+
+    labeledText(
+      doc,
+      "Invoice No: ",
+      `INV-${orderId.slice(-6).toUpperCase()}`,
+      50,
+      sellerY
+    );
+
 
     // Buyer info (Right side)
-    const buyerX = 400; // adjust this value depending on alignment (A4 width ~595)
+    const buyerX = 400;
+    let buyerY = startY;
+
+    labeledText(doc, "Buyer: ", order.user?.instituteName || "N/A", buyerX, buyerY);
+    buyerY += 14;
+
+    labeledText(doc, "Shipping Address: ", "", buyerX, buyerY);
+    buyerY += 14;
+
     doc
-      .fontSize(12)
-      .text(`Buyer: ${order.user?.instituteName || "N/A"}`, buyerX, startY)
-      .text("Shipping Address:", buyerX)
       .text(
-        `${order.shippingAddress?.instituteAddress1 || ""}, ${
-          order.shippingAddress?.instituteAddress2 || ""
-        }`,
-        buyerX
-      )
+        `${order.shippingAddress?.instituteAddress1 || ""}`,
+        buyerX,
+        buyerY
+      );
+    buyerY += 14;
+
+    doc
       .text(
-        `${order.shippingAddress?.district || ""}, ${
-          order.shippingAddress?.state || ""
-        } - ${order.shippingAddress?.pincode || ""}`,
-        buyerX
-      )
-      .text(`Landmark: ${order.shippingAddress?.landmark || "N/A"}`, buyerX);
+        order.shippingAddress?.instituteAddress2 || "",
+        buyerX,
+        buyerY
+      );
+    buyerY += 14;
+
+    doc
+      .text(
+        `${order.shippingAddress?.district || ""}, ${order.shippingAddress?.state || ""}, ${order.shippingAddress?.pincode || ""}`,
+        buyerX,
+        buyerY
+      );
+    buyerY += 14;
+
+    labeledText(
+      doc,
+      "Landmark: ",
+      order.shippingAddress?.landmark || "N/A",
+      buyerX,
+      buyerY
+    );
 
     doc.moveDown(2);
 
@@ -483,6 +534,23 @@ router.get("/invoice/:orderId", async (req, res) => {
       });
       x += colWidths[i];
     });
+
+    doc
+      .moveTo(startX, startY)
+      .lineTo(startX + tableWidth, startY )
+      .stroke();
+    let headerX = startX;
+    colWidths.forEach((w) => {
+      doc
+        .moveTo(headerX, startY)
+        .lineTo(headerX, startY + rowHeight)
+        .stroke();
+      headerX += w;
+    });
+    doc
+      .moveTo(headerX, startY)
+      .lineTo(headerX, startY + rowHeight)
+      .stroke();
 
     // Horizontal line below header
     doc
