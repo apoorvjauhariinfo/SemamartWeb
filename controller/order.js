@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path")
 const mongoose = require("mongoose");
 const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
@@ -121,7 +122,7 @@ router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find({ shop: req.params.shopId })
+      const orders = await Order.find({ shop: req.params.shopId, status: { $nin: ["Created", "Paid"] }, })
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName")
         .sort({ createdAt: -1 });
@@ -386,6 +387,7 @@ router.get("/invoice/:orderId", async (req, res) => {
     res.setHeader("Content-Type", "application/pdf");
 
     doc.pipe(res);
+
 
     doc.fontSize(20).text("Invoice", { align: "center" });
     doc.moveDown();
