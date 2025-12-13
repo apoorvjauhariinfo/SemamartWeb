@@ -151,7 +151,7 @@ router.post(
           </div>
         </div>
       `;
-      sentMailToAdmin(mailSubject,htmlBody)
+      await sentMailToAdmin(mailSubject,htmlBody)
 
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));

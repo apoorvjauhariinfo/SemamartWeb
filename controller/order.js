@@ -67,7 +67,7 @@ router.post(
         </div>
       `;
 
-      sentMailToAdmin(mailSubject,htmlBody)
+      await sentMailToAdmin(mailSubject,htmlBody)
       res.status(201).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -355,7 +355,7 @@ router.put(
         <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
       </div>
     `;
-    sentMailToAdmin(mailSubject,htmlBody)
+    await sentMailToAdmin(mailSubject,htmlBody)
 
     res.status(200).json(order)
   })
