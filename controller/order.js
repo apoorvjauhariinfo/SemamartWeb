@@ -11,6 +11,7 @@ const User = require("../model/user");
 const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
+const sentMailToAdmin = require("../utils/mailToAdmin");
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -46,7 +47,27 @@ router.post(
         });
         orders.push(order);
       }
+      const orderIdsHtml = orders
+        .map(
+          (order) => `
+            <p style="margin: 5px 0;">
+              <strong>Order ID:</strong> ${order._id}
+            </p>
+          `
+        )
+        .join("");
+      const mailSubject = "New Orders Created"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+          <h2 style="color: #2c3e50;">New Orders</h2>
+          <p>New orders with following order ids are created.</p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+          ${orderIdsHtml}
+          </div>
+        </div>
+      `;
 
+      sentMailToAdmin(mailSubject,htmlBody)
       res.status(201).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
