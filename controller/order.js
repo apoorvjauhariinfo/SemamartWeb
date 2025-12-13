@@ -347,6 +347,16 @@ router.put(
     order.paymentFile=req.file.filename
     order.status="Paid"
     await order.save()
+
+    const mailSubject = "Payment Receipt Added"
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+        <h2 style="color: #2c3e50;">Payment Receipt uploaded</h2>
+        <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
+      </div>
+    `;
+    sentMailToAdmin(mailSubject,htmlBody)
+
     res.status(200).json(order)
   })
 )
