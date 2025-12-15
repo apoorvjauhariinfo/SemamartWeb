@@ -234,6 +234,43 @@ router.get(
   }),
 );
 
+router.get(
+  "/get-all-products-updated-random",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        // 🔥 random order at DB level
+        .sort({ _id: 1 }) // required for $natural fallback stability
+        .limit(10)
+        .populate("shopId", "name")
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      // 🔁 Fisher–Yates shuffle (server-side, only 10 docs)
+      for (let i = products.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [products[i], products[j]] = [products[j], products[i]];
+      }
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error, 400));
+    }
+  })
+);
+
+
 /* ------------------ PUBLIC: filtered product lists (by type) ------------------ */
 router.get(
   "/get-consumable-products",
