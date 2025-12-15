@@ -1,13 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const HeroSection = require("../model/heroitem");
-const { uploadV2 } = require("../multer"); // your uploadV2 setup
+const { uploadV2 } = require("../multer");
 
 /* ================= SAVE / UPDATE HERO SECTION ================= */
 router.post("/", uploadV2.array("heroImages"), async (req, res) => {
   try {
     const items = JSON.parse(req.body.heroData);
-    const files = req.files;
+    const deletedIds = req.body.deletedIds
+      ? JSON.parse(req.body.deletedIds)
+      : [];
+
+    const files = req.files || [];
 
     let hero = await HeroSection.findOne();
     if (!hero) {
@@ -18,38 +22,49 @@ router.post("/", uploadV2.array("heroImages"), async (req, res) => {
       });
     }
 
-    // Map originalname -> saved filename
+    /* ---------- MAP FILES ---------- */
     const fileMap = {};
     files.forEach((f) => {
-      fileMap[f.originalname] = f.filename; // only file name
+      fileMap[f.originalname] = f.filename;
     });
 
+    /* ---------- DELETE SLIDERS ---------- */
+    if (deletedIds.length) {
+      hero.sliders = hero.sliders.filter(
+        (s) => !deletedIds.includes(s._id.toString())
+      );
+    }
+
+    /* ---------- UPSERT ITEMS ---------- */
     items.forEach((item) => {
-      /* ---------- LEFT BANNER ---------- */
+      /* LEFT BANNER */
       if (item.type === "banner-left") {
         hero.leftBanner.name = item.name;
         hero.leftBanner.link = item.link;
-        if (fileMap[item.fileName])
-          hero.leftBanner.imagePath = fileMap[item.fileName]; // only file name
+        if (fileMap[item.fileName]) {
+          hero.leftBanner.imagePath = fileMap[item.fileName];
+        }
       }
 
-      /* ---------- RIGHT BANNER ---------- */
+      /* RIGHT BANNER */
       if (item.type === "banner-right") {
         hero.rightBanner.name = item.name;
         hero.rightBanner.link = item.link;
-        if (fileMap[item.fileName])
+        if (fileMap[item.fileName]) {
           hero.rightBanner.imagePath = fileMap[item.fileName];
+        }
       }
 
-      /* ---------- SLIDERS ---------- */
+      /* SLIDERS */
       if (item.type === "slider") {
         if (item.id) {
           const slider = hero.sliders.id(item.id);
           if (slider) {
             slider.name = item.name;
             slider.link = item.link;
-            if (fileMap[item.fileName])
+            if (fileMap[item.fileName]) {
               slider.imagePath = fileMap[item.fileName];
+            }
           }
         } else {
           hero.sliders.push({
@@ -62,9 +77,10 @@ router.post("/", uploadV2.array("heroImages"), async (req, res) => {
     });
 
     await hero.save();
+
     res.json({ success: true, hero });
   } catch (err) {
-    console.error(err);
+    console.error("Hero save error:", err);
     res.status(500).json({ success: false });
   }
 });
