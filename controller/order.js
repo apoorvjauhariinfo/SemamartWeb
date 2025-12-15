@@ -387,7 +387,7 @@ router.put(
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
           <h2 style="color: #2c3e50; margin-bottom: 10px;">
-            Followinf Order is successfully delivered to the customer
+            Following Order is successfully delivered to the customer
           </h2>
           <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
             <p><strong>Order ID:</strong> ${order._id}</p>
@@ -400,6 +400,24 @@ router.put(
         </div>
       `;
       await sendMail({email,subject,html:htmlBody})
+      const customerMail = order.user.email
+      const customerMailSubject = "Order Delivered Successfully"
+      const customerMailBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">
+            Following Order is successfully delivered.
+          </h2>
+          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
+            <p><strong>Quantity:</strong> ${order.qty}</p>
+            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
+            <p><strong>Tax:</strong> ₹${order.tax}</p>
+            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
+          </div>
+        </div>
+      `;
+      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
     }
     res.status(201).json({success:true});
   })
