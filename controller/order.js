@@ -12,6 +12,7 @@ const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
 const sentMailToAdmin = require("../utils/mailToAdmin");
+const sendMail = require("../utils/sendMail");
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -322,9 +323,10 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id).populate("shop")
 
     if (!order) throw new ErrorHandler("Order not found", 404);
+    if (!order.shop) throw new ErrorHandler("Invalid order", 404);
 
     order.status = req.body.status;
     order.statusHistory.push({
@@ -333,6 +335,32 @@ router.put(
     });
 
     await order.save();
+    if(order.status ==="Processing"){
+      const email = order.shop.email
+      const subject = "New Order"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">
+            🎉 New Order Received
+          </h2>
+          <p style="font-size: 15px;">
+            Hello <strong>${order.shop.businessName}</strong>,
+          </p>
+          <p style="font-size: 15px;">
+            You have received a new order on your store. Please find the order details below:
+          </p>
+          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Product Variant:</strong> ${order.variant}</p>
+            <p><strong>Quantity:</strong> ${order.qty}</p>
+            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
+            <p><strong>Tax:</strong> ₹${order.tax}</p>
+            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
+          </div>
+        </div>
+      `;
+      await sendMail({email,subject,html:htmlBody})
+    }
     res.status(201).json(order);
   })
 );
