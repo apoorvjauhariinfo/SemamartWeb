@@ -667,6 +667,8 @@ router.get(
 router.get(
   "/getSeller/:id",
   // only admins can fetch any seller by ID
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellerId = req.params.id;

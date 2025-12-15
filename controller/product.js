@@ -385,9 +385,8 @@ router.put(
 /* ------------------ ADMIN: admin-all-products (for admin portal) ------------------ */
 router.get(
   "/admin-all-products",
-  // keep auth commented if you want public access for admin UI devs; uncomment in prod
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     const products = await Product.find()
       .sort({ createdAt: -1 })

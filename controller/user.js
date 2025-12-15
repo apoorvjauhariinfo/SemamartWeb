@@ -554,8 +554,8 @@ router.get(
 // all users --- for admin
 router.get(
   "/admin-all-users",
-  // isAuthenticated,
-  //isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find().sort({
@@ -740,7 +740,8 @@ router.get("/:userId/products", async (req, res) => {
 
 router.get(
   "/getUser/:id",
-  // only admins can fetch any seller by ID
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const userId = req.params.id;
