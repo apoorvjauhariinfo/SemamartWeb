@@ -324,17 +324,18 @@ router.put(
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
     const order = await Order
-          .findById(req.params.id)
-          .populate("shop")
-          .populate({
-            path: "variant",
-            populate: {
-              path: "productId",
-            },
-          });
+      .findById(req.params.id)
+      .populate("shop")
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+        },
+      });
 
     if (!order) throw new ErrorHandler("Order not found", 404);
-    if (!order.shop || !order.variant || !order.variant.productId){
+    if (!order.shop || !order.variant || !order.variant.productId || !order.user){
       throw new ErrorHandler("Invalid order", 404);
     }
 
@@ -364,6 +365,21 @@ router.put(
         </div>
       `;
       await sendMail({email,subject,html:htmlBody})
+      const customerMail = order.user.email
+      const customerMailSubject = "Order Payment Verified"
+      const customerMailBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <p style="font-size: 15px;">
+            We’re happy to inform you that the payment for your order has been
+            <strong>successfully verified by our admin team</strong>.
+          </p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Total Amount Paid:</strong> ₹${order.totalPrice}</p>
+          </div>
+        </div>
+      `;
+      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
     }
     if(order.status ==="Delivered"){
       const email = order.shop.email
