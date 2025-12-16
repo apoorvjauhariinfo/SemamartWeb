@@ -102,6 +102,10 @@ const manufacturer = require("./controller/manufacturer");
 const adminsummary = require("./controller/admin");
 const hero = require("./controller/hero");
 const sectionbanner = require("./controller/sectionbanner");
+const cart = require("./controller/usercart");
+const wishlist = require("./controller/userWishlist");
+
+
 
 // end points
 app.use("/api/v2/withdraw", withdraw);
@@ -120,9 +124,10 @@ app.use("/api/v2/special-package", specialPackageRoutes);
 app.use("/api/v2/product-variant", productVariant);
 app.use("/api/v2/manufacturer", manufacturer);
 app.use("/api/v2/adminsummary", adminsummary);
-
+app.use("/api/v2/cart", cart);
 app.use("/api/v2/heroslider", hero);
 app.use("/api/v2/sectionbanner", sectionbanner);
+app.use("/api/v2/wishlist", wishlist);
 
 
 // it'for errhendel
