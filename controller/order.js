@@ -11,6 +11,8 @@ const User = require("../model/user");
 const { Product } = require("../model/product");
 const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
+const sentMailToAdmin = require("../utils/mailToAdmin");
+const sendMail = require("../utils/sendMail");
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -46,7 +48,27 @@ router.post(
         });
         orders.push(order);
       }
+      const orderIdsHtml = orders
+        .map(
+          (order) => `
+            <p style="margin: 5px 0;">
+              <strong>Order ID:</strong> ${order._id}
+            </p>
+          `
+        )
+        .join("");
+      const mailSubject = "New Orders Created"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+          <h2 style="color: #2c3e50;">New Orders</h2>
+          <p>New orders with following order ids are created.</p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+          ${orderIdsHtml}
+          </div>
+        </div>
+      `;
 
+      await sentMailToAdmin(mailSubject,htmlBody)
       res.status(201).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -258,8 +280,8 @@ router.put(
 // ✅ Admin: get all orders
 router.get(
   "/admin-all-orders",
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const orders = await Order.find()
@@ -301,9 +323,21 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const order = await Order.findById(req.params.id);
+    const order = await Order
+      .findById(req.params.id)
+      .populate("shop")
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+        },
+      });
 
     if (!order) throw new ErrorHandler("Order not found", 404);
+    if (!order.shop || !order.variant || !order.variant.productId || !order.user){
+      throw new ErrorHandler("Invalid order", 404);
+    }
 
     order.status = req.body.status;
     order.statusHistory.push({
@@ -312,7 +346,80 @@ router.put(
     });
 
     await order.save();
-    res.status(201).json(order);
+    if(order.status ==="Processing"){
+      const email = order.shop.email
+      const subject = "New Order"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">
+            New Order Received
+          </h2>
+          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
+            <p><strong>Quantity:</strong> ${order.qty}</p>
+            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
+            <p><strong>Tax:</strong> ₹${order.tax}</p>
+            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
+          </div>
+        </div>
+      `;
+      await sendMail({email,subject,html:htmlBody})
+      const customerMail = order.user.email
+      const customerMailSubject = "Order Payment Verified"
+      const customerMailBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <p style="font-size: 15px;">
+            We’re happy to inform you that the payment for your order has been
+            <strong>successfully verified by our admin team</strong>.
+          </p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Total Amount Paid:</strong> ₹${order.totalPrice}</p>
+          </div>
+        </div>
+      `;
+      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
+    }
+    if(order.status ==="Delivered"){
+      const email = order.shop.email
+      const subject = "Order Delivered Successfully"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">
+            Following Order is successfully delivered to the customer
+          </h2>
+          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
+            <p><strong>Quantity:</strong> ${order.qty}</p>
+            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
+            <p><strong>Tax:</strong> ₹${order.tax}</p>
+            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
+          </div>
+        </div>
+      `;
+      await sendMail({email,subject,html:htmlBody})
+      const customerMail = order.user.email
+      const customerMailSubject = "Order Delivered Successfully"
+      const customerMailBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+          <h2 style="color: #2c3e50; margin-bottom: 10px;">
+            Following Order is successfully delivered.
+          </h2>
+          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
+            <p><strong>Order ID:</strong> ${order._id}</p>
+            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
+            <p><strong>Quantity:</strong> ${order.qty}</p>
+            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
+            <p><strong>Tax:</strong> ₹${order.tax}</p>
+            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
+          </div>
+        </div>
+      `;
+      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
+    }
+    res.status(201).json({success:true});
   })
 );
 
@@ -326,6 +433,16 @@ router.put(
     order.paymentFile=req.file.filename
     order.status="Paid"
     await order.save()
+
+    const mailSubject = "Payment Receipt Added"
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+        <h2 style="color: #2c3e50;">Payment Receipt uploaded</h2>
+        <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
+      </div>
+    `;
+    await sentMailToAdmin(mailSubject,htmlBody)
+
     res.status(200).json(order)
   })
 )

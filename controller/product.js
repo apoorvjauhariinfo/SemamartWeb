@@ -13,6 +13,8 @@ const path = require("path");
 const mongoose = require("mongoose");
 const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
+const sentMailToAdmin = require("../utils/mailToAdmin");
+const sendMail = require("../utils/sendMail");
 
 router.post(
   "/create-product-v2",
@@ -232,6 +234,43 @@ router.get(
   }),
 );
 
+router.get(
+  "/get-all-products-updated-random",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        // 🔥 random order at DB level
+        .sort({ _id: 1 }) // required for $natural fallback stability
+        .limit(10)
+        .populate("shopId", "name")
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .lean();
+
+      // 🔁 Fisher–Yates shuffle (server-side, only 10 docs)
+      for (let i = products.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [products[i], products[j]] = [products[j], products[i]];
+      }
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error, 400));
+    }
+  })
+);
+
+
 /* ------------------ PUBLIC: filtered product lists (by type) ------------------ */
 router.get(
   "/get-consumable-products",
@@ -385,9 +424,8 @@ router.put(
 /* ------------------ ADMIN: admin-all-products (for admin portal) ------------------ */
 router.get(
   "/admin-all-products",
-  // keep auth commented if you want public access for admin UI devs; uncomment in prod
-  // isAuthenticated,
-  // isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     const products = await Product.find()
       .sort({ createdAt: -1 })
@@ -932,8 +970,9 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const product = await Product.findById(req.params.productId);
+    const product = await Product.findById(req.params.productId).populate("shopId");
     if (!product) throw new ErrorHandler("Product not found", 404);
+    if (!product.shopId) throw new ErrorHandler("Product shop not found", 404);
     if (!req.body.commission)
       throw new ErrorHandler("Commission is required", 403);
 
@@ -961,6 +1000,32 @@ router.put(
       metaData: metaData,
     });
     await product.save();
+
+    const sellerMail = product.shopId.email
+    const emailSubject="Prodcut Commission Update"
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
+        <h2 style="color: #2c3e50;">
+          Product Commission Updated
+        </h2>
+        <p style="font-size: 15px;">
+          Hello,
+        </p>
+        <p style="font-size: 15px;">
+          The commission for the following product has been <strong>updated by the admin</strong>.
+        </p>
+        <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #f39c12;">
+          <p><strong>Product ID:</strong> ${product._id}</p>
+          <p><strong>Product Name:</strong> ${product.name}</p>
+          <p><strong>Updated Commission:</strong> ${product.commission}%</p>
+        </div>
+        <p style="margin-top: 20px; font-size: 14px;">
+          This update will apply to all future orders of this product.
+        </p>
+      </div>
+    `;
+
+    await sendMail({email:sellerMail,subject:emailSubject,html:htmlBody })
 
     res.status(200).json({ success: true });
   }),

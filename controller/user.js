@@ -14,6 +14,7 @@ const crypto = require("crypto"); // <-- added for reset token generation
 const mongoose = require("mongoose");
 const Order = require("../model/order"); // adjust path as needed
 const { Product, ProductVariant } = require("../model/product");
+const sentMailToAdmin = require("../utils/mailToAdmin");
 
 
 const router = express.Router();
@@ -70,7 +71,7 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
         <p>Hello ${firstName || "User"},</p>
         <p>Thank you for registering with Semamart.</p>
         <p>Please click the link below to activate your account:</p>
-        <a href="${activationUrl}" 
+        <a href="${activationUrl}"
            style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
           Activate Account
         </a>
@@ -137,6 +138,21 @@ router.post(
       await user.save();
 
       sendToken(user, 201, res);
+
+      const mailSubject = "New User registered"
+      const htmlBody = `
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+          <h2 style="color: #2c3e50;">New User Registration</h2>
+          <p>A new user has just registered on the platform.</p>
+          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+            <p style="margin: 0;"><strong>User's name:</strong> ${user.firstName} ${user.lastName}</p>
+            <p style="margin: 0;"><strong>Email:</strong> ${user.email}</p>
+            <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(user.createdAt).toLocaleDateString("en-IN")}</p>
+          </div>
+        </div>
+      `;
+      await sentMailToAdmin(mailSubject,htmlBody)
+
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -554,8 +570,8 @@ router.get(
 // all users --- for admin
 router.get(
   "/admin-all-users",
-  // isAuthenticated,
-  //isAdmin("Admin"),
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find().sort({
@@ -740,7 +756,8 @@ router.get("/:userId/products", async (req, res) => {
 
 router.get(
   "/getUser/:id",
-  // only admins can fetch any seller by ID
+  isAuthenticated,
+  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const userId = req.params.id;
