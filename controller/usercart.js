@@ -1,3 +1,4 @@
+
 const express = require("express");
 const UserCart = require("../model/userCart"); // match file name exactly
 const router = express.Router();
@@ -98,11 +99,6 @@ router.delete("/clear/:user_id", async (req, res) => {
     res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 });
-
-
-
-
-
 
 
 module.exports = router;
