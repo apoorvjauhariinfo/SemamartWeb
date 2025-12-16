@@ -1,93 +1,158 @@
-
 const express = require("express");
-const UserCart = require("../model/userCart"); // match file name exactly
+const mongoose = require("mongoose");
+const UserCart = require("../model/userCart");
+
 const router = express.Router();
 
-
+/**
+ * ADD / UPDATE cart item
+ */
 router.post("/add", async (req, res) => {
   try {
-    const { user_id, product_id, variant_id, qty } = req.body;
+    let { user_id, product_id, variant_id, qty } = req.body;
 
-    const newCart = await UserCart.create({
-      user_id,
-      product_id,
-      variant_id,
-      qty,
-    });
+    if (!user_id || !product_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields",
+      });
+    }
 
-    return res.json({
+    // Validate ObjectIds
+    if (
+      !mongoose.Types.ObjectId.isValid(user_id) ||
+      !mongoose.Types.ObjectId.isValid(product_id) ||
+      (variant_id && !mongoose.Types.ObjectId.isValid(variant_id))
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID provided",
+      });
+    }
+
+    variant_id = variant_id || null;
+    qty = qty && qty > 0 ? qty : 1;
+
+    // Atomic upsert (prevents duplicates & race conditions)
+    const cartItem = await UserCart.findOneAndUpdate(
+      { user_id, product_id, variant_id },
+      { $inc: { qty } },
+      { new: true, upsert: true }
+    );
+
+    res.json({
       success: true,
-      message: "Cart item added",
-      data: newCart,
+      message: "Cart updated",
+      data: cartItem,
     });
-
-  } catch (error) {
-    console.error("Cart Add Error:", error);
-    return res.status(500).json({ success: false, error });
+  } catch (err) {
+    console.error("Cart Add Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 });
 
-
-
-// Get all cart items for a user
+/**
+ * GET cart items by user
+ */
 router.get("/:userId", async (req, res) => {
   try {
     const { userId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
+
     const items = await UserCart.find({ user_id: userId })
       .populate({
         path: "product_id",
-        model: "Product",
-        populate: {
-          path: "variants",
-          model: "ProductVariant"
-        }
+        select: "name images brand category subCategory shopId",
       })
       .populate({
         path: "variant_id",
-        model: "ProductVariant"
-      });
+        select: "size colorOption originalPrice discountPrice stock thumbnail",
+      })
+      .lean();
 
     res.json({ success: true, data: items });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    console.error("Cart Fetch Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 });
 
-// Remove cart item
+/**
+ * REMOVE single cart item
+ */
 router.delete("/:user_id/:product_id/:variant_id", async (req, res) => {
   try {
-    const { user_id, product_id, variant_id } = req.params;
+    let { user_id, product_id, variant_id } = req.params;
 
-    // Delete the item matching the user and product + variant
-    const deleted = await UserCart.deleteOne({ user_id, product_id, variant_id });
+    if (
+      !mongoose.Types.ObjectId.isValid(user_id) ||
+      !mongoose.Types.ObjectId.isValid(product_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid ID provided",
+      });
+    }
 
-    if (deleted.deletedCount === 0) {
-      return res.status(404).json({ 
-        success: false, 
-        message: "Item not found or does not belong to this user" 
+    variant_id = variant_id === "null" ? null : variant_id;
+
+    if (variant_id && !mongoose.Types.ObjectId.isValid(variant_id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid variant ID",
+      });
+    }
+
+    const deleted = await UserCart.deleteOne({
+      user_id,
+      product_id,
+      variant_id,
+    });
+
+    if (!deleted.deletedCount) {
+      return res.status(404).json({
+        success: false,
+        message: "Item not found",
       });
     }
 
     res.json({ success: true, message: "Item removed from cart" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    console.error("Cart Delete Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 });
 
+/**
+ * CLEAR cart
+ */
 router.delete("/clear/:user_id", async (req, res) => {
   try {
     const { user_id } = req.params;
-    console.log("Received user_id:", user_id);
+
+    if (!mongoose.Types.ObjectId.isValid(user_id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID",
+      });
+    }
 
     const deleted = await UserCart.deleteMany({ user_id });
-    console.log("Deleted count:", deleted.deletedCount);
-
-    if (deleted.deletedCount === 0) {
-      return res.status(404).json({ success: false, message: "Item not found" });
-    }
 
     res.json({
       success: true,
@@ -95,10 +160,12 @@ router.delete("/clear/:user_id", async (req, res) => {
       deletedCount: deleted.deletedCount,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server error", error: err.message });
+    console.error("Cart Clear Error:", err);
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 });
-
 
 module.exports = router;
