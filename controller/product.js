@@ -838,7 +838,7 @@ router.put(
     const oldFile =
       idx !== undefined ? product[docType][parseInt(idx)] : product[docType];
     if (oldFile) {
-      const oldPath = path.join("uploads/docs", oldFile);
+      const oldPath = path.join(process.cwd(),"uploads","docs", oldFile);
       if (fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }
@@ -892,7 +892,7 @@ router.put(
 
     const oldFile = idx !== undefined ? product.images[parseInt(idx)] : null;
     if (oldFile) {
-      const oldPath = path.join("uploads/images", oldFile);
+      const oldPath = path.join(process.cwd(),"uploads","images", oldFile);
       if (fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }
