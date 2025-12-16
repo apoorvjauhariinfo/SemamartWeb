@@ -450,6 +450,7 @@ router.put(
 router.put(
   "/update-tracking-details/:id",
   isSeller,
+   uploadV2.single("tracking_file"),
   catchAsyncErrors(async (req, res) => {
     const { id } = req.params;
     const { logisticPartner, trackingNumber, pickupPerson, pickupPersonPhone } =
@@ -464,12 +465,17 @@ router.put(
       throw new ErrorHandler("Order not found", 404);
     }
 
+    const trackingFile = req.file ? req.file.filename : undefined;
+
     order.trackingDetails = {
       logisticPartner,
       trackingNumber,
       pickupPerson,
       pickupPersonPhone,
     };
+    if(trackingFile){
+      order.trackingDetails.trackingDocument = trackingFile
+    }
 
     await order.save();
 
