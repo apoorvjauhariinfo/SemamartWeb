@@ -11,7 +11,7 @@ const UserWishlistSchema = new mongoose.Schema(
     product_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Product",
-      required: true,
+      required: true, 
     },
     variant_id: {
       type: mongoose.Schema.Types.ObjectId,
