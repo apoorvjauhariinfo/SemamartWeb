@@ -1,5 +1,5 @@
 const express = require("express");
-const path = require("path")
+const path = require("path");
 const mongoose = require("mongoose");
 const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
@@ -13,6 +13,8 @@ const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
+const fs = require("fs")
+
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -54,10 +56,10 @@ router.post(
             <p style="margin: 5px 0;">
               <strong>Order ID:</strong> ${order._id}
             </p>
-          `
+          `,
         )
         .join("");
-      const mailSubject = "New Orders Created"
+      const mailSubject = "New Orders Created";
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
           <h2 style="color: #2c3e50;">New Orders</h2>
@@ -68,12 +70,12 @@ router.post(
         </div>
       `;
 
-      await sentMailToAdmin(mailSubject,htmlBody)
+      await sentMailToAdmin(mailSubject, htmlBody);
       res.status(201).json({ success: true, orders });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 router.get(
@@ -81,7 +83,7 @@ router.get(
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId).populate(
       "cart.productId",
-      "variants name manufacturerName"
+      "variants name manufacturerName",
     );
 
     if (!order) {
@@ -89,7 +91,7 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 router.get(
@@ -110,7 +112,7 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 // ✅ Get all orders of a user
@@ -136,7 +138,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Get all orders of a seller
@@ -144,7 +146,10 @@ router.get(
   "/get-seller-all-orders/:shopId",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const orders = await Order.find({ shop: req.params.shopId, status: { $nin: ["Created", "Paid"] }, })
+      const orders = await Order.find({
+        shop: req.params.shopId,
+        status: { $nin: ["Created", "Paid"] },
+      })
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName")
         .sort({ createdAt: -1 });
@@ -153,7 +158,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Update order status (for sellers)
@@ -209,7 +214,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Refund request (user)
@@ -234,7 +239,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Refund approval (seller)
@@ -274,7 +279,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Admin: get all orders
@@ -294,7 +299,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 router.get(
@@ -315,7 +320,7 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 router.put(
@@ -323,8 +328,7 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const order = await Order
-      .findById(req.params.id)
+    const order = await Order.findById(req.params.id)
       .populate("shop")
       .populate("user")
       .populate({
@@ -335,7 +339,12 @@ router.put(
       });
 
     if (!order) throw new ErrorHandler("Order not found", 404);
-    if (!order.shop || !order.variant || !order.variant.productId || !order.user){
+    if (
+      !order.shop ||
+      !order.variant ||
+      !order.variant.productId ||
+      !order.user
+    ) {
       throw new ErrorHandler("Invalid order", 404);
     }
 
@@ -346,9 +355,9 @@ router.put(
     });
 
     await order.save();
-    if(order.status ==="Processing"){
-      const email = order.shop.email
-      const subject = "New Order"
+    if (order.status === "Processing") {
+      const email = order.shop.email;
+      const subject = "New Order";
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
           <h2 style="color: #2c3e50; margin-bottom: 10px;">
@@ -364,9 +373,9 @@ router.put(
           </div>
         </div>
       `;
-      await sendMail({email,subject,html:htmlBody})
-      const customerMail = order.user.email
-      const customerMailSubject = "Order Payment Verified"
+      await sendMail({ email, subject, html: htmlBody });
+      const customerMail = order.user.email;
+      const customerMailSubject = "Order Payment Verified";
       const customerMailBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
           <p style="font-size: 15px;">
@@ -379,11 +388,15 @@ router.put(
           </div>
         </div>
       `;
-      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
+      await sendMail({
+        email: customerMail,
+        subject: customerMailSubject,
+        html: customerMailBody,
+      });
     }
-    if(order.status ==="Delivered"){
-      const email = order.shop.email
-      const subject = "Order Delivered Successfully"
+    if (order.status === "Delivered") {
+      const email = order.shop.email;
+      const subject = "Order Delivered Successfully";
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
           <h2 style="color: #2c3e50; margin-bottom: 10px;">
@@ -399,9 +412,9 @@ router.put(
           </div>
         </div>
       `;
-      await sendMail({email,subject,html:htmlBody})
-      const customerMail = order.user.email
-      const customerMailSubject = "Order Delivered Successfully"
+      await sendMail({ email, subject, html: htmlBody });
+      const customerMail = order.user.email;
+      const customerMailSubject = "Order Delivered Successfully";
       const customerMailBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
           <h2 style="color: #2c3e50; margin-bottom: 10px;">
@@ -417,39 +430,45 @@ router.put(
           </div>
         </div>
       `;
-      await sendMail({email:customerMail,subject:customerMailSubject,html:customerMailBody})
+      await sendMail({
+        email: customerMail,
+        subject: customerMailSubject,
+        html: customerMailBody,
+      });
     }
-    res.status(201).json({success:true});
-  })
+    res.status(201).json({ success: true });
+  }),
 );
 
 router.put(
   "/update-order-payment/:id",
   uploadV2.single("payment_file"),
-  catchAsyncErrors(async (req,res)=>{
+  catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.id);
     if (!order) throw new ErrorHandler("Order not found", 404);
-    if(order.paymentFile) throw new ErrorHandler("Payment verification still pending", 402)
-    order.paymentFile=req.file.filename
-    order.status="Paid"
-    await order.save()
+    if (order.paymentFile)
+      throw new ErrorHandler("Payment verification still pending", 402);
+    order.paymentFile = req.file.filename;
+    order.status = "Paid";
+    await order.save();
 
-    const mailSubject = "Payment Receipt Added"
+    const mailSubject = "Payment Receipt Added";
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
         <h2 style="color: #2c3e50;">Payment Receipt uploaded</h2>
         <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
       </div>
     `;
-    await sentMailToAdmin(mailSubject,htmlBody)
+    await sentMailToAdmin(mailSubject, htmlBody);
 
-    res.status(200).json(order)
-  })
-)
+    res.status(200).json(order);
+  }),
+);
 
 router.put(
   "/update-tracking-details/:id",
   isSeller,
+  uploadV2.single("tracking_file"),
   catchAsyncErrors(async (req, res) => {
     const { id } = req.params;
     const { logisticPartner, trackingNumber, pickupPerson, pickupPersonPhone } =
@@ -464,12 +483,27 @@ router.put(
       throw new ErrorHandler("Order not found", 404);
     }
 
+    const trackingFile = req.file ? req.file.filename : undefined;
+
     order.trackingDetails = {
+      ...order.trackingDetails,
       logisticPartner,
       trackingNumber,
       pickupPerson,
       pickupPersonPhone,
     };
+
+    if (trackingFile) {
+      if (order.trackingDetails.trackingDocument) {
+        const docPath = path.join(
+          process.cwd(), "uploads", "payment-docs",order.trackingDetails.trackingDocument,
+        );
+        if (fs.existsSync(docPath)) {
+          fs.unlinkSync(docPath);
+        }
+      }
+      order.trackingDetails.trackingDocument = trackingFile;
+    }
 
     await order.save();
 
@@ -478,7 +512,7 @@ router.put(
       message: "Tracking details updated successfully",
       order,
     });
-  })
+  }),
 );
 
 // ✅ Generate invoice per order
@@ -497,7 +531,7 @@ router.get("/invoice/:orderId", async (req, res) => {
         path: "variant",
         populate: {
           path: "productId",
-          select: "name hsn"
+          select: "name hsn",
         },
       })
       .populate("user")
@@ -510,7 +544,7 @@ router.get("/invoice/:orderId", async (req, res) => {
     const doc = new PDFDocument({ size: "A4", margin: 20 });
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=invoice-${orderId}.pdf`
+      `attachment; filename=invoice-${orderId}.pdf`,
     );
     res.setHeader("Content-Type", "application/pdf");
 
@@ -539,7 +573,7 @@ router.get("/invoice/:orderId", async (req, res) => {
       "Invoice Date: ",
       new Date(order.createdAt).toLocaleDateString("en-IN"),
       50,
-      sellerY
+      sellerY,
     );
     sellerY += 14;
 
@@ -548,42 +582,40 @@ router.get("/invoice/:orderId", async (req, res) => {
       "Invoice No: ",
       `INV-${orderId.slice(-6).toUpperCase()}`,
       50,
-      sellerY
+      sellerY,
     );
-
 
     // Buyer info (Right side)
     const buyerX = 400;
     let buyerY = startY;
 
-    labeledText(doc, "Buyer: ", order.user?.instituteName || "N/A", buyerX, buyerY);
+    labeledText(
+      doc,
+      "Buyer: ",
+      order.user?.instituteName || "N/A",
+      buyerX,
+      buyerY,
+    );
     buyerY += 14;
 
     labeledText(doc, "Shipping Address: ", "", buyerX, buyerY);
     buyerY += 14;
 
-    doc
-      .text(
-        `${order.shippingAddress?.instituteAddress1 || ""}`,
-        buyerX,
-        buyerY
-      );
+    doc.text(
+      `${order.shippingAddress?.instituteAddress1 || ""}`,
+      buyerX,
+      buyerY,
+    );
     buyerY += 14;
 
-    doc
-      .text(
-        order.shippingAddress?.instituteAddress2 || "",
-        buyerX,
-        buyerY
-      );
+    doc.text(order.shippingAddress?.instituteAddress2 || "", buyerX, buyerY);
     buyerY += 14;
 
-    doc
-      .text(
-        `${order.shippingAddress?.district || ""}, ${order.shippingAddress?.state || ""}, ${order.shippingAddress?.pincode || ""}`,
-        buyerX,
-        buyerY
-      );
+    doc.text(
+      `${order.shippingAddress?.district || ""}, ${order.shippingAddress?.state || ""}, ${order.shippingAddress?.pincode || ""}`,
+      buyerX,
+      buyerY,
+    );
     buyerY += 14;
 
     labeledText(
@@ -591,7 +623,7 @@ router.get("/invoice/:orderId", async (req, res) => {
       "Landmark: ",
       order.shippingAddress?.landmark || "N/A",
       buyerX,
-      buyerY
+      buyerY,
     );
 
     doc.moveDown(2);
@@ -654,7 +686,7 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     doc
       .moveTo(startX, startY)
-      .lineTo(startX + tableWidth, startY )
+      .lineTo(startX + tableWidth, startY)
       .stroke();
     let headerX = startX;
     colWidths.forEach((w) => {
@@ -692,7 +724,7 @@ router.get("/invoice/:orderId", async (req, res) => {
         item.total.toFixed(2),
       ];
       const heights = cells.map((cell, i) =>
-        doc.heightOfString(cell, { width: colWidths[i] - 10 })
+        doc.heightOfString(cell, { width: colWidths[i] - 10 }),
       );
       const cellHeight = Math.max(...heights, rowHeight) + 15;
 
@@ -844,13 +876,14 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
-router.put("/add-order-payment",
-  catchAsyncErrors(async(req,res)=>{
-    res.send("nnnn")
-  })
-)
+router.put(
+  "/add-order-payment",
+  catchAsyncErrors(async (req, res) => {
+    res.send("nnnn");
+  }),
+);
 
 module.exports = router;

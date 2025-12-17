@@ -100,6 +100,7 @@ const orderSchema = new mongoose.Schema({
     pickupPerson: { type: String, trim: true },
     pickupPersonPhone: { type: Number, trim: true },
     trackingNumber: { type: String, trim: true },
+    trackingDocument:{ type: String}
   },
   paymentFile:{
     type:String,

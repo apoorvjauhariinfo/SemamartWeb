@@ -23,7 +23,7 @@ router.post(
         productId: product._id,
         thumbnail: req.file.filename,
       });
-      
+
       product.variants.push(variant)
       await product.save()
       res.status(201).json({success:true});
@@ -50,8 +50,8 @@ router.put(
     if (req.file) {
       if (variant.thumbnail) {
         const imgPath = path.join(
-          __dirname,
-          "uploads/images",
+          process.cwd(),
+          "uploads","images",
           variant.thumbnail
         );
         if (fs.existsSync(imgPath)) {
