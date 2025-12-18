@@ -141,6 +141,49 @@ router.get(
   }),
 );
 
+
+router.get(
+  "/get-order/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid order id",
+        });
+      }
+
+      const order = await Order.findById(id)
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName",
+          },
+        })
+        .populate("shop", "name email")
+        .populate("user", "firstName lastName email phoneNumber addresses");
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        order,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+
 // ✅ Get all orders of a seller
 router.get(
   "/get-seller-all-orders/:shopId",
@@ -152,6 +195,11 @@ router.get(
       })
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName")
+        .populate({
+            path: "variant",
+            populate: { path: "productId", select: "name" }
+          })
+
         .sort({ createdAt: -1 });
 
       res.status(200).json({ success: true, orders });
