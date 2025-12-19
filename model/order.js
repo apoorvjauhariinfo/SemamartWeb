@@ -122,9 +122,7 @@ function isValidStatusChange(current, next) {
 
   const currentIndex = MAIN_FLOW.indexOf(current);
   const nextIndex = MAIN_FLOW.indexOf(next);
-
   if (currentIndex === -1 || nextIndex === -1) return false;
-
   // Only allow next step
   return nextIndex === currentIndex + 1;
 }
@@ -135,8 +133,8 @@ orderSchema.pre("save", async function (next) {
 
   const prevOrder = await this.constructor.findById(this._id).select("status");
   const prevStatus = prevOrder.status;
-  if (!isValidStatusChange(this.status,prevStatus)){
-   throw new ErrorHandler(`Invalid order status change from ${prevStatus} to ${this.status}`,400)
+  if (!isValidStatusChange(prevStatus,this.status)){
+   return next(new ErrorHandler(`Invalid order status change from ${prevStatus} to ${this.status}`,400))
   }
   next()
 });
