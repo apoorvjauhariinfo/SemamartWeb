@@ -498,6 +498,10 @@ router.put(
       throw new ErrorHandler("Payment verification still pending", 402);
     order.paymentFile = req.file.filename;
     order.status = "Paid";
+    order.statusHistory.push({
+        status:"Paid",
+        updatedAt: new Date()
+    })
     await order.save();
 
     const mailSubject = "Payment Receipt Added";
@@ -526,9 +530,12 @@ router.put(
       throw new ErrorHandler("Bad Request", 402);
     }
 
-    const order = await Order.findById(id);
+    const order = await Order.findById(id).populate("user");
     if (!order) {
       throw new ErrorHandler("Order not found", 404);
+    }
+    if (!order.user) {
+      throw new ErrorHandler("Order not valid", 404);
     }
 
     const trackingFile = req.file ? req.file.filename : undefined;
@@ -554,6 +561,15 @@ router.put(
     }
 
     await order.save();
+    const mailSubject = "Order tracking details added";
+    const htmlBody = `
+      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+        <h2 style="color: #2c3e50;">Order tracking details uploaded</h2>
+        <p>Tracking details uploaded by seller for order: ${order._id}.</p>
+      </div>
+    `;
+    const customerEmail = order.user.email
+    await sendMail({email:customerEmail,subject:mailSubject,html:htmlBody})
 
     res.status(200).json({
       success: true,
