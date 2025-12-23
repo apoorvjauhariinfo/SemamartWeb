@@ -154,7 +154,7 @@ router.get(
         .sort({ createdAt: -1 })
         .populate("variants")
         .select(
-          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller",
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory",
         );
 
       res.status(200).json({
