@@ -13,7 +13,8 @@ const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
-const fs = require("fs")
+const fs = require("fs");
+const { generateInvoice } = require("../utils/pdfGeneration");
 
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
@@ -580,12 +581,6 @@ router.put(
 );
 
 // ✅ Generate invoice per order
-// Utility to write bold label + normal value on the same line
-function labeledText(doc, label, value, x, y) {
-  doc.fontSize(10).font("Helvetica-Bold").text(label, x, y);
-  const labelWidth = doc.widthOfString(label);
-  doc.font("Helvetica").text(value, x + labelWidth + 2, y);
-}
 router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
 
@@ -605,221 +600,13 @@ router.get("/invoice/:orderId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    const doc = new PDFDocument({ size: "A4", margin: 20 });
     res.setHeader(
       "Content-Disposition",
       `attachment; filename=invoice-${orderId}.pdf`,
     );
     res.setHeader("Content-Type", "application/pdf");
+    generateInvoice(res,order)
 
-    doc.pipe(res);
-
-    const logoPath = path.join(__dirname, "../assets/Logo-imag.png");
-    doc.image(logoPath, 50, 25, { width: 70 });
-    doc.moveDown(3);
-
-    doc.fontSize(20).text("Invoice", { align: "center" });
-    doc.moveDown();
-
-    // ===== SELLER & BUYER INFO SIDE BY SIDE =====
-    let startY = doc.y; // capture current Y position
-
-    // Seller info (Left side)
-    let sellerY = startY;
-    labeledText(doc, "Seller: ", order.shop.businessName, 50, sellerY);
-    sellerY += 14;
-
-    labeledText(doc, "GSTIN: ", order.shop.gstNumber || "N/A", 50, sellerY);
-    sellerY += 14;
-
-    labeledText(
-      doc,
-      "Invoice Date: ",
-      new Date(order.createdAt).toLocaleDateString("en-IN"),
-      50,
-      sellerY,
-    );
-    sellerY += 14;
-
-    labeledText(
-      doc,
-      "Invoice No: ",
-      `INV-${orderId.slice(-6).toUpperCase()}`,
-      50,
-      sellerY,
-    );
-
-    // Buyer info (Right side)
-    const buyerX = 400;
-    let buyerY = startY;
-
-    labeledText(
-      doc,
-      "Buyer: ",
-      order.user?.instituteName || "N/A",
-      buyerX,
-      buyerY,
-    );
-    buyerY += 14;
-
-    labeledText(doc, "Shipping Address: ", "", buyerX, buyerY);
-    buyerY += 14;
-
-    doc.text(
-      `${order.shippingAddress?.instituteAddress1 || ""}`,
-      buyerX,
-      buyerY,
-    );
-    buyerY += 14;
-
-    doc.text(order.shippingAddress?.instituteAddress2 || "", buyerX, buyerY);
-    buyerY += 14;
-
-    doc.text(
-      `${order.shippingAddress?.district || ""}, ${order.shippingAddress?.state || ""}, ${order.shippingAddress?.pincode || ""}`,
-      buyerX,
-      buyerY,
-    );
-    buyerY += 14;
-
-    labeledText(
-      doc,
-      "Landmark: ",
-      order.shippingAddress?.landmark || "N/A",
-      buyerX,
-      buyerY,
-    );
-
-    doc.moveDown(2);
-
-    const startX = 20;
-    startY = doc.y + 5;
-
-    // Column widths (Description, HSN, Qty, Rate, Tax, Total)
-    const colWidths = [200, 80, 60, 80, 60, 80];
-    const tableWidth = colWidths.reduce((a, b) => a + b, 0);
-    const rowHeight = 25;
-
-    // Table headers
-    const headers = ["Description", "HSN", "Qty", "Rate", "Tax", "Total"];
-
-    // Sample data (you can add more items easily)
-    const items = [
-      {
-        description: order.variant.productId?.name || "N/A",
-        hsn: order.variant.productId?.hsn || "N/A",
-        qty: order.qty || 1,
-        rate: order.unitPrice || 0,
-        tax: order.tax,
-        total: order.totalPrice || 0,
-      },
-    ];
-
-    // Calculate total table height (header + rows)
-    const totalRows = items.length + 1; // +1 for header
-    const tableHeight = totalRows * rowHeight;
-
-    // Draw vertical grid lines (spanning entire table)
-    let x = startX;
-    doc.strokeColor("#000").lineWidth(0.5);
-    doc
-      .moveTo(x, startY)
-      .lineTo(x, startY + tableHeight)
-      .stroke();
-    colWidths.forEach((w) => {
-      x += w;
-      doc
-        .moveTo(x, startY)
-        .lineTo(x, startY + tableHeight)
-        .stroke();
-    });
-
-    // Draw header background
-    doc.rect(startX, startY, tableWidth, rowHeight).fill("#f0f0f0").stroke();
-    doc.fillColor("#000").font("Helvetica-Bold").fontSize(11);
-
-    // Draw header text
-    x = startX;
-    headers.forEach((header, i) => {
-      doc.text(header, x + 5, startY + 7, {
-        width: colWidths[i] - 10,
-        align: "center",
-      });
-      x += colWidths[i];
-    });
-
-    doc
-      .moveTo(startX, startY)
-      .lineTo(startX + tableWidth, startY)
-      .stroke();
-    let headerX = startX;
-    colWidths.forEach((w) => {
-      doc
-        .moveTo(headerX, startY)
-        .lineTo(headerX, startY + rowHeight)
-        .stroke();
-      headerX += w;
-    });
-    doc
-      .moveTo(headerX, startY)
-      .lineTo(headerX, startY + rowHeight)
-      .stroke();
-
-    // Horizontal line below header
-    doc
-      .moveTo(startX, startY + rowHeight)
-      .lineTo(startX + tableWidth, startY + rowHeight)
-      .stroke();
-
-    startY += rowHeight;
-
-    // Draw data rows
-    doc.font("Helvetica").fontSize(10).fillColor("#000");
-
-    items.forEach((item, rowIndex) => {
-      x = startX;
-      const y = startY + rowIndex * rowHeight;
-      const cells = [
-        item.description,
-        item.hsn,
-        item.qty.toString(),
-        item.rate.toFixed(2),
-        item.tax + " %",
-        item.total.toFixed(2),
-      ];
-      const heights = cells.map((cell, i) =>
-        doc.heightOfString(cell, { width: colWidths[i] - 10 }),
-      );
-      const cellHeight = Math.max(...heights, rowHeight) + 15;
-
-      // Draw vertical borders for this row
-      let lineX = startX;
-      for (let i = 0; i <= colWidths.length; i++) {
-        doc
-          .moveTo(lineX, y)
-          .lineTo(lineX, y + cellHeight)
-          .stroke();
-        if (i < colWidths.length) lineX += colWidths[i];
-      }
-
-      // Draw bottom horizontal border
-      doc
-        .moveTo(startX, y + cellHeight)
-        .lineTo(startX + tableWidth, y + cellHeight)
-        .stroke();
-
-      // Draw text inside each cell
-      x = startX;
-      cells.forEach((cell, i) => {
-        doc.text(cell, x + 5, y + 7, {
-          width: colWidths[i] - 10,
-          align: i >= 2 ? "right" : "left",
-        });
-        x += colWidths[i];
-      });
-    });
-
-    doc.end();
   } catch (err) {
     console.error("Invoice generation error:", err);
     res.status(500).json({ error: "Failed to generate invoice" });
