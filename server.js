@@ -85,6 +85,8 @@ app.get("/test", (req, res) => {
  
 // routes
 const user = require("./controller/user");
+const admin = require("./controller/admin");
+
 const shop = require("./controller/shop");
 const product = require("./controller/product");
 const event = require("./controller/event");
@@ -110,6 +112,7 @@ const wishlist = require("./controller/userWishlist");
 // end points
 app.use("/api/v2/withdraw", withdraw);
 app.use("/api/v2/user", user);
+app.use("/api/v2/admin", admin);
 app.use("/api/v2/conversation", conversation);
 app.use("/api/v2/message", message);
 app.use("/api/v2/order", order);

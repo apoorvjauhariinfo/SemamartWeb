@@ -354,16 +354,20 @@ router.get(
   }),
 );
 
-// log out from shop
-router.get(
+router.post(
   "/logout",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      res.cookie("seller_token", null, {
-        expires: new Date(Date.now()),
+      const isProd = process.env.NODE_ENV === "production";
+
+      res.clearCookie("seller_token", {
         httpOnly: true,
+        secure: isProd,                 // true in prod (HTTPS)
+        sameSite: isProd ? "none" : "lax",
+        path: "/",                      // MUST match login
       });
-      res.status(201).json({
+
+      res.status(200).json({
         success: true,
         message: "Log out successful!",
       });
@@ -372,6 +376,7 @@ router.get(
     }
   }),
 );
+
 
 // get shop info
 router.get(
