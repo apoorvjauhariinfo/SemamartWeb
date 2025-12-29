@@ -125,6 +125,20 @@ router.get(
     }
   })
 );
+// routes/admin.js
+router.post("/logout", (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
+
+  res.clearCookie("token", {   // ⚠️ MUST MATCH LOGIN COOKIE NAME
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
+    path: "/",
+  });
+
+  res.status(200).json({ success: true });
+});
+
 
 
 
