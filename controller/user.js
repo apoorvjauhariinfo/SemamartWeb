@@ -184,7 +184,7 @@ router.post(
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct inforamtions", 400),
+          new ErrorHandler("User Details Mismatched", 400),
         );
       }
       sendToken(user, 201, res);
