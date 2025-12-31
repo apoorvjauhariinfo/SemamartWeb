@@ -42,6 +42,11 @@ app.use(express.json());
 app.use(cookieParser());
 // Enable CORS for all routes
 
+app.post("/api/hdfc-webhook",(req,res)=>{
+    console.log(req.body)
+    res.status(200).send("nina")
+})
+
 const allowedOriginsCors = [
   "http://localhost:5173",
   "http://test.semamart.com",

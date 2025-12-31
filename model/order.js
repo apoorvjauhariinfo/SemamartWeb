@@ -81,7 +81,7 @@ const orderSchema = new mongoose.Schema({
     paymentInfo: {
         id: { type: String }, // HDFC group payment id
         groupId: { type: String }, // HDFC group payment id
-        status: { type: String },
+        // status: { type: String },
         method: { type: String },
         transactionId: { type: String },
     },

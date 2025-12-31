@@ -27,10 +27,15 @@ router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const { cart, shippingAddress, user, totalPrice, paymentInfo } = req.body;
+      const paymentGroupId = new mongoose.Types.ObjectId().toString();
 
+      const { cart, shippingAddress, user, totalPrice, paymentInfo, paymentMethod } = req.body;
       if (!cart || cart.length === 0) {
         return next(new ErrorHandler("Cart is empty", 400));
+      }
+
+      if(!paymentMethod){
+          throw new ErrorHandler("Method type required",401)
       }
 
       const orders = [];
@@ -46,11 +51,18 @@ router.post(
           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
           tax: item.tax,
           unitPrice: item.unitPrice,
-          paymentInfo,
           statusHistory: [{ status: "Created", updatedAt: new Date() }],
+
+          paymentInfo: {
+              method: paymentMethod,
+              // status: "PENDING",
+              id: paymentGroupId,
+              groupId: paymentGroupId
+            },
         });
         orders.push(order);
       }
+
       const orderIdsHtml = orders
         .map(
           (order) => `
@@ -71,13 +83,68 @@ router.post(
         </div>
       `;
 
-      await sentMailToAdmin(mailSubject, htmlBody);
-      res.status(201).json({ success: true, orders });
+      // await sentMailToAdmin(mailSubject, htmlBody);
+      res.status(201).json({ success: true, orders,paymentMethod, paymentGroupId });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
   }),
 );
+
+router.post(
+  "/create-payment-session",
+    catchAsyncErrors(async (req, res) => {
+        const { paymentGroupId } = req.body;
+
+        if(!paymentGroupId){
+            throw new ErrorHandler("paymentGroupId is required", 400);
+        }
+
+        const orders = await Order.find({ "paymentInfo.groupId": paymentGroupId });
+          if (!orders || orders.length === 0) {
+              throw new ErrorHandler("No orders found for this payment group", 404);
+          }
+
+        const totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+
+        const hdfcPayload = {
+            merchant_id: process.env.HDFC_MERCHANT_ID,
+            order_id: paymentGroupId,
+            amount: totalAmount,
+            currency: "INR",
+            payment_page_client_id: process.env.HDFC_PAYMENT_PAGE_CLIENT_ID,
+            return_url: process.env.HDFC_RETURN_URL_BASE+"/payment/"+paymentGroupId
+        }
+
+        const hdfcResponse = await fetch(
+           process.env.BASE_URL+"/session",
+           {
+               method:"POST",
+               headers: {
+                 "Content-Type": "application/json",
+                 "Authorization": `Basic ${process.env.BASE_64_API}`
+               },
+               body:JSON.stringify(hdfcPayload)
+           }
+         );
+
+        const hdfcResponseData = await hdfcResponse.json()
+        const paymentSessionId = hdfcResponseData.id;
+        const paymentLink = hdfcResponseData.payment_links.web;
+
+        if(!paymentSessionId || !paymentLink){
+            throw new ErrorHandler()
+        }
+
+        res
+        .status(200)
+        .json({
+            success: true,
+            paymentSessionId,
+            paymentLink
+        });
+    }
+))
 
 router.get(
   "/get-order-details/:orderId",
