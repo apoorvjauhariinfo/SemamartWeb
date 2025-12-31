@@ -196,7 +196,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images variants", // fetch product details through variant
+            select: "name images variants manufacturerName ", // fetch product details through variant
           },
         })
         .populate("shop", "name email")

@@ -34,7 +34,8 @@ router.get(
 
       // --- Vendors ---
       const newVendorsCount = await Shop.countDocuments({
-        createdAt: { $gte: startOfThisMonth },
+          verified: false,
+        // createdAt: { $gte: startOfThisMonth },
       });
 
       const lastMonthVendorsCount = await Shop.countDocuments({
@@ -49,15 +50,19 @@ router.get(
         vendorTrend = 100;
       }
 
-      const totalVendorsCount = await Shop.countDocuments();
+      const totalVendorsCount = await Shop.countDocuments({
+  verified: true,
+});
+
 
       // --- Institutes (Users) ---
       const newInstitutesCount = await User.countDocuments({
-        createdAt: { $gte: startOfThisMonth },
+        role: "user",
+        // createdAt: { $gte: startOfThisMonth },
       });
 
       const lastMonthInstitutesCount = await User.countDocuments({
-        createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
+        // createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
       });
 
       let instituteTrend = 0;
@@ -68,15 +73,16 @@ router.get(
         instituteTrend = 100;
       }
 
-      const totalInstitutesCount = await User.countDocuments();
+      const totalInstitutesCount = await User.countDocuments({
+        role: "user",
+      });
 
       // --- Orders ---
       const newOrdersCount = await Order.countDocuments({
-        createdAt: { $gte: startOfThisMonth },
+      
       });
 
       const lastMonthOrdersCount = await Order.countDocuments({
-        createdAt: { $gte: startOfLastMonth, $lte: endOfLastMonth },
       });
 
       let orderTrend = 0;
