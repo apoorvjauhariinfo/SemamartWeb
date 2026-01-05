@@ -55,6 +55,8 @@ const allowedOriginsCors = [
   "http://semamart.com",
   "https://www.semamart.com",
   "http://www.semamart.com",
+  "https://beta.semamart.com",
+  "http://beta.semamart.com",
 ];
 
 app.use(
