@@ -42,7 +42,7 @@ app.use(express.json());
 app.use(cookieParser());
 // Enable CORS for all routes
 
-app.post("/api/hdfc-webhook",(req,res)=>{
+app.post("/api/v2/hdfc-webhook",(req,res)=>{
     console.log(req.body)
     res.status(200).send("nina")
 })
