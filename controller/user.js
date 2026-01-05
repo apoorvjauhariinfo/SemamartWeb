@@ -15,7 +15,7 @@ const mongoose = require("mongoose");
 const Order = require("../model/order"); // adjust path as needed
 const { Product, ProductVariant } = require("../model/product");
 const sentMailToAdmin = require("../utils/mailToAdmin");
-
+const generateUserPdf = require("../utils/generateUserPdf"); // moved here so PDF can be generated at registration
 
 const router = express.Router();
 
@@ -38,7 +38,7 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
     const userTokenData = { email };
     const activationToken = createActivationToken(userTokenData);
 
-   // With this cleaner one:
+    // With this cleaner one:
     const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
 
@@ -63,6 +63,22 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
         addressType: addr.addressType || "Home",
       })),
     });
+
+    // ---------- GENERATE REGISTRATION PDF FOR USER IMMEDIATELY ----------
+    try {
+      const relPdfPath = await generateUserPdf(user); // expected to return 'uploads/pdfs/<userId>.pdf' or similar
+      if (relPdfPath) {
+        user.registrationPdf = relPdfPath;
+        await user.save();
+        console.log("✅ User registration PDF created at registration:", relPdfPath);
+      } else {
+        console.warn("⚠️ generateUserPdf returned falsy value for user:", user._id);
+      }
+    } catch (pdfErr) {
+      // Log but do not block user creation or activation email
+      console.error("⚠️ User PDF generation failed at registration for", user._id, pdfErr);
+    }
+    // ---------- END PDF GENERATION ----------
 
     // ✅ Send activation email via Mailjet
     const html = `
@@ -137,21 +153,8 @@ router.post(
       user.isVerified = true;
       await user.save();
 
-      // ---------- GENERATE REGISTRATION PDF FOR USER ----------
-try {
-  const generateUserPdf = require("../utils/generateUserPdf");
-  const relPdfPath = await generateUserPdf(user); // returns 'uploads/pdfs/<userId>.pdf'
-  if (relPdfPath) {
-    user.registrationPdf = relPdfPath;
-    await user.save();
-    console.log("✅ User registration PDF created:", relPdfPath);
-  }
-} catch (pdfErr) {
-  console.error("⚠️ User PDF generation failed for", user._id, pdfErr);
-}
-// ---------- END PDF GENERATION ----------
-
-
+      // NOTE: PDF generation moved to registration time to ensure PDF exists even if user doesn't verify.
+      // send token & mail to admin
       sendToken(user, 201, res);
 
       const mailSubject = "New User registered"
@@ -836,7 +839,5 @@ router.get(
     return res.sendFile(absPath);
   })
 );
-
-
 
 module.exports = router;

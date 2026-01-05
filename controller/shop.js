@@ -17,6 +17,8 @@ const addActivityLog = require("../utils/activityLogHelper");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 
 // create shop (seller email verification)
+// Now: create Shop document immediately (verified: false), generate registration PDF, then send activation email.
+// PDF errors won't block registration or email.
 router.post(
   "/create-shop",
   uploadV2.fields([{ name: "profilePic" }, { name: "banner" }]),
@@ -27,18 +29,21 @@ router.post(
 
       if (existingSeller) {
         // Delete uploaded files if duplicate
-        if (req.files["profilePic"]) {
-          fs.unlinkSync(
-            `uploads/images/${req.files["profilePic"][0].filename}`,
-          );
+        if (req.files && req.files["profilePic"]) {
+          try {
+            fs.unlinkSync(`uploads/images/${req.files["profilePic"][0].filename}`);
+          } catch (e) { /* ignore */ }
+        }
+        if (req.files && req.files["banner"]) {
+          try {
+            fs.unlinkSync(`uploads/images/${req.files["banner"][0].filename}`);
+          } catch (e) { /* ignore */ }
         }
         return next(new ErrorHandler("Seller already exists", 400));
       }
 
-      const files = req.files;
-      const profilePic = files["profilePic"]
-        ? files["profilePic"][0].filename
-        : null;
+      const files = req.files || {};
+      const profilePic = files["profilePic"] ? files["profilePic"][0].filename : null;
       const banner = files["banner"] ? files["banner"][0].filename : null;
 
       const sellerData = {
@@ -52,10 +57,31 @@ router.post(
         phoneNumber: req.body.phoneNumber,
         profilePic,
         banner,
+        verified: false, // not verified until activation
       };
 
-      // ✅ Generate activation token
-      const activationToken = createActivationToken(sellerData);
+      // ✅ Create seller now (so we can generate PDF immediately)
+      const seller = await Shop.create(sellerData);
+
+      // ---------- GENERATE REGISTRATION PDF FOR SELLER IMMEDIATELY ----------
+      try {
+        // generateSellerPdf should return relative path like 'uploads/pdfs/<id>.pdf'
+        const relPdfPath = await generateSellerPdf(seller);
+        if (relPdfPath) {
+          seller.registrationPdf = relPdfPath;
+          await seller.save();
+          console.log("✅ Seller registration PDF created at registration:", relPdfPath);
+        } else {
+          console.warn("⚠️ generateSellerPdf returned falsy for seller:", seller._id);
+        }
+      } catch (pdfErr) {
+        // Log but do not block the flow
+        console.error("⚠️ Seller PDF generation failed at registration for", seller._id, pdfErr);
+      }
+      // ---------- END PDF GENERATION ----------
+
+      // ✅ Generate activation token (we keep the token payload minimal)
+      const activationToken = createActivationToken({ email });
 
       // ✅ Dynamic base URL detection
       const frontendBaseUrl =
@@ -91,6 +117,7 @@ router.post(
       res.status(201).json({
         success: true,
         message: `Verification email sent to ${email}. Please check your inbox.`,
+        sellerId: seller._id,
       });
     } catch (error) {
       console.error("❌ Error during seller creation:", error);
@@ -100,9 +127,9 @@ router.post(
 );
 
 // create activation token
-const createActivationToken = (seller) => {
-  return jwt.sign(seller, process.env.ACTIVATION_SECRET, {
-    expiresIn: "10m", // slightly longer to avoid early expiry
+const createActivationToken = (payload) => {
+  return jwt.sign(payload, process.env.ACTIVATION_SECRET, {
+    expiresIn: "10m",
   });
 };
 
@@ -206,50 +233,76 @@ router.put(
   })
 );
 
-
 // activate seller
+// Updated: prefer to verify an already-created Shop (created at /create-shop).
+// If a Shop by email exists and is unverified -> mark verified true.
+// If not present (older flows), create the Shop now.
 router.post(
   "/activation",
   catchAsyncErrors(async (req, res, next) => {
     try {
       const { activation_token } = req.body;
-      const decodedSeller = jwt.verify(
-        activation_token,
-        process.env.ACTIVATION_SECRET,
-      );
+      const decoded = jwt.verify(activation_token, process.env.ACTIVATION_SECRET);
 
-      if (!decodedSeller) {
+      if (!decoded || !decoded.email) {
         return next(new ErrorHandler("Invalid or expired token", 400));
       }
 
-      const {
-        firstName,
-        lastName,
-        email,
-        businessName,
-        gstNumber,
-        phoneNumber,
-        businessType,
-        password,
-        profilePic,
-        banner,
-      } = decodedSeller;
+      const { email } = decoded;
 
-      // ✅ Check again safely
-      const existingSeller = await Shop.findOne({ email });
+      // Check for an existing shop by email
+      let existingSeller = await Shop.findOne({ email });
+
       if (existingSeller) {
-        console.log("⚠️ Seller already activated:", email);
+        if (existingSeller.verified) {
+          console.log("⚠️ Seller already activated:", email);
+          return res.status(200).json({
+            success: true,
+            message: "Seller already verified. Please log in.",
+          });
+        }
+
+        // Mark verified
+        existingSeller.verified = true;
+        await existingSeller.save();
+
+        await addActivityLog({
+          userId: existingSeller._id,
+          userType: "Shop",
+          action: "Vendor Verify",
+          entityType: "Shop",
+          entityId: existingSeller._id,
+          description: `Seller ${existingSeller.businessName} verified via email activation`,
+        });
+
+        // Notify admins
+        const mailSubject = "Seller verified";
+        const htmlBody = `
+          <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+            <h2 style="color: #2c3e50;">Seller Verified</h2>
+            <p>The seller has verified their email and account is now active.</p>
+            <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+              <p style="margin: 0;"><strong>Business Name:</strong> ${existingSeller.businessName}</p>
+              <p style="margin: 0;"><strong>Email:</strong> ${existingSeller.email}</p>
+              <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(existingSeller.createdAt).toLocaleDateString("en-IN")}</p>
+            </div>
+          </div>
+        `;
+        await sentMailToAdmin(mailSubject, htmlBody);
+
         return res.status(200).json({
           success: true,
-          message: "Seller already verified. Please log in.",
+          message: "Seller verified successfully!",
+          seller: existingSeller,
         });
       }
 
-      // ✅ Create seller in DB
-      const seller = await Shop.create({
+      // Backwards-compatibility: if seller doesn't exist (old flows), create it using decoded token payload.
+      // NOTE: activation_token originally included many fields. If it only contains email, we cannot create a full seller.
+      // We assume older activation tokens include the needed fields (fallback).
+      const {
         firstName,
         lastName,
-        email,
         businessName,
         gstNumber,
         phoneNumber,
@@ -257,7 +310,23 @@ router.post(
         password,
         profilePic,
         banner,
-      });
+      } = decoded;
+
+      const sellerPayload = {
+        firstName,
+        lastName,
+        businessName,
+        gstNumber,
+        phoneNumber,
+        businessType,
+        email,
+        password,
+        profilePic,
+        banner,
+        verified: true,
+      };
+
+      const seller = await Shop.create(sellerPayload);
 
       await addActivityLog({
         userId: seller._id,
@@ -265,25 +334,23 @@ router.post(
         action: "Vendor Add",
         entityType: "Shop",
         entityId: seller._id,
-        description: seller.businessName + " registered",
+        description: seller.businessName + " registered (via activation)",
       });
 
-      //pdf generation
+      // NOTE: PDF generation already happens at creation flow. Since this path is only hit when no pre-created seller exists,
+      // we may optionally generate the PDF here too. Keep it non-blocking.
       try {
-  // generateSellerPdf should return relative path like 'uploads/pdfs/<id>.pdf'
-  const relPdfPath = await generateSellerPdf(seller);
-  if (relPdfPath) {
-    // save to DB for later retrieval
-    seller.registrationPdf = relPdfPath;
-    await seller.save();
-    console.log("✅ Registration PDF created:", relPdfPath);
-  }
-} catch (pdfErr) {
-  // Log but DO NOT fail activation
-  console.error("⚠️ PDF generation failed for seller", seller._id, pdfErr);
-}
+        const relPdfPath = await generateSellerPdf(seller);
+        if (relPdfPath) {
+          seller.registrationPdf = relPdfPath;
+          await seller.save();
+          console.log("✅ Registration PDF created at activation:", relPdfPath);
+        }
+      } catch (pdfErr) {
+        console.error("⚠️ PDF generation failed during activation for seller", seller._id, pdfErr);
+      }
 
-      const mailSubject = "New seller registered"
+      const mailSubject = "New seller registered";
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
           <h2 style="color: #2c3e50;">New Seller Registration</h2>
@@ -295,13 +362,12 @@ router.post(
           </div>
         </div>
       `;
+      await sentMailToAdmin(mailSubject, htmlBody);
 
-      await sentMailToAdmin(mailSubject,htmlBody)
-
-      console.log("✅ Seller verified successfully:", email);
+      console.log("✅ Seller activated and created:", email);
       res.status(201).json({
         success: true,
-        message: "Seller verified successfully!",
+        message: "Seller verified and created successfully!",
         seller,
       });
     } catch (error) {
@@ -392,7 +458,6 @@ router.post(
   }),
 );
 
-
 // get shop info
 router.get(
   "/get-shop-info/:id",
@@ -453,7 +518,7 @@ router.put(
   }),
 );
 
-// update seller info
+// update seller info (legacy duplicate-safe route)
 router.put(
   "/update-seller-info",
   isSeller,
@@ -708,7 +773,6 @@ router.get(
   })
 );
 
-
 // Admin – download seller registration PDF
 router.get(
   "/seller-registration-pdf/:sellerId",
@@ -722,36 +786,34 @@ router.get(
       return next(new ErrorHandler("Seller PDF not found", 404));
     }
 
-// registrationPdf may be 'pdfs/<file>.pdf' (URL path) or 'uploads/pdfs/<file>.pdf' (rare)
-let rel = seller.registrationPdf || "";
+    // registrationPdf may be 'pdfs/<file>.pdf' (URL path) or 'uploads/pdfs/<file>.pdf' (rare)
+    let rel = seller.registrationPdf || "";
 
-// normalize and compute absolute path (support both formats)
-let absPath;
-if (rel.startsWith("uploads/")) {
-  absPath = path.join(process.cwd(), rel); // already a relative FS path
-} else if (rel.startsWith("pdfs/")) {
-  // stored as URL path 'pdfs/xxx.pdf' -> actual file is in uploads/pdfs/xxx.pdf
-  absPath = path.join(process.cwd(), "uploads", rel);
-} else if (rel.includes("/pdfs/")) {
-  // handle accidental 'something/pdfS/..'
-  absPath = path.join(process.cwd(), rel.replace(/^\/+/, ""));
-} else {
-  // fallback: assume filename only
-  absPath = path.join(process.cwd(), "uploads", "pdfs", rel);
-}
+    // normalize and compute absolute path (support both formats)
+    let absPath;
+    if (rel.startsWith("uploads/")) {
+      absPath = path.join(process.cwd(), rel); // already a relative FS path
+    } else if (rel.startsWith("pdfs/")) {
+      // stored as URL path 'pdfs/xxx.pdf' -> actual file is in uploads/pdfs/xxx.pdf
+      absPath = path.join(process.cwd(), "uploads", rel);
+    } else if (rel.includes("/pdfs/")) {
+      // handle accidental 'something/pdfS/..'
+      absPath = path.join(process.cwd(), rel.replace(/^\/+/, ""));
+    } else {
+      // fallback: assume filename only
+      absPath = path.join(process.cwd(), "uploads", "pdfs", rel);
+    }
 
-if (!fs.existsSync(absPath)) {
-  console.error("Seller PDF missing on disk:", { sellerId, registrationPdf: rel, absPath });
-  return next(new ErrorHandler("PDF file missing on server", 404));
-}
+    if (!fs.existsSync(absPath)) {
+      console.error("Seller PDF missing on disk:", { sellerId, registrationPdf: rel, absPath });
+      return next(new ErrorHandler("PDF file missing on server", 404));
+    }
 
-// send inline
-res.setHeader("Content-Type", "application/pdf");
-res.setHeader("Content-Disposition", "inline");
-return res.sendFile(absPath);
-
+    // send inline
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline");
+    return res.sendFile(absPath);
   })
 );
-
 
 module.exports = router;
