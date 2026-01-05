@@ -103,6 +103,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     // required: true,
   },
+  registrationPdf: {
+  type: String, // e.g. 'uploads/pdfs/<userId>.pdf'
+},
+
   createdAt: {
     type: Date,
     default: Date.now(),

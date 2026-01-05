@@ -137,6 +137,21 @@ router.post(
       user.isVerified = true;
       await user.save();
 
+      // ---------- GENERATE REGISTRATION PDF FOR USER ----------
+try {
+  const generateUserPdf = require("../utils/generateUserPdf");
+  const relPdfPath = await generateUserPdf(user); // returns 'uploads/pdfs/<userId>.pdf'
+  if (relPdfPath) {
+    user.registrationPdf = relPdfPath;
+    await user.save();
+    console.log("✅ User registration PDF created:", relPdfPath);
+  }
+} catch (pdfErr) {
+  console.error("⚠️ User PDF generation failed for", user._id, pdfErr);
+}
+// ---------- END PDF GENERATION ----------
+
+
       sendToken(user, 201, res);
 
       const mailSubject = "New User registered"
@@ -776,6 +791,52 @@ router.get(
     }
   })
 );
+
+// Admin – download user registration PDF
+router.get(
+  "/user-registration-pdf/:userId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res, next) => {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user || !user.registrationPdf) {
+      return next(new ErrorHandler("User PDF not found", 404));
+    }
+
+    // registrationPdf might be:
+    // - "pdfs/<id>.pdf"   (public URL path)
+    // - "uploads/pdfs/<id>.pdf" (filesystem relative path)
+    let rel = user.registrationPdf;
+
+    let absPath;
+    if (rel.startsWith("uploads/")) {
+      absPath = path.join(process.cwd(), rel);
+    } else if (rel.startsWith("pdfs/")) {
+      absPath = path.join(process.cwd(), "uploads", rel);
+    } else {
+      // fallback (filename only or unexpected format)
+      absPath = path.join(process.cwd(), "uploads", "pdfs", rel);
+    }
+
+    if (!fs.existsSync(absPath)) {
+      console.error("❌ User PDF missing on disk:", {
+        userId,
+        storedPath: rel,
+        resolvedPath: absPath,
+      });
+      return next(new ErrorHandler("PDF file missing on server", 404));
+    }
+
+    // Open inline in browser
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline");
+
+    return res.sendFile(absPath);
+  })
+);
+
 
 
 module.exports = router;

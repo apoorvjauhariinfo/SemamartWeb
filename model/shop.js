@@ -64,6 +64,9 @@ const shopSchema = new mongoose.Schema({
     type: String,
     // required: true,
   },
+  registrationPdf: {
+    type: String, // relative path like 'uploads/pdfs/<id>.pdf'
+  },
   zipCode: {
     type: Number,
     // required: true,

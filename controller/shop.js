@@ -10,7 +10,7 @@ const { uploadV2 } = require("../multer");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
 const mongoose = require("mongoose");
-
+const generateSellerPdf = require("../utils/generateSellerPdf");
 const sendShopToken = require("../utils/shopToken");
 const user = require("../model/user");
 const addActivityLog = require("../utils/activityLogHelper");
@@ -267,6 +267,21 @@ router.post(
         entityId: seller._id,
         description: seller.businessName + " registered",
       });
+
+      //pdf generation
+      try {
+  // generateSellerPdf should return relative path like 'uploads/pdfs/<id>.pdf'
+  const relPdfPath = await generateSellerPdf(seller);
+  if (relPdfPath) {
+    // save to DB for later retrieval
+    seller.registrationPdf = relPdfPath;
+    await seller.save();
+    console.log("✅ Registration PDF created:", relPdfPath);
+  }
+} catch (pdfErr) {
+  // Log but DO NOT fail activation
+  console.error("⚠️ PDF generation failed for seller", seller._id, pdfErr);
+}
 
       const mailSubject = "New seller registered"
       const htmlBody = `
@@ -693,6 +708,50 @@ router.get(
   })
 );
 
+
+// Admin – download seller registration PDF
+router.get(
+  "/seller-registration-pdf/:sellerId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res, next) => {
+    const { sellerId } = req.params;
+
+    const seller = await Shop.findById(sellerId);
+    if (!seller || !seller.registrationPdf) {
+      return next(new ErrorHandler("Seller PDF not found", 404));
+    }
+
+// registrationPdf may be 'pdfs/<file>.pdf' (URL path) or 'uploads/pdfs/<file>.pdf' (rare)
+let rel = seller.registrationPdf || "";
+
+// normalize and compute absolute path (support both formats)
+let absPath;
+if (rel.startsWith("uploads/")) {
+  absPath = path.join(process.cwd(), rel); // already a relative FS path
+} else if (rel.startsWith("pdfs/")) {
+  // stored as URL path 'pdfs/xxx.pdf' -> actual file is in uploads/pdfs/xxx.pdf
+  absPath = path.join(process.cwd(), "uploads", rel);
+} else if (rel.includes("/pdfs/")) {
+  // handle accidental 'something/pdfS/..'
+  absPath = path.join(process.cwd(), rel.replace(/^\/+/, ""));
+} else {
+  // fallback: assume filename only
+  absPath = path.join(process.cwd(), "uploads", "pdfs", rel);
+}
+
+if (!fs.existsSync(absPath)) {
+  console.error("Seller PDF missing on disk:", { sellerId, registrationPdf: rel, absPath });
+  return next(new ErrorHandler("PDF file missing on server", 404));
+}
+
+// send inline
+res.setHeader("Content-Type", "application/pdf");
+res.setHeader("Content-Disposition", "inline");
+return res.sendFile(absPath);
+
+  })
+);
 
 
 module.exports = router;
