@@ -178,17 +178,58 @@ router.get(
             },
         });
 
-        if(!hdfcResponse.ok){
+        if (!hdfcResponse.ok) {
             throw new ErrorHandler("Something went wrong", 500);
         }
 
         const hdfcData = await hdfcResponse.json();
+
+        if (hdfcData.status === "CHARGED") {
+            await Order.updateMany(
+                {
+                    "paymentInfo.groupId": orderId,
+                    status: "Created",
+                },
+                {
+                    $set: {
+                        status: "Paid",
+                        paidAt: new Date(),
+                    },
+                    $push: {
+                        statusHistory: {
+                            status: "Paid",
+                            updatedAt: new Date(),
+                        },
+                    },
+                },
+            );
+
+            // STEP 2: Paid → Processing
+            await Order.updateMany(
+                {
+                    "paymentInfo.groupId": orderId,
+                    status: "Paid",
+                },
+                {
+                    $set: {
+                        status: "Processing",
+                    },
+                    $push: {
+                        statusHistory: {
+                            status: "Processing",
+                            updatedAt: new Date(),
+                        },
+                    },
+                },
+            );
+        }
+
         return res.status(200).json({
-              success: true,
-              status: hdfcData.status,
-              orderId: hdfcData.order_id,
-              paymentId: hdfcData.id,
-            });
+            success: true,
+            status: hdfcData.status,
+            orderId: hdfcData.order_id,
+            paymentId: hdfcData.id,
+        });
     }),
 );
 
