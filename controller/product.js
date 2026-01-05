@@ -250,7 +250,7 @@ router.get(
           path: "variants",
           model: "ProductVariant",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+            "thumbnail originalPrice discountPrice stock colorOption size bulkOrders",
         })
         .lean();
 

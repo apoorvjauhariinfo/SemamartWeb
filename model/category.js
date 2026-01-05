@@ -7,6 +7,10 @@ const categorySchema = new mongoose.Schema({
     unique: true,
     trim: true
   },
+  image: {
+    type: String,
+    required: false, 
+  },
   subcategories: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Subcategory'
