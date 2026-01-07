@@ -15,6 +15,7 @@ const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
 const fs = require("fs");
 const { generateInvoice } = require("../utils/pdfGeneration");
+const { nanoid } = require("nanoid");
 
 function getMonthDateRange(year, monthIndex) {
     const start = new Date(year, monthIndex, 1);
@@ -27,7 +28,7 @@ router.post(
     "/create-order",
     catchAsyncErrors(async (req, res, next) => {
         try {
-            const paymentGroupId = new mongoose.Types.ObjectId().toString();
+            const paymentGroupId = nanoid(20)
 
             const {
                 cart,
