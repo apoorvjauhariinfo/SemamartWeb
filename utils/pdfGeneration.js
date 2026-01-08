@@ -2,196 +2,134 @@ const PDFDocument = require("pdfkit");
 const path = require("path");
 
 function generateInvoice(stream, order) {
-     const doc = new PDFDocument({ size: "A4", margin: 30 });
-     doc.pipe(stream);
+    const doc = new PDFDocument({ size: "A4", margin: 30 });
+    doc.pipe(stream);
 
-     // --- 1. HEADER SECTION ---
-     doc.fontSize(14)
-          .font("Helvetica-Bold")
-          .text("SEMA HEALTHCARE PRIVATE LIMITED");
-     doc.fontSize(9)
-          .font("Helvetica")
-          .text(
-               "317, 2nd floor, SS Plaza, Delhi-Palam Road, Mahavir Enclave, Delhi 110045",
-          )
-          .text("Phone: 01149082773 | Email: info@semamart.com");
+    drawHeader(doc, order);
+    drawBuyerSellerBox(doc, order);
+    drawItemsTable(doc, order);
+    // drawTotals(doc, order);
+    // drawFooter(doc);
 
-     const logoPath = path.join(__dirname, "../assets/Logo-imag.png");
-     doc.image(logoPath, 490, 20, { width: 70 });
+    doc.end();
+}
 
-     doc.moveDown();
-     doc.rect(30, doc.y, 535, 0.5).stroke(); // Top horizontal line
-     doc.moveDown();
+function drawHeader(doc, order) {
+    doc.fontSize(14).text("Proforma Invoice", 40, 20, {
+        align: "center",
+    });
 
-     // --- 2. BILL TO & INVOICE DETAILS ---
-     const topOfDetails = doc.y;
-     doc.fontSize(10).font("Helvetica-Bold").text("BILL TO", 40, topOfDetails);
-     doc.font("Helvetica")
-          .text(`Company: ${order.user?.instituteName}`, 40, doc.y + 1)
-          .text(
-               `Shipping: ${order.shippingAddress?.instituteAddress1}`,
-               40,
-               doc.y + 2,
-          )
-          .text(`${order.shippingAddress?.instituteAddress2}`, 40, doc.y + 3)
-          .text(
-               `${order.shippingAddress?.district}, ${order.shippingAddress?.state}, ${order.shippingAddress?.pincode}`,
-               40,
-               doc.y + 4,
-          );
+    const businessName = order.shop.businessName;
+    const gst = order.shop.gstNumber;
+    const phone = order.shop.phoneNumber;
+    const add = order.shop.address;
 
-     doc.font("Helvetica-Bold").text("BILL DETAILS", 400, topOfDetails);
-     doc.font("Helvetica").text(
-          `Tax Invoice No: ${order._id.toString().slice(-6).toUpperCase()}`,
-          400,
-          doc.y + 1,
-     );
-     doc.font("Helvetica").text(
-          `Date: ${new Date().toLocaleDateString("en-IN")}`,
-          400,
-          doc.y + 2,
-     );
-     doc.text(`GSTIN: ${order.shop.gstNumber}`, 400, doc.y + 3);
+    doc.rect(50, 65, 500, 60)
+        .stroke()
+        .fontSize(11)
+        .text(businessName, 100, 70)
+        .fontSize(9)
+        .text(gst)
+        .text(phone)
+        .text(add);
 
-     doc.moveDown(4);
+    doc.rect(300, 65, 250, 30)
+        .stroke()
+        .rect(300, 65, 125, 60)
+        .stroke()
+        .fontSize(9)
+        .text(`Quotation No:\n${order._id}`, 305, 70)
+        .text(
+            `Date:\n${new Date(order.createdAt).toLocaleDateString("en-IN")}`,
+            430,
+            70,
+        )
+        .text("Mode/Terms of payment:", 430, 100)
+        .fontSize(10)
+        .text("100% advance payment");
+}
 
-     // --- 3. PRODUCT TABLE ---
-     const tableTop = doc.y;
-     // Updated colWidths to match SEMA's detailed table
-     const colWidths = [200, 80, 60, 80, 60, 80];
-     const headers = [
-          "Product Details",
-          "HSN",
-          "QTY",
-          "Price",
-          "GST%",
-          "Amount",
-     ];
+function drawBuyerSellerBox(doc, order) {
+    const y = 125;
+    const name = order.user?.instituteName;
+    const add1 = order.shippingAddress?.instituteAddress1;
+    const add2 = order.shippingAddress?.instituteAddress2;
+    const add3 = `${order.shippingAddress?.district}, ${order.shippingAddress?.state}, ${order.shippingAddress?.pincode}`;
+    const phone = order.shippingAddress?.phone;
+    const invoiceName = order.user?.firstName + order.user?.lastName;
 
-     // Header Background
-     doc.rect(30, tableTop, 535, 20)
-          .fill("#f0f0f0")
-          .strokeColor("#000")
-          .stroke();
-     doc.fillColor("#000").font("Helvetica-Bold").fontSize(9);
+    doc.rect(50, y, 250, 140).stroke();
+    doc.rect(300, y, 250, 140).stroke();
 
-     let currentX = 30;
-     headers.forEach((h, i) => {
-          doc.text(h, currentX + 2, tableTop + 6, {
-               width: colWidths[i],
-               // align: "center",
-          });
-          currentX += colWidths[i];
-     });
+    doc.fontSize(8)
+        .text("Dispatch To:", 60, y + 5)
+        .fontSize(10)
+        .text(invoiceName)
+        .text(name)
+        .text(add1)
+        .text(add2)
+        .text(add3)
+        .text("Phone no.: " + phone);
 
-     // Row Data
-     let rowY = tableTop + 20;
-     const item = {
-          name: order.variant.productId?.name, //
-          hsn: order.variant.productId?.hsn,
-          qty: order.qty,
-          price: order.unitPrice,
-          gst: order.tax,
-          total: order.totalPrice,
-     };
+    doc.rect(50, y + 85, 250, 55).stroke();
+    const invoiceInstituteName = name;
+    const email = order.user?.email;
 
-     // Draw Data Row
-     doc.font("Helvetica").fontSize(8);
-     doc.rect(30, rowY, 535, 30).stroke(); // Cell borders
+    doc.fontSize(8)
+        .text("Invoice To:", 60, y + 90)
+        .fontSize(10)
+        // .text(invoiceName)
+        .text(invoiceInstituteName)
+        .text(email);
 
-     doc.text(item.name, 35, rowY + 5, { width: colWidths[1] });
-     doc.text(item.hsn, 220, rowY + 5, { width: colWidths[2] });
-     doc.text(item.qty.toString(), 320, rowY + 5, {
-          width: colWidths[3],
-     });
-     doc.text(item.price.toFixed(2), 360, rowY + 5, {
-          width: colWidths[4],
-     });
-     doc.text(item.gst, 460, rowY + 5, {
-          width: colWidths[5],
-     });
-     doc.text(item.total.toFixed(2), 510, rowY + 5, {
-          width: colWidths[6],
-     });
+    doc.rect(300, y, 125, 30).stroke();
+    doc.rect(425, y, 125, 30).stroke();
+    doc.fontSize(8)
+        .text("Despatch through", 310, 130)
+        .text("Destination", 435, 130)
+        .text("Terms of Delivery", 310, 160);
+}
 
-     // Totals Box (Right)
-     let footerY = doc.y + 16;
-     doc.rect(380, footerY, 185, 60).stroke();
-     doc.text("Sub Total:", 385, footerY + 5).text(
-          order.unitPrice * order.qty,
-          480,
-          footerY + 5,
-          { align: "right", width: 80 },
-     );
-     doc.text(`IGST @ ${order.tax}:`, 385, footerY + 20).text(
-          (order.unitPrice * order.tax * order.qty) / 100,
-          480,
-          footerY + 20,
-          { align: "right", width: 80 },
-     );
-     doc.font("Helvetica-Bold")
-          .text("GRAND TOTAL:", 385, footerY + 35)
-          .text(order.totalPrice, 480, footerY + 35, {
-               align: "right",
-               width: 80,
-          });
+function drawItemsTable(doc, order) {
+    const item = [
+        { text: order.variant.productId?.name, font: { size: 11 } },
+        { text: order.variant.productId?.hsn },
+        { text: order.tax + " %" },
+        { text: order.qty },
+        { text: order.unitPrice },
+        { text: order.unitPrice * order.qty, align: { x: "right" } },
+    ];
 
-     // --- 5. TERMS & WARRANTY ---
-     let totalsY = doc.y + 40;
-     footerY = totalsY;
-     const colWidth = 260;
+    doc.table({
+        columnStyles: [200, 60, 60, 60, 60, 60],
+        rowStyles: [20, 200],
+        data: [
+            [
+                { text: "Product Details", align: { x: "center" } },
+                { text: "HSN", align: { x: "center" } },
+                { text: "Tax", align: { x: "center" } },
+                { text: "QTY", align: { x: "center" } },
+                { text: "Price", align: { x: "center" } },
+                { text: "Amount", align: { x: "center" } },
+            ],
+            item,
+        ],
+        position: { x: 50, y: 265 },
+    });
 
-     // LEFT COLUMN: Terms and Conditions
-     doc.fontSize(9)
-          .font("Helvetica-Bold")
-          .text("Terms and Conditions:", 30, footerY); // [cite: 25]
-     doc.font("Helvetica").fontSize(7).fillColor("#333");
+    doc.text("GST Output", 205, 320);
+    doc.text(order.totalPrice - order.unitPrice * order.qty, 520, 320);
 
-     const terms = [
-          "1. Goods once sold will not be accepted back.", // [cite: 34]
-          "2. All dispute Subject to Delhi Jurisdiction.", // [cite: 36]
-          "3. Freight Charges will be extra.", // [cite: 40]
-          "4. Delivery Period will be 7 working days.", // [cite: 41]
-          "5. Payment once received cannot be refunded, it can be adjusted with next order.", // [cite: 42]
-          "6. Claim of shortage if any must be intimated within 24 hours.", // [cite: 38]
-          "7. Standard packing cost included only.", // [cite: 43]
-          "8. Bank Charges (fee) must be paid by buyer.", // [cite: 44]
-          "9. Payment terms 100% advance payment with confirm Irrevocable order.", // [cite: 45]
-     ];
-
-     let termY = footerY + 15;
-     terms.forEach((term) => {
-          doc.text(term, 30, termY, { width: colWidth, lineGap: 2 });
-          termY = doc.y;
-     });
-
-     const rightColX = 450;
-     doc.fillColor("#000")
-          .fontSize(9)
-          .font("Helvetica-Bold")
-          .text("Pay To:", rightColX, footerY);
-     doc.font("Helvetica")
-          .fontSize(8)
-          .text(
-               `In Favour: ${order.shop.businessName || "Sema Healthcare Pvt Ltd"}`,
-               rightColX,
-               footerY + 15,
-          )
-          .text(
-               `A/C Number: ${order.shop.accountNumber || "97863700000408"}`,
-               rightColX,
-          )
-          .text(`IFSC: ${order.shop.ifsc || "YESB0000978"}`, rightColX)
-          .text(`Bank Name: ${order.shop.bankName || "Yes Bank"}`, rightColX);
-
-     doc.moveDown(3);
-
-     doc.rect(30, doc.y+30, 535, 0.5).stroke();
-     doc.font("Helvetica-Bold").text("For Sema Healthcare Private Limited", 30, doc.y+40);
-     doc.moveDown(2);
-     doc.text("Authorised Signatory", 30);
-
-     doc.end();
+    doc.rect(50, 455, 500, 30).stroke();
+    doc.fontSize(12).text("Total", 220, 460);
+    doc.fontSize(12).text(
+        new Intl.NumberFormat("en-IN").format(
+            order.totalPrice,
+        ),
+        505,
+        460,
+    );
+    doc.rect(50, 485, 500, 150).stroke();
 }
 
 module.exports = { generateInvoice };
