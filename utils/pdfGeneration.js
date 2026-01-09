@@ -8,16 +8,30 @@ function generateInvoice(stream, order) {
     drawHeader(doc, order);
     drawBuyerSellerBox(doc, order);
     drawItemsTable(doc, order);
-    // drawTotals(doc, order);
-    // drawFooter(doc);
+    drawFooter(doc);
 
     doc.end();
 }
 
 function drawHeader(doc, order) {
-    doc.fontSize(14).text("Proforma Invoice", 40, 20, {
+    doc.fontSize(12)
+        .font("Helvetica-Bold")
+        .text("SEMA HEALTHCARE PRIVATE LIMITED", 20, 10);
+    doc.fontSize(8)
+        .font("Helvetica")
+        .text(
+            "317, 2nd floor, SS Plaza, Delhi-Palam Road, Mahavir Enclave, Delhi 110045",
+        )
+        .text("Phone: 01149082773 | Email: info@semamart.com");
+
+    const logoPath = path.join(__dirname, "../assets/Logo-imag.png");
+    doc.image(logoPath, 520, 10, { width: 50 });
+
+    doc.fontSize(11).font("Helvetica-Bold").text("Proforma Invoice", 40, 50, {
         align: "center",
     });
+
+    doc.font("Helvetica");
 
     const businessName = order.shop.businessName;
     const gst = order.shop.gstNumber;
@@ -27,10 +41,10 @@ function drawHeader(doc, order) {
     doc.rect(50, 65, 500, 60)
         .stroke()
         .fontSize(11)
-        .text(businessName, 100, 70)
+        .text(businessName, 60, 70)
         .fontSize(9)
-        .text(gst)
-        .text(phone)
+        .text("GST: " + gst)
+        .text("Phone: " + phone)
         .text(add);
 
     doc.rect(300, 65, 250, 30)
@@ -86,17 +100,17 @@ function drawBuyerSellerBox(doc, order) {
     doc.rect(425, y, 125, 30).stroke();
     doc.fontSize(8)
         .text("Despatch through", 310, 130)
-        .text("Destination", 435, 130)
-        .text("Terms of Delivery", 310, 160);
+        .text("Destination", 435, 130);
+    // .text("Terms of Delivery", 310, 160);
 }
 
 function drawItemsTable(doc, order) {
     const item = [
         { text: order.variant.productId?.name, font: { size: 11 } },
-        { text: order.variant.productId?.hsn },
-        { text: order.tax + " %" },
-        { text: order.qty },
-        { text: order.unitPrice },
+        { text: order.variant.productId?.hsn, align: { x: "center" } },
+        { text: order.tax + " %", align: { x: "center" } },
+        { text: order.qty, align: { x: "center" } },
+        { text: order.unitPrice, align: { x: "center" } },
         { text: order.unitPrice * order.qty, align: { x: "right" } },
     ];
 
@@ -121,15 +135,18 @@ function drawItemsTable(doc, order) {
     doc.text(order.totalPrice - order.unitPrice * order.qty, 520, 320);
 
     doc.rect(50, 455, 500, 30).stroke();
-    doc.fontSize(12).text("Total", 220, 460);
-    doc.fontSize(12).text(
-        new Intl.NumberFormat("en-IN").format(
-            order.totalPrice,
-        ),
-        505,
+    doc.fontSize(11).text("Total", 220, 460);
+    doc.fontSize(9).text(
+        new Intl.NumberFormat("en-IN").format(order.totalPrice),
+        492,
         460,
     );
     doc.rect(50, 485, 500, 150).stroke();
+}
+
+function drawFooter(doc, order) {
+    doc.fontSize(8).text("For Sema Healthcare Private Limited", 400, 550);
+    doc.text("Authorised Signatory", 455, 610);
 }
 
 module.exports = { generateInvoice };
