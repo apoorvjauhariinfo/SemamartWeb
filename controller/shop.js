@@ -242,67 +242,19 @@ router.post(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const { activation_token } = req.body;
-      const decoded = jwt.verify(activation_token, process.env.ACTIVATION_SECRET);
+      const decodedSeller = jwt.verify(
+        activation_token,
+        process.env.ACTIVATION_SECRET,
+      );
 
-      if (!decoded || !decoded.email) {
+      if (!decodedSeller) {
         return next(new ErrorHandler("Invalid or expired token", 400));
       }
 
-      const { email } = decoded;
-
-      // Check for an existing shop by email
-      let existingSeller = await Shop.findOne({ email });
-
-      if (existingSeller) {
-        if (existingSeller.verified) {
-          console.log("⚠️ Seller already activated:", email);
-          return res.status(200).json({
-            success: true,
-            message: "Seller already verified. Please log in.",
-          });
-        }
-
-        // Mark verified
-        existingSeller.verified = true;
-        await existingSeller.save();
-
-        await addActivityLog({
-          userId: existingSeller._id,
-          userType: "Shop",
-          action: "Vendor Verify",
-          entityType: "Shop",
-          entityId: existingSeller._id,
-          description: `Seller ${existingSeller.businessName} verified via email activation`,
-        });
-
-        // Notify admins
-        const mailSubject = "Seller verified";
-        const htmlBody = `
-          <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-            <h2 style="color: #2c3e50;">Seller Verified</h2>
-            <p>The seller has verified their email and account is now active.</p>
-            <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
-              <p style="margin: 0;"><strong>Business Name:</strong> ${existingSeller.businessName}</p>
-              <p style="margin: 0;"><strong>Email:</strong> ${existingSeller.email}</p>
-              <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(existingSeller.createdAt).toLocaleDateString("en-IN")}</p>
-            </div>
-          </div>
-        `;
-        await sentMailToAdmin(mailSubject, htmlBody);
-
-        return res.status(200).json({
-          success: true,
-          message: "Seller verified successfully!",
-          seller: existingSeller,
-        });
-      }
-
-      // Backwards-compatibility: if seller doesn't exist (old flows), create it using decoded token payload.
-      // NOTE: activation_token originally included many fields. If it only contains email, we cannot create a full seller.
-      // We assume older activation tokens include the needed fields (fallback).
       const {
         firstName,
         lastName,
+        email,
         businessName,
         gstNumber,
         phoneNumber,
@@ -310,23 +262,31 @@ router.post(
         password,
         profilePic,
         banner,
-      } = decoded;
+      } = decodedSeller;
 
-      const sellerPayload = {
+      // ✅ Check again safely
+      const existingSeller = await Shop.findOne({ email });
+      if (existingSeller) {
+        console.log("⚠️ Seller already activated:", email);
+        return res.status(200).json({
+          success: true,
+          message: "Seller already verified. Please log in.",
+        });
+      }
+
+      // ✅ Create seller in DB
+      const seller = await Shop.create({
         firstName,
         lastName,
+        email,
         businessName,
         gstNumber,
         phoneNumber,
         businessType,
-        email,
         password,
         profilePic,
         banner,
-        verified: true,
-      };
-
-      const seller = await Shop.create(sellerPayload);
+      });
 
       await addActivityLog({
         userId: seller._id,
@@ -334,23 +294,10 @@ router.post(
         action: "Vendor Add",
         entityType: "Shop",
         entityId: seller._id,
-        description: seller.businessName + " registered (via activation)",
+        description: seller.businessName + " registered",
       });
 
-      // NOTE: PDF generation already happens at creation flow. Since this path is only hit when no pre-created seller exists,
-      // we may optionally generate the PDF here too. Keep it non-blocking.
-      try {
-        const relPdfPath = await generateSellerPdf(seller);
-        if (relPdfPath) {
-          seller.registrationPdf = relPdfPath;
-          await seller.save();
-          console.log("✅ Registration PDF created at activation:", relPdfPath);
-        }
-      } catch (pdfErr) {
-        console.error("⚠️ PDF generation failed during activation for seller", seller._id, pdfErr);
-      }
-
-      const mailSubject = "New seller registered";
+      const mailSubject = "New seller registered"
       const htmlBody = `
         <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
           <h2 style="color: #2c3e50;">New Seller Registration</h2>
@@ -362,12 +309,13 @@ router.post(
           </div>
         </div>
       `;
-      await sentMailToAdmin(mailSubject, htmlBody);
 
-      console.log("✅ Seller activated and created:", email);
+      await sentMailToAdmin(mailSubject,htmlBody)
+
+      console.log("✅ Seller verified successfully:", email);
       res.status(201).json({
         success: true,
-        message: "Seller verified and created successfully!",
+        message: "Seller verified successfully!",
         seller,
       });
     } catch (error) {
@@ -376,6 +324,7 @@ router.post(
     }
   }),
 );
+
 
 // login shop
 router.post(
