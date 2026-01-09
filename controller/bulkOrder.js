@@ -34,7 +34,7 @@ router.get("/get-bulk-order", async (req, res) => {
   try {
     // Fetch all bulk orders and populate related fields
     const bulkOrders = await BulkOrder.find()
-      .populate({ path: "user_id", select: "firstName lastName phoneNumber email" }) // populate user details
+      .populate({ path: "user_id", select: "firstName lastName phoneNumber email instituteName" }) // populate user details
       .populate({ path: "product_id", select: "name " }) // populate product details
       .populate({ path: "variant_id", select: "discountPrice" }); // populate variant details
 

@@ -132,7 +132,7 @@ router.get(
             select: "name images variants manufacturerName ", // fetch product details through variant
           },
         })
-        .populate("shop", "name email")
+        .populate("shop", "name email businessName")
         .populate("user", "firstName lastName email phoneNumber addresses");
 
       res.status(200).json({ success: true, orders });
@@ -195,7 +195,7 @@ router.get(
         status: { $nin: ["Created", "Paid"] },
       })
         .select("-shippingAddress -paymentInfo")
-        .populate("user", "firstName lastName")
+        .populate("user", "firstName lastName instituteName")
         .populate({
             path: "variant",
             populate: { path: "productId", select: "name" }
@@ -340,8 +340,15 @@ router.get(
     try {
       const orders = await Order.find()
         .select("-shippingAddress -paymentInfo")
-        .populate("user", "firstName lastName")
+        .populate("user", "firstName lastName instituteName")
         .populate("shop", "businessName")
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name ", 
+          },
+        })
         .sort({ createdAt: -1 });
 
       res.status(200).json({ success: true, orders });

@@ -434,6 +434,7 @@ router.get(
         model: "ProductVariant",
         select: "thumbnail originalPrice discountPrice stock colorOption size",
       })
+      .populate("shopId", "businessName")
       .select(
         "name variants createdAt commission sku visibilityByAdmin visibilityBySeller",
       );
