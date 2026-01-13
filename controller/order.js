@@ -8,7 +8,7 @@ const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const User = require("../model/user");
-const { Product } = require("../model/product");
+const { Product, ProductVariant } = require("../model/product");
 const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
 const sentMailToAdmin = require("../utils/mailToAdmin");
@@ -37,6 +37,30 @@ router.post(
 
       // 🔥 Split each cart item into its own order
       for (const item of cart) {
+
+          const variant = await ProductVariant
+            .findById(item.variantId)
+            .populate("productId", "name");
+
+          const variantLabel = [
+            variant.size,
+            variant.colorOption,
+          ].filter(Boolean).join(" / ");
+
+          if (variant.stock < item.qty) {
+            return next(
+              new ErrorHandler(
+                `Insufficient stock for ${variant.productId.name}${
+                  variantLabel ? ` (${variantLabel})` : ""
+                }`,
+                400
+              )
+            );
+          }
+
+
+          variant.stock -= item.qty;
+          await variant.save()
         const order = await Order.create({
           shop: item.shopId,
           variant: item.variantId,
