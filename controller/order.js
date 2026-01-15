@@ -37,30 +37,28 @@ router.post(
 
       // 🔥 Split each cart item into its own order
       for (const item of cart) {
+        const variant = await ProductVariant.findById(item.variantId).populate(
+          "productId",
+          "name"
+        );
 
-          const variant = await ProductVariant
-            .findById(item.variantId)
-            .populate("productId", "name");
+        const variantLabel = [variant.size, variant.colorOption]
+          .filter(Boolean)
+          .join(" / ");
 
-          const variantLabel = [
-            variant.size,
-            variant.colorOption,
-          ].filter(Boolean).join(" / ");
+        if (variant.stock < item.qty) {
+          return next(
+            new ErrorHandler(
+              `Insufficient stock for ${variant.productId.name}${
+                variantLabel ? ` (${variantLabel})` : ""
+              }`,
+              400
+            )
+          );
+        }
 
-          if (variant.stock < item.qty) {
-            return next(
-              new ErrorHandler(
-                `Insufficient stock for ${variant.productId.name}${
-                  variantLabel ? ` (${variantLabel})` : ""
-                }`,
-                400
-              )
-            );
-          }
-
-
-          variant.stock -= item.qty;
-          await variant.save()
+        variant.stock -= item.qty;
+        await variant.save();
         const order = await Order.create({
           shop: item.shopId,
           variant: item.variantId,
@@ -81,7 +79,7 @@ router.post(
             <p style="margin: 5px 0;">
               <strong>Order ID:</strong> ${order._id}
             </p>
-          `,
+          `
         )
         .join("");
       const mailSubject = "New Orders Created";
@@ -100,7 +98,7 @@ router.post(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 router.get(
@@ -108,7 +106,7 @@ router.get(
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId).populate(
       "cart.productId",
-      "variants name manufacturerName",
+      "variants name manufacturerName"
     );
 
     if (!order) {
@@ -116,7 +114,7 @@ router.get(
     }
 
     res.json(order);
-  }),
+  })
 );
 
 router.get(
@@ -137,7 +135,7 @@ router.get(
     }
 
     res.json(order);
-  }),
+  })
 );
 
 // ✅ Get all orders of a user
@@ -163,9 +161,8 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
-
 
 router.get(
   "/get-order/:id",
@@ -208,7 +205,6 @@ router.get(
   })
 );
 
-
 // ✅ Get all orders of a seller
 router.get(
   "/get-seller-all-orders/:shopId",
@@ -221,9 +217,9 @@ router.get(
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName instituteName")
         .populate({
-            path: "variant",
-            populate: { path: "productId", select: "name" }
-          })
+          path: "variant",
+          populate: { path: "productId", select: "name" },
+        })
 
         .sort({ createdAt: -1 });
 
@@ -231,7 +227,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // ✅ Update order status (for sellers)
@@ -287,7 +283,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // ✅ Refund request (user)
@@ -312,7 +308,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // ✅ Refund approval (seller)
@@ -352,7 +348,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // ✅ Admin: get all orders
@@ -370,7 +366,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name ", 
+            select: "name ",
           },
         })
         .sort({ createdAt: -1 });
@@ -379,7 +375,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 router.get(
@@ -400,7 +396,7 @@ router.get(
     }
 
     res.json(order);
-  }),
+  })
 );
 
 router.put(
@@ -517,7 +513,7 @@ router.put(
       });
     }
     res.status(201).json({ success: true });
-  }),
+  })
 );
 
 router.put(
@@ -531,9 +527,9 @@ router.put(
     order.paymentFile = req.file.filename;
     order.status = "Paid";
     order.statusHistory.push({
-        status:"Paid",
-        updatedAt: new Date()
-    })
+      status: "Paid",
+      updatedAt: new Date(),
+    });
     await order.save();
 
     const mailSubject = "Payment Receipt Added";
@@ -546,7 +542,7 @@ router.put(
     await sentMailToAdmin(mailSubject, htmlBody);
 
     res.status(200).json(order);
-  }),
+  })
 );
 
 router.put(
@@ -583,7 +579,10 @@ router.put(
     if (trackingFile) {
       if (order.trackingDetails.trackingDocument) {
         const docPath = path.join(
-          process.cwd(), "uploads", "payment-docs",order.trackingDetails.trackingDocument,
+          process.cwd(),
+          "uploads",
+          "payment-docs",
+          order.trackingDetails.trackingDocument
         );
         if (fs.existsSync(docPath)) {
           fs.unlinkSync(docPath);
@@ -600,15 +599,19 @@ router.put(
         <p>Tracking details uploaded by seller for order: ${order._id}.</p>
       </div>
     `;
-    const customerEmail = order.user.email
-    await sendMail({email:customerEmail,subject:mailSubject,html:htmlBody})
+    const customerEmail = order.user.email;
+    await sendMail({
+      email: customerEmail,
+      subject: mailSubject,
+      html: htmlBody,
+    });
 
     res.status(200).json({
       success: true,
       message: "Tracking details updated successfully",
       order,
     });
-  }),
+  })
 );
 
 // ✅ Generate invoice per order
@@ -633,11 +636,10 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=invoice-${orderId}.pdf`,
+      `attachment; filename=invoice-${orderId}.pdf`
     );
     res.setHeader("Content-Type", "application/pdf");
-    generateInvoice(res,order)
-
+    generateInvoice(res, order);
   } catch (err) {
     console.error("Invoice generation error:", err);
     res.status(500).json({ error: "Failed to generate invoice" });
@@ -758,14 +760,69 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 router.put(
   "/add-order-payment",
   catchAsyncErrors(async (req, res) => {
     res.send("nnnn");
-  }),
+  })
+);
+
+router.get(
+  "/seller-dashboard-stats",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    const shopId = req.seller._id;
+
+    const result = await Order.aggregate([
+      { $match: { shop: shopId, status: "Delivered" } },
+      {
+        $group: {
+          _id: null,
+          totalSales: { $sum: "$totalPrice" },
+          deliveredOrders: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const stats = result[0] || {
+      totalSales: 0,
+      deliveredOrders: 0,
+    };
+
+    res.status(200).json({
+      success: true,
+      totalSales: stats.totalSales,
+      deliveredOrders: stats.deliveredOrders,
+    });
+  })
+);
+
+router.get(
+  "/get-seller-delivered-orders",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    const shopId = req.seller._id;
+
+    const orders = await Order.find({
+      shop: shopId,
+      status: "Delivered",
+    })
+      .select("-shippingAddress -paymentInfo")
+      .populate("user", "firstName lastName instituteName")
+      .populate({
+        path: "variant",
+        populate: { path: "productId", select: "name" },
+      })
+      .sort({ deliveredAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      orders,
+    });
+  })
 );
 
 module.exports = router;
