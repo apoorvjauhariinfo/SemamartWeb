@@ -106,7 +106,8 @@ const hero = require("./controller/hero");
 const sectionbanner = require("./controller/sectionbanner");
 const cart = require("./controller/usercart");
 const wishlist = require("./controller/userWishlist");
-const bulkOrder = require("./controller/bulkOrder")
+const bulkOrder = require("./controller/bulkOrder");
+const notifyRequest = require("./controller/notifyRequest");
 
 
 
@@ -133,6 +134,8 @@ app.use("/api/v2/heroslider", hero);
 app.use("/api/v2/sectionbanner", sectionbanner);
 app.use("/api/v2/wishlist", wishlist);
 app.use("/api/v2/bulkorder", bulkOrder)
+app.use("/api/v2/notifyRequest", notifyRequest)
+
 
 
 // it'for errhendel
