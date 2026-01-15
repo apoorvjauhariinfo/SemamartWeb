@@ -43,6 +43,8 @@ router.put(
       "productId"
     );
 
+    const oldStock = variant.stock;
+
     if (!variant) throw new ErrorHandler("Not found", 404);
     if (variant.productId.shopId.toString() !== req.seller._id.toString())
       throw new ErrorHandler("Not authorised", 401);
@@ -68,6 +70,11 @@ router.put(
     });
 
     await variant.save();
+
+      if (variant.stock > oldStock) {
+      const notifyUsers = require("../utils/notifyUser");
+      await notifyUsers();
+    }
     res.json({ success: true });
   })
 );
