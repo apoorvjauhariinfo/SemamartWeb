@@ -212,7 +212,6 @@ router.get(
     try {
       const orders = await Order.find({
         shop: req.params.shopId,
-        status: { $nin: ["Created", "Paid"] },
       })
         .select("-shippingAddress -paymentInfo")
         .populate("user", "firstName lastName instituteName")
@@ -220,7 +219,6 @@ router.get(
           path: "variant",
           populate: { path: "productId", select: "name" },
         })
-
         .sort({ createdAt: -1 });
 
       res.status(200).json({ success: true, orders });
@@ -229,6 +227,7 @@ router.get(
     }
   })
 );
+
 
 // ✅ Update order status (for sellers)
 router.put(
