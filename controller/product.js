@@ -235,6 +235,80 @@ router.get(
 );
 
 router.get(
+  "/get-out-of-stock-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+         visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .populate("shopId", "businessName")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .sort({ createdAt: -1 });
+
+      const outOfStockProducts = products.filter((product) =>
+        product.variants.some((variant) => variant.stock === 0)
+      );
+
+      res.status(200).json({
+        success: true,
+        products: outOfStockProducts,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  })
+);
+
+
+router.get(
+  "/get-low-stock-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+         visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .populate("shopId", "businessName")
+        .populate({
+          path: "variants",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .sort({ createdAt: -1 });
+
+      const lowStockProducts = products.filter((product) => {
+        if (!product.minmaxrule) return false;
+
+        let minQty = 0;
+        try {
+          const rule = JSON.parse(product.minmaxrule);
+          minQty = Number(rule.minQty || 0);
+        } catch (err) {
+          return false;
+        }
+
+        return product.variants.some(
+          (variant) => variant.stock > 0 && variant.stock < minQty
+        );
+      });
+
+      res.status(200).json({
+        success: true,
+        products: lowStockProducts,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  })
+);
+
+
+router.get(
   "/get-all-products-updated-random",
   catchAsyncErrors(async (req, res, next) => {
     try {

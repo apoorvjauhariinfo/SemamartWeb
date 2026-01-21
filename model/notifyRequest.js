@@ -27,32 +27,25 @@ const notifyRequestSchema = new mongoose.Schema(
       required: true,
       lowercase: true,
       trim: true,
+      validate: {
+        validator: function (v) {
+          return /\S+@\S+\.\S+/.test(v);
+        },
+        message: props => `${props.value} is not a valid email!`,
+      },
     },
     notified: {
       type: Boolean,
       default: false,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-
-notifyRequestSchema.post("save", async function (doc) {
-  try {
-    if (doc.notified) {
-      await doc.deleteOne();
-    }
-  } catch (err) {
-    console.error("Error deleting notify request after notification:", err);
-  }
-});
-
-
+// Partial index: uniqueness only for unnotified requests
 notifyRequestSchema.index(
-  { user_id: 1, product_id: 1, variant_id: 1, shop_id: 1 },
-  { unique: true }
+  { user_id: 1, product_id: 1, variant_id: 1, email: 1, shop_id: 1 },
+  { unique: true, partialFilterExpression: { notified: false } }
 );
 
 module.exports = mongoose.model("NotifyRequest", notifyRequestSchema);

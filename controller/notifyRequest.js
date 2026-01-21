@@ -10,12 +10,12 @@ router.post("/add", async (req, res) => {
     // Normalize variant_id
     variant_id = variant_id || null;
 
-    // Handle populated shop object (safety)
+    // Handle populated shop object
     if (shop_id && typeof shop_id === "object" && shop_id._id) {
       shop_id = shop_id._id;
     }
 
-    // Required fields
+    // Validate required fields
     if (!user_id || !product_id || !email || !shop_id) {
       return res.status(400).json({
         success: false,
@@ -24,20 +24,27 @@ router.post("/add", async (req, res) => {
     }
 
     // Validate ObjectIds
-    if (
-      !mongoose.Types.ObjectId.isValid(user_id) ||
-      !mongoose.Types.ObjectId.isValid(product_id) ||
-      !mongoose.Types.ObjectId.isValid(shop_id) ||
-      (variant_id && !mongoose.Types.ObjectId.isValid(variant_id))
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid ID provided",
-      });
+    const ids = [user_id, product_id, shop_id];
+    if (variant_id) ids.push(variant_id);
+
+    if (!ids.every(id => mongoose.Types.ObjectId.isValid(id))) {
+      return res.status(400).json({ success: false, message: "Invalid ID provided" });
     }
 
-    // Check if the notify request already exists
-    const existing = await NotifyRequest.findOne({ user_id, product_id, variant_id, shop_id });
+    // Validate email format
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({ success: false, message: "Invalid email format" });
+    }
+
+    // Check if an unnotified request already exists
+    const existing = await NotifyRequest.findOne({
+      user_id,
+      product_id,
+      variant_id,
+      email,
+      shop_id,
+      notified: false,
+    });
 
     if (existing) {
       return res.status(400).json({
@@ -57,10 +64,18 @@ router.post("/add", async (req, res) => {
       data: notifyRequest,
     });
   } catch (err) {
+    // Handle duplicate error from partial index
+    if (err.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Notify request already exists (duplicate unnotified record)",
+      });
+    }
+
     console.error("Notify Request Add Error:", err);
     res.status(500).json({
       success: false,
-      message: err.message,
+      message: "Internal server error",
     });
   }
 });
@@ -68,7 +83,7 @@ router.post("/add", async (req, res) => {
 // GET /api/notify-request
 router.get("/", async (req, res) => {
   try {
-    const data = await NotifyRequest.find({ notified: false })
+    const data = await NotifyRequest.find()
       .sort({ createdAt: -1 })
       .populate("product_id", "name minmaxrule")
       .populate("variant_id", "size colorOption stock thumbnail discountPrice")
