@@ -167,6 +167,79 @@ router.get(
   }),
 );
 
+router.get(
+  "/getallproducts/outofstock/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({ shopId: req.params.id })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "variants",
+          match: { stock: 0 },
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .select(
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory"
+        );
+
+      const filteredProducts = products.filter(
+        product => product.variants && product.variants.length > 0
+      );
+
+      res.status(200).json({
+        success: true,
+        products: filteredProducts,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 400));
+    }
+  })
+);
+
+router.get(
+  "/getallproducts/bufferstock/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({ shopId: req.params.id })
+        .sort({ createdAt: -1 })
+        .populate({
+          path: "variants",
+          select: "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .select(
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory minmaxrule"
+        );
+
+      const lowStockProducts = products.filter((product) => {
+        if (!product.minmaxrule) return false;
+
+        let minQty;
+        try {
+          const rule = JSON.parse(product.minmaxrule);
+          minQty = Number(rule?.minQty);
+          if (!minQty || minQty <= 0) return false;
+        } catch (err) {
+          return false;
+        }
+
+        return product.variants.some(
+          (variant) =>
+            variant.stock > 0 && variant.stock < minQty
+        );
+      });
+
+      res.status(200).json({
+        success: true,
+        products: lowStockProducts,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message || error, 400));
+    }
+  })
+);
+
+
 /* ------------------ SELLER: delete product ------------------ */
 router.delete(
   "/delete-shop-product/:id",

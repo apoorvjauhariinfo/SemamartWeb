@@ -1,25 +1,44 @@
 const mongoose = require("mongoose");
 
+const adminNoteSchema = new mongoose.Schema(
+  {
+    note: {
+      type: String,
+      trim: true,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["NEW", "CONTACTED", "APPROVED", "REJECTED", "CLOSED"],
+      default: "NEW",
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const bulkOrderSchema = new mongoose.Schema(
   {
-    // Customer reference
-   user_id: {
-         type: mongoose.Schema.Types.ObjectId,
-         ref: "User",
-         required: true,
-         index: true,
-    }, 
+    user_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
     product_id: {
-         type: mongoose.Schema.Types.ObjectId,
-         ref: "Product",
-         required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
     },
 
     variant_id: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "ProductVariant",
-          default: null,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProductVariant",
+      default: null,
     },
 
     unitPrice: {
@@ -33,6 +52,11 @@ const bulkOrderSchema = new mongoose.Schema(
       min: 1,
     },
 
+    customerPrice: {
+      type: Number,
+      default: null,
+    },
+
     comment: {
       type: String,
       trim: true,
@@ -40,7 +64,7 @@ const bulkOrderSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["NEW", "PENDING", "QUOTED", "APPROVED", "REJECTED", "CLOSED"],
+      enum: ["NEW", "CONTACTED", "APPROVED", "REJECTED", "CLOSED"],
       default: "NEW",
     },
 
@@ -49,10 +73,8 @@ const bulkOrderSchema = new mongoose.Schema(
       default: false,
     },
 
-    adminNote: {
-      type: String,
-      trim: true,
-    },
+    /* ✅ THREAD OF ADMIN NOTES */
+    adminNotes: [adminNoteSchema],
   },
   {
     timestamps: true,
