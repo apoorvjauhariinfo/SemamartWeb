@@ -1,6 +1,6 @@
 const { Product, ProductVariant } = require("../model/product");
 const NotifyRequest = require("../model/notifyRequest");
-const sendMail = require("./sendEmail");
+const sendProductBackInStockCustomerEmail = require("./emails/productBackInStockCustomer");
 
 const HOST = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -84,73 +84,27 @@ async function notifyUsers() {
         }
 
         // Email content
-        const subject = `Product Back in Stock: ${product.name}`;
-        const productUrl = `${HOST}/product/${product._id}`;
-
-        const html = `
-  <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; background: #f9f9f9; border-radius: 10px; padding: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); color: #222;">
-    
-    <h1 style="font-size: 24px; font-weight: 700; margin-bottom: 15px; text-align: center; color: #222;">
-      ${product.name} is now available!
-    </h1>
-
-    <div style="display: flex; gap: 20px; align-items: center; flex-wrap: wrap; justify-content: center;">
-      ${
-        variant.thumbnail
-          ? `<img src="${variant.thumbnail}" alt="${product.name}" style="width: 180px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1);" />`
-          : ''
-      }
-      <div style="flex: 1; min-width: 220px;">
-        <p style="font-size: 16px; margin: 8px 0;">
-          <strong>Variant:</strong> ${variant.colorOption || "Default"}
-        </p>
-        <p style="font-size: 16px; margin: 8px 0;">
-          <strong>Minimum order quantity:</strong> <span style="color: #007bff;">${minQty}</span>
-        </p>
-        <p style="font-size: 14px; color: #555; margin-top: 15px;">
-          Hurry! Stock is available now — don't miss out.
-        </p>
-
-        <a href="${productUrl}" style="
-          display: inline-block;
-          margin-top: 20px;
-          padding: 12px 25px;
-          background: linear-gradient(90deg, #0066ff, #0044cc);
-          color: white;
-          font-weight: 600;
-          text-decoration: none;
-          border-radius: 8px;
-          box-shadow: 0 4px 6px rgba(0, 102, 255, 0.4);
-          transition: background 0.3s ease;
-        " 
-          onmouseover="this.style.background='linear-gradient(90deg, #0044cc, #002a99)'" 
-          onmouseout="this.style.background='linear-gradient(90deg, #0066ff, #0044cc)'"
-        >
-          Order Now
-        </a>
-      </div>
-    </div>
-
-    <hr style="margin: 30px 0; border: none; border-top: 1px solid #ddd;" />
-
-    <p style="font-size: 12px; color: #999; text-align: center; line-height: 1.4;">
-      You are receiving this email because you requested a notification for this product.
-    </p>
-  </div>
-`;
-
-
-        // Send email
-        await sendMail({
-          to: req.email,
-          subject,
-          html,
+        await sendProductBackInStockCustomerEmail({
+          customerEmail: req.email,
+          customerName: req.name || "Customer",
+          products: [
+            {
+              productName: product.name,
+              variant:
+                [variant.size, variant.colorOption]
+                  .filter(Boolean)
+                  .join(" / ") || "Default",
+              minQty,
+              stock: variant.stock,
+              productUrl: `${HOST}/product/${product._id}`,
+              thumbnail: variant.thumbnail || null,
+            },
+          ],
         });
 
         // Mark as notified
         req.notified = true;
         await req.save();
-
       } catch (innerErr) {
         console.error(`❌ Failed processing request ${req._id}:`, innerErr);
       }

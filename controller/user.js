@@ -16,19 +16,16 @@ const Order = require("../model/order"); // adjust path as needed
 const { Product, ProductVariant } = require("../model/product");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const generateUserPdf = require("../utils/generateUserPdf"); // moved here so PDF can be generated at registration
+const sendSelfVerifyCustomerEmail = require("../utils/emails/selfVerifyCustomer");
+const sendRegistrationCompleteCustomerEmail = require("../utils/emails/registrationCompleteCustomer");
+const sendNewInstituteRegisteredAdminEmail = require("../utils/emails/newInstituteRegisteredAdmin");
 
 const router = express.Router();
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
-    const {
-      firstName,
-      lastName,
-      phoneNumber,
-      email,
-      instituteName,
-      password,
-    } = req.body;
+    const { firstName, lastName, phoneNumber, email, instituteName, password } =
+      req.body;
 
     const userEmail = await User.findOne({ email });
     if (userEmail) {
@@ -70,39 +67,50 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
       if (relPdfPath) {
         user.registrationPdf = relPdfPath;
         await user.save();
-        console.log("✅ User registration PDF created at registration:", relPdfPath);
+        console.log(
+          "✅ User registration PDF created at registration:",
+          relPdfPath
+        );
       } else {
-        console.warn("⚠️ generateUserPdf returned falsy value for user:", user._id);
+        console.warn(
+          "⚠️ generateUserPdf returned falsy value for user:",
+          user._id
+        );
       }
     } catch (pdfErr) {
       // Log but do not block user creation or activation email
-      console.error("⚠️ User PDF generation failed at registration for", user._id, pdfErr);
+      console.error(
+        "⚠️ User PDF generation failed at registration for",
+        user._id,
+        pdfErr
+      );
     }
     // ---------- END PDF GENERATION ----------
 
     // ✅ Send activation email via Mailjet
-    const html = `
-      <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
-        <h2>Welcome to Semamart!</h2>
-        <p>Hello ${firstName || "User"},</p>
-        <p>Thank you for registering with Semamart.</p>
-        <p>Please click the link below to activate your account:</p>
-        <a href="${activationUrl}"
-           style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
-          Activate Account
-        </a>
-        <p style="margin-top:15px;">This link will expire in 15 minutes.</p>
-        <hr/>
-        <p>If you didn’t create this account, you can ignore this email.</p>
-      </div>
-    `;
+    // const html = `
+    //   <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+    //     <h2>Welcome to Semamart!</h2>
+    //     <p>Hello ${firstName || "User"},</p>
+    //     <p>Thank you for registering with Semamart.</p>
+    //     <p>Please click the link below to activate your account:</p>
+    //     <a href="${activationUrl}"
+    //        style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
+    //       Activate Account
+    //     </a>
+    //     <p style="margin-top:15px;">This link will expire in 15 minutes.</p>
+    //     <hr/>
+    //     <p>If you didn’t create this account, you can ignore this email.</p>
+    //   </div>
+    // `;
 
     try {
-      await sendMail({
-        email: user.email,
-        subject: "Activate your Semamart account",
-        html,
+      await sendSelfVerifyCustomerEmail({
+        customerEmail: user.email,
+        customerName: user.firstName,
+        verificationToken: activationToken,
       });
+
       console.log("✅ Activation email sent successfully to:", user.email);
 
       res.status(201).json({
@@ -137,7 +145,7 @@ router.post(
 
       const newUser = jwt.verify(
         activation_token,
-        process.env.ACTIVATION_SECRET,
+        process.env.ACTIVATION_SECRET
       );
       if (!newUser) {
         return next(new ErrorHandler("Invalid token", 400));
@@ -157,24 +165,36 @@ router.post(
       // send token & mail to admin
       sendToken(user, 201, res);
 
-      const mailSubject = "New User registered"
-      const htmlBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-          <h2 style="color: #2c3e50;">New User Registration</h2>
-          <p>A new user has just registered on the platform.</p>
-          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
-            <p style="margin: 0;"><strong>User's name:</strong> ${user.firstName} ${user.lastName}</p>
-            <p style="margin: 0;"><strong>Email:</strong> ${user.email}</p>
-            <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(user.createdAt).toLocaleDateString("en-IN")}</p>
-          </div>
-        </div>
-      `;
-      await sentMailToAdmin(mailSubject,htmlBody)
+      // ✅ CUSTOMER: registration completed
+      await sendRegistrationCompleteCustomerEmail({
+        customerEmail: user.email,
+        customerName: user.firstName,
+      });
 
+      // ✅ ADMIN: new institute registered
+      await sendNewInstituteRegisteredAdminEmail({
+        instituteName: user.instituteName,
+        instituteEmail: user.email,
+        institutePhone: user.phoneNumber,
+      });
+
+      // const mailSubject = "New User registered";
+      // const htmlBody = `
+      //   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+      //     <h2 style="color: #2c3e50;">New User Registration</h2>
+      //     <p>A new user has just registered on the platform.</p>
+      //     <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+      //       <p style="margin: 0;"><strong>User's name:</strong> ${user.firstName} ${user.lastName}</p>
+      //       <p style="margin: 0;"><strong>Email:</strong> ${user.email}</p>
+      //       <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(user.createdAt).toLocaleDateString("en-IN")}</p>
+      //     </div>
+      //   </div>
+      // `;
+      // await sentMailToAdmin(mailSubject, htmlBody);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // login user
@@ -201,15 +221,13 @@ router.post(
       const isPasswordValid = await user.comparePassword(password);
 
       if (!isPasswordValid) {
-        return next(
-          new ErrorHandler("User Details Mismatched", 400),
-        );
+        return next(new ErrorHandler("User Details Mismatched", 400));
       }
       sendToken(user, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // load user
@@ -230,7 +248,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // log out user
@@ -249,7 +267,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update user info
@@ -275,7 +293,7 @@ compare the provided password with the stored password for authentication purpos
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct information", 400),
+          new ErrorHandler("Please provide the correct information", 400)
         );
       }
 
@@ -292,7 +310,7 @@ compare the provided password with the stored password for authentication purpos
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // NEW: partial profile update (no password required) - recommended for ProfileForm
@@ -302,13 +320,24 @@ router.patch(
   catchAsyncErrors(async (req, res, next) => {
     try {
       // Only allow specific fields
-      const allowed = ["firstName", "lastName", "email", "phoneNumber", "instituteName", "name"];
+      const allowed = [
+        "firstName",
+        "lastName",
+        "email",
+        "phoneNumber",
+        "instituteName",
+        "name",
+      ];
       const updates = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) updates[key] = req.body[key];
       }
 
-      const user = await User.findByIdAndUpdate(req.user._id, { $set: updates }, { new: true });
+      const user = await User.findByIdAndUpdate(
+        req.user._id,
+        { $set: updates },
+        { new: true }
+      );
 
       if (!user) return next(new ErrorHandler("User not found", 404));
 
@@ -316,7 +345,7 @@ router.patch(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update user avatar
@@ -345,7 +374,7 @@ router.put(
         {
           avatar: fileUrl,
         },
-        { new: true },
+        { new: true }
       );
 
       res.status(200).json({
@@ -355,7 +384,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update user addresses
@@ -367,16 +396,16 @@ router.put(
       const user = await User.findById(req.user.id);
 
       const sameTypeAddress = user.addresses.find(
-        (address) => address.addressType === req.body.addressType,
+        (address) => address.addressType === req.body.addressType
       );
       if (sameTypeAddress) {
         return next(
-          new ErrorHandler(`${req.body.addressType} address already exists`),
+          new ErrorHandler(`${req.body.addressType} address already exists`)
         );
       }
 
       const existsAddress = user.addresses.find(
-        (address) => address._id === req.body._id,
+        (address) => address._id === req.body._id
       );
 
       if (existsAddress) {
@@ -395,7 +424,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // delete user address
@@ -413,7 +442,7 @@ router.delete(
         {
           _id: userId,
         },
-        { $pull: { addresses: { _id: addressId } } },
+        { $pull: { addresses: { _id: addressId } } }
       );
 
       const user = await User.findById(userId);
@@ -422,7 +451,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update user password
@@ -434,7 +463,7 @@ router.put(
       const user = await User.findById(req.user.id).select("+password");
 
       const isPasswordMatched = await user.comparePassword(
-        req.body.oldPassword,
+        req.body.oldPassword
       );
 
       if (!isPasswordMatched) {
@@ -448,7 +477,7 @@ router.put(
     different passwords and an error is returned. */
       if (req.body.newPassword !== req.body.confirmPassword) {
         return next(
-          new ErrorHandler("Password doesn't matched with each other!", 400),
+          new ErrorHandler("Password doesn't matched with each other!", 400)
         );
       }
       user.password = req.body.newPassword;
@@ -462,7 +491,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // Forgot password - send reset email
@@ -478,13 +507,17 @@ router.post(
       if (!user) {
         return res.status(200).json({
           success: true,
-          message: "If an account with this email exists, a reset link has been sent.",
+          message:
+            "If an account with this email exists, a reset link has been sent.",
         });
       }
 
       // create reset token (plain token to send by email)
       const resetToken = crypto.randomBytes(20).toString("hex");
-      const hashedToken = crypto.createHash("sha256").update(resetToken).digest("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
 
       // set token and expiry on user
       user.resetPasswordToken = hashedToken;
@@ -492,7 +525,8 @@ router.post(
       await user.save({ validateBeforeSave: false });
 
       // prepare reset URL
-      const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const frontendBaseUrl =
+        process.env.FRONTEND_URL || "http://localhost:5173";
       const resetUrl = `${frontendBaseUrl}/auth/reset-password/${resetToken}`;
 
       const messageHtml = `
@@ -523,12 +557,13 @@ router.post(
 
       return res.status(200).json({
         success: true,
-        message: "If an account with this email exists, a reset link has been sent.",
+        message:
+          "If an account with this email exists, a reset link has been sent.",
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // Reset password using token
@@ -538,10 +573,15 @@ router.post(
     try {
       const { token, newPassword } = req.body;
       if (!token || !newPassword) {
-        return next(new ErrorHandler("Token and newPassword are required", 400));
+        return next(
+          new ErrorHandler("Token and newPassword are required", 400)
+        );
       }
 
-      const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
 
       const user = await User.findOne({
         resetPasswordToken: hashedToken,
@@ -565,7 +605,7 @@ router.post(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // find user infoormation with the userId
@@ -582,7 +622,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // all users --- for admin
@@ -602,7 +642,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // delete users --- admin
@@ -616,7 +656,7 @@ router.delete(
 
       if (!user) {
         return next(
-          new ErrorHandler("User is not available with this id", 400),
+          new ErrorHandler("User is not available with this id", 400)
         );
       }
 
@@ -629,30 +669,46 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
-router.post('/:userId/addresses', async (req, res) => {
+router.post("/:userId/addresses", async (req, res) => {
   try {
     const { userId } = req.params;
     const newAddress = req.body;
 
     // Basic validation for required fields
-    const requiredFields = ['phone', 'reciever_name', 'state', 'district', 'instituteAddress1', 'pincode', 'addressType'];
+    const requiredFields = [
+      "phone",
+      "reciever_name",
+      "state",
+      "district",
+      "instituteAddress1",
+      "pincode",
+      "addressType",
+    ];
     for (const field of requiredFields) {
       if (!newAddress[field]) {
-        return res.status(400).json({ success: false, message: `${field} is required` });
+        return res
+          .status(400)
+          .json({ success: false, message: `${field} is required` });
       }
     }
 
     // Validate addressType enum
-    const allowedAddressTypes = ['Home', 'Work'];
+    const allowedAddressTypes = ["Home", "Work"];
     if (!allowedAddressTypes.includes(newAddress.addressType)) {
-      return res.status(400).json({ success: false, message: `addressType must be one of ${allowedAddressTypes.join(', ')}` });
+      return res.status(400).json({
+        success: false,
+        message: `addressType must be one of ${allowedAddressTypes.join(", ")}`,
+      });
     }
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
 
     user.addresses.push(newAddress);
     await user.save();
@@ -664,16 +720,16 @@ router.post('/:userId/addresses', async (req, res) => {
 });
 
 // Update address by address id
-router.put('/:userId/addresses/:addressId', async (req, res) => {
+router.put("/:userId/addresses/:addressId", async (req, res) => {
   try {
     const { userId, addressId } = req.params;
     const updatedAddressData = req.body;
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).send('User not found');
+    if (!user) return res.status(404).send("User not found");
 
     const address = user.addresses.id(addressId);
-    if (!address) return res.status(404).send('Address not found');
+    if (!address) return res.status(404).send("Address not found");
 
     Object.assign(address, updatedAddressData);
     await user.save();
@@ -685,16 +741,18 @@ router.put('/:userId/addresses/:addressId', async (req, res) => {
 });
 
 // Delete address by address id
-router.delete('/:userId/addresses/:addressId', async (req, res) => {
+router.delete("/:userId/addresses/:addressId", async (req, res) => {
   try {
     const { userId, addressId } = req.params;
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).send('User not found');
+    if (!user) return res.status(404).send("User not found");
 
     // Find index of the address to remove
-    const addressIndex = user.addresses.findIndex(addr => addr._id.toString() === addressId);
-    if (addressIndex === -1) return res.status(404).send('Address not found');
+    const addressIndex = user.addresses.findIndex(
+      (addr) => addr._id.toString() === addressId
+    );
+    if (addressIndex === -1) return res.status(404).send("Address not found");
 
     // Remove address from array
     user.addresses.splice(addressIndex, 1);
@@ -702,18 +760,18 @@ router.delete('/:userId/addresses/:addressId', async (req, res) => {
     // Save the user
     await user.save();
 
-    res.json({ message: 'Address deleted successfully' });
+    res.json({ message: "Address deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/:userId/addresses', async (req, res) => {
+router.get("/:userId/addresses", async (req, res) => {
   try {
     const { userId } = req.params;
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json(user.addresses);
   } catch (err) {
@@ -726,7 +784,9 @@ router.get("/:userId/products", async (req, res) => {
     const { userId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ success: false, message: "Invalid userId" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid userId" });
     }
 
     const products = await Order.aggregate([
@@ -737,8 +797,8 @@ router.get("/:userId/products", async (req, res) => {
           from: "productvariants",
           localField: "variant",
           foreignField: "_id",
-          as: "variantDetails"
-        }
+          as: "variantDetails",
+        },
       },
       { $unwind: "$variantDetails" },
       {
@@ -746,26 +806,25 @@ router.get("/:userId/products", async (req, res) => {
           from: "products",
           localField: "variantDetails.productId",
           foreignField: "_id",
-          as: "productDetails"
-        }
+          as: "productDetails",
+        },
       },
       { $unwind: "$productDetails" },
       // Include everything from Order, Variant, Product
       {
         $addFields: {
           variantDetails: "$variantDetails",
-          productDetails: "$productDetails"
-        }
+          productDetails: "$productDetails",
+        },
       },
-      { $sort: { createdAt: -1 } } // sort by order date
+      { $sort: { createdAt: -1 } }, // sort by order date
     ]);
 
     res.status(200).json({
       success: true,
       count: products.length,
-      products
+      products,
     });
-
   } catch (err) {
     console.error("Error fetching user products:", err);
     res.status(500).json({ success: false, message: "Server Error" });

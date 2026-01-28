@@ -15,6 +15,9 @@ const sendShopToken = require("../utils/shopToken");
 const user = require("../model/user");
 const addActivityLog = require("../utils/activityLogHelper");
 const sentMailToAdmin = require("../utils/mailToAdmin");
+const sendNewSellerAdminVerifyEmail = require("../utils/emails/newSellerAdminVerify");
+const sendSelfVerifySellerEmail = require("../utils/emails/selfVerifySeller");
+const sendRegistrationCompleteSellerEmail = require("../utils/emails/registrationCompleteSeller");
 
 // create shop (seller email verification)
 // Now: create Shop document immediately (verified: false), generate registration PDF, then send activation email.
@@ -31,19 +34,27 @@ router.post(
         // Delete uploaded files if duplicate
         if (req.files && req.files["profilePic"]) {
           try {
-            fs.unlinkSync(`uploads/images/${req.files["profilePic"][0].filename}`);
-          } catch (e) { /* ignore */ }
+            fs.unlinkSync(
+              `uploads/images/${req.files["profilePic"][0].filename}`
+            );
+          } catch (e) {
+            /* ignore */
+          }
         }
         if (req.files && req.files["banner"]) {
           try {
             fs.unlinkSync(`uploads/images/${req.files["banner"][0].filename}`);
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            /* ignore */
+          }
         }
         return next(new ErrorHandler("Seller already exists", 400));
       }
 
       const files = req.files || {};
-      const profilePic = files["profilePic"] ? files["profilePic"][0].filename : null;
+      const profilePic = files["profilePic"]
+        ? files["profilePic"][0].filename
+        : null;
       const banner = files["banner"] ? files["banner"][0].filename : null;
 
       const sellerData = {
@@ -70,13 +81,23 @@ router.post(
         if (relPdfPath) {
           seller.registrationPdf = relPdfPath;
           await seller.save();
-          console.log("✅ Seller registration PDF created at registration:", relPdfPath);
+          console.log(
+            "✅ Seller registration PDF created at registration:",
+            relPdfPath
+          );
         } else {
-          console.warn("⚠️ generateSellerPdf returned falsy for seller:", seller._id);
+          console.warn(
+            "⚠️ generateSellerPdf returned falsy for seller:",
+            seller._id
+          );
         }
       } catch (pdfErr) {
         // Log but do not block the flow
-        console.error("⚠️ Seller PDF generation failed at registration for", seller._id, pdfErr);
+        console.error(
+          "⚠️ Seller PDF generation failed at registration for",
+          seller._id,
+          pdfErr
+        );
       }
       // ---------- END PDF GENERATION ----------
 
@@ -97,21 +118,26 @@ router.post(
       console.log("📩 Sending seller activation mail:", activationUrl);
 
       // ✅ Send activation email
-      await sendMail({
-        email,
-        subject: "Verify your Semamart Seller Account",
-        html: `
-          <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;background:#f9f9f9;padding:20px;border-radius:8px;">
-            <h2 style="color:#333;">Welcome to Semamart, ${req.body.firstName}!</h2>
-            <p style="color:#555;">Please verify your email to activate your seller account.</p>
-            <a href="${activationUrl}" style="display:inline-block;padding:10px 20px;background:#007bff;color:#fff;border-radius:4px;text-decoration:none;">Verify Email</a>
-            <p style="font-size:13px;color:#777;margin-top:15px;">
-              If the button doesn’t work, copy and paste this link into your browser:
-              <br><a href="${activationUrl}" style="color:#007bff;">${activationUrl}</a>
-            </p>
-            <p style="font-size:12px;color:#aaa;">© ${new Date().getFullYear()} Semamart. All rights reserved.</p>
-          </div>
-        `,
+      // await sendMail({
+      //   email,
+      //   subject: "Verify your Semamart Seller Account",
+      //   html: `
+      //     <div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;background:#f9f9f9;padding:20px;border-radius:8px;">
+      //       <h2 style="color:#333;">Welcome to Semamart, ${req.body.firstName}!</h2>
+      //       <p style="color:#555;">Please verify your email to activate your seller account.</p>
+      //       <a href="${activationUrl}" style="display:inline-block;padding:10px 20px;background:#007bff;color:#fff;border-radius:4px;text-decoration:none;">Verify Email</a>
+      //       <p style="font-size:13px;color:#777;margin-top:15px;">
+      //         If the button doesn’t work, copy and paste this link into your browser:
+      //         <br><a href="${activationUrl}" style="color:#007bff;">${activationUrl}</a>
+      //       </p>
+      //       <p style="font-size:12px;color:#aaa;">© ${new Date().getFullYear()} Semamart. All rights reserved.</p>
+      //     </div>
+      //   `,
+      // });
+      await sendSelfVerifySellerEmail({
+        sellerEmail: seller.email,
+        sellerName: seller.firstName,
+        verificationToken: activationToken,
       });
 
       res.status(201).json({
@@ -123,7 +149,7 @@ router.post(
       console.error("❌ Error during seller creation:", error);
       return next(new ErrorHandler(error.message, 400));
     }
-  },
+  }
 );
 
 // create activation token
@@ -161,7 +187,9 @@ router.put(
       });
 
       if (Object.keys(update).length === 0) {
-        return next(new ErrorHandler("No valid fields provided to update", 400));
+        return next(
+          new ErrorHandler("No valid fields provided to update", 400)
+        );
       }
 
       // Perform partial update safely
@@ -203,11 +231,18 @@ router.put(
       // Ensure request contains required fields
       const { currentPassword, newPassword, confirmPassword } = req.body;
       if (!currentPassword || !newPassword || !confirmPassword) {
-        return next(new ErrorHandler("Please provide all password fields", 400));
+        return next(
+          new ErrorHandler("Please provide all password fields", 400)
+        );
       }
 
       if (newPassword !== confirmPassword) {
-        return next(new ErrorHandler("New password and confirm password do not match", 400));
+        return next(
+          new ErrorHandler(
+            "New password and confirm password do not match",
+            400
+          )
+        );
       }
 
       // Find seller with password field selected
@@ -244,7 +279,7 @@ router.post(
       const { activation_token } = req.body;
       const decodedSeller = jwt.verify(
         activation_token,
-        process.env.ACTIVATION_SECRET,
+        process.env.ACTIVATION_SECRET
       );
 
       if (!decodedSeller) {
@@ -297,20 +332,26 @@ router.post(
         description: seller.businessName + " registered",
       });
 
-      const mailSubject = "New seller registered"
-      const htmlBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-          <h2 style="color: #2c3e50;">New Seller Registration</h2>
-          <p>A new seller has just registered on the platform. Please review their details and proceed with the verification process.</p>
-          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
-            <p style="margin: 0;"><strong>Business Name:</strong> ${businessName}</p>
-            <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
-            <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(seller.createdAt).toLocaleDateString("en-IN")}</p>
-          </div>
-        </div>
-      `;
+      // const mailSubject = "New seller registered"
+      // const htmlBody = `
+      //   <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+      //     <h2 style="color: #2c3e50;">New Seller Registration</h2>
+      //     <p>A new seller has just registered on the platform. Please review their details and proceed with the verification process.</p>
+      //     <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
+      //       <p style="margin: 0;"><strong>Business Name:</strong> ${businessName}</p>
+      //       <p style="margin: 0;"><strong>Email:</strong> ${email}</p>
+      //       <p style="margin: 0;"><strong>Registration Date:</strong> ${new Date(seller.createdAt).toLocaleDateString("en-IN")}</p>
+      //     </div>
+      //   </div>
+      // `;
 
-      await sentMailToAdmin(mailSubject,htmlBody)
+      // await sentMailToAdmin(mailSubject,htmlBody)
+
+      // ✅ ADMIN: seller pending verification
+      await sendNewSellerAdminVerifyEmail({
+        sellerName: seller.businessName,
+        sellerEmail: seller.email,
+      });
 
       console.log("✅ Seller verified successfully:", email);
       res.status(201).json({
@@ -322,9 +363,8 @@ router.post(
       console.error("❌ Activation error:", error);
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
-
 
 // login shop
 router.post(
@@ -351,7 +391,7 @@ router.post(
 
       if (!isPasswordValid) {
         return next(
-          new ErrorHandler("Please provide the correct information", 400),
+          new ErrorHandler("Please provide the correct information", 400)
         );
       }
 
@@ -359,7 +399,7 @@ router.post(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // load shop
@@ -381,7 +421,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 router.post(
@@ -392,9 +432,9 @@ router.post(
 
       res.clearCookie("seller_token", {
         httpOnly: true,
-        secure: isProd,                 // true in prod (HTTPS)
+        secure: isProd, // true in prod (HTTPS)
         sameSite: isProd ? "none" : "lax",
-        path: "/",                      // MUST match login
+        path: "/", // MUST match login
       });
 
       res.status(200).json({
@@ -404,7 +444,7 @@ router.post(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // get shop info
@@ -420,7 +460,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update shop profile picture
@@ -464,7 +504,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update seller info (legacy duplicate-safe route)
@@ -511,7 +551,7 @@ router.put(
       success: true,
       shop,
     });
-  }),
+  })
 );
 
 // all sellers --- for admin
@@ -534,7 +574,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 router.get(
@@ -557,7 +597,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler("Something went wrong", 500));
     }
-  }),
+  })
 );
 
 //admin verifying seller
@@ -575,6 +615,11 @@ router.post(
       }
       seller.verified = true;
       await seller.save();
+      await sendRegistrationCompleteSellerEmail({
+        sellerEmail: seller.email,
+        sellerName: seller.businessName,
+      });
+
       await addActivityLog({
         userId: req.user._id,
         userType: "User",
@@ -587,7 +632,7 @@ router.post(
     } catch (err) {
       return next(new ErrorHandler(err.message, 500));
     }
-  }),
+  })
 );
 
 // delete seller ---admin
@@ -601,7 +646,7 @@ router.delete(
 
       if (!seller) {
         return next(
-          new ErrorHandler("Seller is not available with this id", 400),
+          new ErrorHandler("Seller is not available with this id", 400)
         );
       }
 
@@ -628,7 +673,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // update seller withdraw methods --- sellers
@@ -650,7 +695,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // delete seller withdraw merthods --- only seller
@@ -676,7 +721,7 @@ router.delete(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  }),
+  })
 );
 
 // Express route
@@ -696,7 +741,7 @@ router.get(
       success: true,
       seller,
     });
-  }),
+  })
 );
 router.get(
   "/getSeller/:id",
@@ -754,7 +799,11 @@ router.get(
     }
 
     if (!fs.existsSync(absPath)) {
-      console.error("Seller PDF missing on disk:", { sellerId, registrationPdf: rel, absPath });
+      console.error("Seller PDF missing on disk:", {
+        sellerId,
+        registrationPdf: rel,
+        absPath,
+      });
       return next(new ErrorHandler("PDF file missing on server", 404));
     }
 

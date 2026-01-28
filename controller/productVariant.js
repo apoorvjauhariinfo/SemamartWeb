@@ -5,8 +5,26 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { uploadV2 } = require("../multer");
 const { isSeller } = require("../middleware/auth");
 const { ProductVariant, Product } = require("../model/product");
+const sendProductBelowMOQSellerEmail = require("../utils/emails/productBelowMOQSeller");
+const sendProductOutOfStockSellerEmail = require("../utils/emails/productOutOfStockSeller");
+
 const path = require("path");
 const fs = require("fs");
+
+const getMinQty = (product) => {
+  if (!product?.minmaxrule) return 0;
+
+  try {
+    const rule =
+      typeof product.minmaxrule === "string"
+        ? JSON.parse(product.minmaxrule)
+        : product.minmaxrule;
+
+    return Number(rule?.minQty) || 0;
+  } catch {
+    return 0;
+  }
+};
 
 router.post(
   "/post-variant",
@@ -24,9 +42,9 @@ router.post(
         thumbnail: req.file.filename,
       });
 
-      product.variants.push(variant)
-      await product.save()
-      res.status(201).json({success:true});
+      product.variants.push(variant);
+      await product.save();
+      res.status(201).json({ success: true });
       return;
     }
     throw new ErrorHandler();
@@ -39,9 +57,8 @@ router.put(
   uploadV2.single("thumbnail"),
   catchAsyncErrors(async (req, res) => {
     const { variantId } = req.params;
-    const variant = await ProductVariant.findById(variantId).populate(
-      "productId"
-    );
+    const variant =
+      await ProductVariant.findById(variantId).populate("productId");
 
     const oldStock = variant.stock;
 
@@ -53,7 +70,8 @@ router.put(
       if (variant.thumbnail) {
         const imgPath = path.join(
           process.cwd(),
-          "uploads","images",
+          "uploads",
+          "images",
           variant.thumbnail
         );
         if (fs.existsSync(imgPath)) {
@@ -63,15 +81,47 @@ router.put(
       variant.thumbnail = req.file.filename;
     }
 
-    req.body.bulkOrders = JSON.parse(req.body.bulkOrders)
+    req.body.bulkOrders = JSON.parse(req.body.bulkOrders);
 
     Object.keys(req.body).forEach((k) => {
       variant[k] = req.body[k];
     });
 
     await variant.save();
+    const newStock = variant.stock;
+    const minQty = getMinQty(variant.productId);
 
-      if (variant.stock > oldStock) {
+    // prepare product payload (your templates expect an array)
+    const productsPayload = [
+      {
+        productName: variant.productId.name,
+        variant:
+          [variant.size, variant.colorOption].filter(Boolean).join(" / ") ||
+          "Default",
+        stock: newStock,
+        minQty,
+      },
+    ];
+
+    // 🟥 OUT OF STOCK (crossing only)
+    if (oldStock > 0 && newStock === 0) {
+      await sendProductOutOfStockSellerEmail({
+        sellerEmail: req.seller.email,
+        sellerName: req.seller.businessName || req.seller.name,
+        products: productsPayload,
+      });
+    }
+
+    // 🟧 BELOW MOQ (crossing only)
+    if (minQty > 0 && oldStock >= minQty && newStock < minQty && newStock > 0) {
+      await sendProductBelowMOQSellerEmail({
+        sellerEmail: req.seller.email,
+        sellerName: req.seller.businessName || req.seller.name,
+        products: productsPayload,
+      });
+    }
+
+    if (variant.stock > oldStock) {
       const notifyUsers = require("../utils/notifyUser");
       await notifyUsers();
     }

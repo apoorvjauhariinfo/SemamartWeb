@@ -12,6 +12,18 @@ const { Product, ProductVariant } = require("../model/product");
 const PDFDocument = require("pdfkit");
 const { uploadV2 } = require("../multer");
 const sentMailToAdmin = require("../utils/mailToAdmin");
+const sendOrderPlacedCustomerEmail = require("../utils/emails/orderPlacedCustomer");
+const sendOrderDeliveredCustomerEmail = require("../utils/emails/orderDeliveredCustomer");
+const sendOrderDeliveredSellerEmail = require("../utils/emails/orderDeliveredSeller");
+const sendOrderShippedAdminEmail = require("../utils/emails/orderShippedAdmin");
+const sendOrderDeliveredAdminEmail = require("../utils/emails/orderDeliveredAdmin");
+const sendOrderReceivedAdminEmail = require("../utils/emails/orderReceivedAdmin");
+const sendOrderShippedCustomerEmail = require("../utils/emails/orderShippedCustomer");
+const sendOrderReceivedSellerEmail = require("../utils/emails/orderReceivedSeller");
+const sendOrderShippedSellerEmail = require("../utils/emails/orderShippedSeller");
+const sendVerifyPaymentCustomerEmail = require("../utils/emails/verifyPaymentCustomer");
+const sendVerifyPaymentAdminEmail = require("../utils/emails/verifyPaymentAdmin");
+
 const sendMail = require("../utils/sendMail");
 const fs = require("fs");
 const { generateInvoice } = require("../utils/pdfGeneration");
@@ -23,83 +35,96 @@ function getMonthDateRange(year, monthIndex) {
 }
 
 // ✅ Create new order(s)
-router.post(
-  "/create-order",
-  catchAsyncErrors(async (req, res, next) => {
-    try {
-      const { cart, shippingAddress, user, totalPrice, paymentInfo } = req.body;
+// router.post(
+//   "/create-order",
+//   catchAsyncErrors(async (req, res, next) => {
+//     try {
+//       const { cart, shippingAddress, user, totalPrice, paymentInfo } = req.body;
+//       const userDoc = await User.findById(user);
 
-      if (!cart || cart.length === 0) {
-        return next(new ErrorHandler("Cart is empty", 400));
-      }
+//       if (!userDoc) {
+//         return next(new ErrorHandler("User not found", 404));
+//       }
 
-      const orders = [];
+//       if (!cart || cart.length === 0) {
+//         return next(new ErrorHandler("Cart is empty", 400));
+//       }
 
-      // 🔥 Split each cart item into its own order
-      for (const item of cart) {
-        const variant = await ProductVariant.findById(item.variantId).populate(
-          "productId",
-          "name"
-        );
+//       const orders = [];
 
-        const variantLabel = [variant.size, variant.colorOption]
-          .filter(Boolean)
-          .join(" / ");
+//       // 🔥 Split each cart item into its own order
+//       for (const item of cart) {
+//         const variant = await ProductVariant.findById(item.variantId).populate(
+//           "productId",
+//           "name"
+//         );
 
-        if (variant.stock < item.qty) {
-          return next(
-            new ErrorHandler(
-              `Insufficient stock for ${variant.productId.name}${
-                variantLabel ? ` (${variantLabel})` : ""
-              }`,
-              400
-            )
-          );
-        }
+//         const variantLabel = [variant.size, variant.colorOption]
+//           .filter(Boolean)
+//           .join(" / ");
 
-        variant.stock -= item.qty;
-        await variant.save();
-        const order = await Order.create({
-          shop: item.shopId,
-          variant: item.variantId,
-          qty: item.qty,
-          shippingAddress,
-          user,
-          totalPrice: item.totalPrice, // ✅ use per-item totalPrice
-          tax: item.tax,
-          unitPrice: item.unitPrice,
-          paymentInfo,
-          statusHistory: [{ status: "Created", updatedAt: new Date() }],
-        });
-        orders.push(order);
-      }
-      const orderIdsHtml = orders
-        .map(
-          (order) => `
-            <p style="margin: 5px 0;">
-              <strong>Order ID:</strong> ${order._id}
-            </p>
-          `
-        )
-        .join("");
-      const mailSubject = "New Orders Created";
-      const htmlBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-          <h2 style="color: #2c3e50;">New Orders</h2>
-          <p>New orders with following order ids are created.</p>
-          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #3498db;">
-          ${orderIdsHtml}
-          </div>
-        </div>
-      `;
+//         if (variant.stock < item.qty) {
+//           return next(
+//             new ErrorHandler(
+//               `Insufficient stock for ${variant.productId.name}${
+//                 variantLabel ? ` (${variantLabel})` : ""
+//               }`,
+//               400
+//             )
+//           );
+//         }
 
-      await sentMailToAdmin(mailSubject, htmlBody);
-      res.status(201).json({ success: true, orders });
-    } catch (error) {
-      return next(new ErrorHandler(error.message, 500));
-    }
-  })
-);
+//         variant.stock -= item.qty;
+//         await variant.save();
+//         const order = await Order.create({
+//           shop: item.shopId,
+//           variant: item.variantId,
+//           qty: item.qty,
+//           shippingAddress,
+//           user,
+//           totalPrice: item.totalPrice, // ✅ use per-item totalPrice
+//           tax: item.tax,
+//           unitPrice: item.unitPrice,
+//           paymentInfo,
+//           statusHistory: [{ status: "Created", updatedAt: new Date() }],
+//         });
+//         orders.push(order);
+//         await sendOrderPlacedCustomerEmail({
+//           customerEmail: userDoc.email,
+//           customerName: userDoc.firstName,
+//           orderId: order._id,
+//           productName: variant.productId.name,
+//           qty: item.qty,
+//           totalAmount: item.totalPrice,
+//         });
+//       }
+//       const items = orders.map((order) => ({
+//         orderId: order._id,
+//         quantity: order.qty,
+//         unitPrice: order.unitPrice,
+//         totalPrice: order.totalPrice,
+//       }));
+
+//       const totalAmount = orders.reduce(
+//         (sum, order) => sum + order.totalPrice,
+//         0
+//       );
+
+//       const adminInstituteName = userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
+
+//       await sendOrderReceivedAdminEmail({
+//         orderId: orders.map((o) => o._id).join(", "),
+//         instituteName: adminInstituteName, 
+//         items: itemsForAdmin,
+//         totalAmount,
+//       });
+
+//       res.status(201).json({ success: true, orders });
+//     } catch (error) {
+//       return next(new ErrorHandler(error.message, 500));
+//     }
+//   })
+// );
 
 router.get(
   "/get-order-details/:orderId",
@@ -114,6 +139,94 @@ router.get(
     }
 
     res.json(order);
+  })
+);
+
+router.post(
+  "/create-order",
+  catchAsyncErrors(async (req, res, next) => {
+    const { cart, shippingAddress, user, paymentInfo } = req.body;
+    
+    const userDoc = await User.findById(user);
+    if (!userDoc) return next(new ErrorHandler("User not found", 404));
+
+    if (!cart || cart.length === 0) {
+      return next(new ErrorHandler("Cart is empty", 400));
+    }
+
+    const orders = [];
+
+    for (const item of cart) {
+      // 1. Find the variant and populate product details
+      const variant = await ProductVariant.findById(item.variantId).populate("productId");
+
+      if (!variant) {
+        return next(new ErrorHandler(`Variant not found for item: ${item.name}`, 404));
+      }
+
+      const variantLabel = [variant.size, variant.colorOption].filter(Boolean).join(" / ");
+
+      // 2. Check Stock
+      if (variant.stock < item.qty) {
+        return next(
+          new ErrorHandler(
+            `Insufficient stock for ${variant.productId.name}${variantLabel ? ` (${variantLabel})` : ""}`,
+            400
+          )
+        );
+      }
+
+      // 3. Deduct Stock from Variant
+      variant.stock -= item.qty;
+      await variant.save();
+
+      // 4. Create Order
+      const order = await Order.create({
+        shop: item.shopId,
+        variant: item.variantId,
+        qty: item.qty,
+        shippingAddress,
+        user,
+        totalPrice: item.totalPrice,
+        tax: item.tax,
+        unitPrice: item.unitPrice,
+        paymentInfo,
+        statusHistory: [{ status: "Created", updatedAt: new Date() }],
+      });
+
+      orders.push(order);
+
+      // 5. Send Email to Customer (Non-blocking)
+      sendOrderPlacedCustomerEmail({
+        customerEmail: userDoc.email,
+        customerName: userDoc.firstName,
+        orderId: order._id,
+        productName: variant.productId.name,
+        qty: item.qty,
+        totalAmount: item.totalPrice,
+      }).catch(err => console.error("Email Error:", err));
+    }
+
+    // 6. Admin Summary Logic
+    const itemsForAdmin = orders.map((order) => ({
+      orderId: order._id,
+      quantity: order.qty,
+      unitPrice: order.unitPrice,
+      totalPrice: order.totalPrice,
+    }));
+
+    const totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+
+    const adminInstituteName = userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
+
+    await sendOrderReceivedAdminEmail({
+      orderId: orders.map((o) => o._id).join(", "),
+      instituteName: adminInstituteName, 
+      items: itemsForAdmin,
+      totalAmount,
+    });
+
+    res.status(201).json({ success: true, orders });
   })
 );
 
@@ -227,7 +340,6 @@ router.get(
     }
   })
 );
-
 
 // ✅ Update order status (for sellers)
 router.put(
@@ -430,85 +542,78 @@ router.put(
     });
 
     await order.save();
+    if (order.status === "Shipped") {
+      await sendOrderShippedAdminEmail({
+        orderId: order._id,
+        instituteName:
+          order.user.instituteName ||
+          `${order.user.firstName} ${order.user.lastName}`,
+      });
+    }
+
+    if (order.status === "Shipped") {
+      await sendOrderShippedCustomerEmail({
+        customerEmail: order.user.email,
+        customerName: order.user.firstName,
+        orderId: order._id,
+        productName: order.variant.productId.name,
+        qty: order.qty,
+        totalAmount: order.totalPrice,
+      });
+    }
+
+    if (order.status === "Shipped") {
+      await sendOrderShippedSellerEmail({
+        sellerEmail: req.seller.email,
+        sellerName: req.seller.businessName || req.seller.name,
+        orderId: order._id,
+        productName: order.variant.productId.name,
+        quantity: order.qty,
+        totalAmount: order.totalPrice,
+      });
+    }
+
     if (order.status === "Processing") {
-      const email = order.shop.email;
-      const subject = "New Order";
-      const htmlBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
-          <h2 style="color: #2c3e50; margin-bottom: 10px;">
-            New Order Received
-          </h2>
-          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
-            <p><strong>Order ID:</strong> ${order._id}</p>
-            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
-            <p><strong>Quantity:</strong> ${order.qty}</p>
-            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
-            <p><strong>Tax:</strong> ₹${order.tax}</p>
-            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
-          </div>
-        </div>
-      `;
-      await sendMail({ email, subject, html: htmlBody });
-      const customerMail = order.user.email;
-      const customerMailSubject = "Order Payment Verified";
-      const customerMailBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
-          <p style="font-size: 15px;">
-            We’re happy to inform you that the payment for your order has been
-            <strong>successfully verified by our admin team</strong>.
-          </p>
-          <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #27ae60;">
-            <p><strong>Order ID:</strong> ${order._id}</p>
-            <p><strong>Total Amount Paid:</strong> ₹${order.totalPrice}</p>
-          </div>
-        </div>
-      `;
-      await sendMail({
-        email: customerMail,
-        subject: customerMailSubject,
-        html: customerMailBody,
+      await sendOrderReceivedSellerEmail({
+        sellerEmail: order.shop.email,
+        sellerName: order.shop.businessName || order.shop.name,
+        orderId: order._id,
+        productName: order.variant.productId.name,
+        quantity: order.qty,
+        unitPrice: order.unitPrice,
+        tax: order.tax,
+        totalAmount: order.totalPrice,
+        frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
+      });
+    }
+
+    if (order.status === "Delivered") {
+      await sendOrderDeliveredAdminEmail({
+        orderId: order._id,
+        instituteName:
+          order.user.instituteName ||
+          `${order.user.firstName} ${order.user.lastName}`,
       });
     }
     if (order.status === "Delivered") {
-      const email = order.shop.email;
-      const subject = "Order Delivered Successfully";
-      const htmlBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
-          <h2 style="color: #2c3e50; margin-bottom: 10px;">
-            Following Order is successfully delivered to the customer
-          </h2>
-          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
-            <p><strong>Order ID:</strong> ${order._id}</p>
-            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
-            <p><strong>Quantity:</strong> ${order.qty}</p>
-            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
-            <p><strong>Tax:</strong> ₹${order.tax}</p>
-            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
-          </div>
-        </div>
-      `;
-      await sendMail({ email, subject, html: htmlBody });
-      const customerMail = order.user.email;
-      const customerMailSubject = "Order Delivered Successfully";
-      const customerMailBody = `
-        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
-          <h2 style="color: #2c3e50; margin-bottom: 10px;">
-            Following Order is successfully delivered.
-          </h2>
-          <div style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-left: 4px solid #27ae60;">
-            <p><strong>Order ID:</strong> ${order._id}</p>
-            <p><strong>Product Name:</strong> ${order.variant.productId.name}</p>
-            <p><strong>Quantity:</strong> ${order.qty}</p>
-            <p><strong>Unit Price:</strong> ₹${order.unitPrice}</p>
-            <p><strong>Tax:</strong> ₹${order.tax}</p>
-            <p><strong>Total Amount:</strong> <strong>₹${order.totalPrice}</strong></p>
-          </div>
-        </div>
-      `;
-      await sendMail({
-        email: customerMail,
-        subject: customerMailSubject,
-        html: customerMailBody,
+      await sendOrderDeliveredCustomerEmail({
+        customerEmail: order.user.email,
+        customerName: order.user.firstName,
+        orderId: order._id,
+        totalAmount: order.totalPrice,
+      });
+    }
+
+    if (order.status === "Delivered") {
+      await sendOrderDeliveredSellerEmail({
+        sellerEmail: order.shop.email,
+        sellerName: order.shop.businessName || order.shop.name,
+        orderId: order._id,
+        productName: order.variant.productId.name,
+        quantity: order.qty,
+        unitPrice: order.unitPrice,
+        tax: order.tax,
+        totalAmount: order.totalPrice,
       });
     }
     res.status(201).json({ success: true });
@@ -519,7 +624,21 @@ router.put(
   "/update-order-payment/:id",
   uploadV2.single("payment_file"),
   catchAsyncErrors(async (req, res) => {
-    const order = await Order.findById(req.params.id);
+    const order = await Order.findById(req.params.id)
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: { path: "productId" },
+      });
+    const items = [
+      {
+        productName: order.variant.productId.name,
+        quantity: order.qty,
+        unitPrice: order.unitPrice,
+        totalPrice: order.totalPrice,
+      },
+    ];
+
     if (!order) throw new ErrorHandler("Order not found", 404);
     if (order.paymentFile)
       throw new ErrorHandler("Payment verification still pending", 402);
@@ -531,14 +650,21 @@ router.put(
     });
     await order.save();
 
-    const mailSubject = "Payment Receipt Added";
-    const htmlBody = `
-      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-        <h2 style="color: #2c3e50;">Payment Receipt uploaded</h2>
-        <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
-      </div>
-    `;
-    await sentMailToAdmin(mailSubject, htmlBody);
+    await sendVerifyPaymentAdminEmail({
+      customerName: order.user.firstName,
+      orderId: order._id,
+      items,
+      totalAmount: order.totalPrice,
+      paymentMethod: order.paymentInfo?.method || "Manual Transfer",
+    });
+
+    await sendVerifyPaymentCustomerEmail({
+      customerEmail: order.user.email,
+      customerName: order.user.firstName,
+      orderId: order._id,
+      items,
+      totalAmount: order.totalPrice,
+    });
 
     res.status(200).json(order);
   })
