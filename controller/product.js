@@ -308,6 +308,35 @@ router.get(
 );
 
 router.get(
+  "/all-products",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+      })
+        .populate("shopId", "name")
+        .populate({
+          path: "manufacturer",
+          select: "manufacturerName email phone origin",
+        })
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
+        })
+        .sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        products,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error, 400));
+    }
+  }),
+);
+
+router.get(
   "/get-out-of-stock-products",
   catchAsyncErrors(async (req, res, next) => {
     try {
