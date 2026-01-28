@@ -477,7 +477,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name ",
+            select: "name commission",
           },
         })
         .sort({ createdAt: -1 });
