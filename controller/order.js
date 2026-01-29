@@ -330,7 +330,7 @@ router.get(
         .populate("user", "firstName lastName instituteName")
         .populate({
           path: "variant",
-          populate: { path: "productId", select: "name" },
+          populate: { path: "productId", select: "name commission" },
         })
         .sort({ createdAt: -1 });
 
@@ -898,8 +898,9 @@ router.put(
 router.get(
   "/seller-dashboard-stats",
   isSeller,
-  catchAsyncErrors(async (req, res, next) => {
-    const shopId = req.seller._id;
+  catchAsyncErrors(async (req, res) => {
+    const mongoose = require("mongoose");
+    const shopId = new mongoose.Types.ObjectId(req.seller._id);
 
     const result = await Order.aggregate([
       { $match: { shop: shopId, status: "Delivered" } },
@@ -928,26 +929,22 @@ router.get(
 router.get(
   "/get-seller-delivered-orders",
   isSeller,
-  catchAsyncErrors(async (req, res, next) => {
-    const shopId = req.seller._id;
-
+  catchAsyncErrors(async (req, res) => {
     const orders = await Order.find({
-      shop: shopId,
+      shop: req.seller._id,
       status: "Delivered",
     })
       .select("-shippingAddress -paymentInfo")
       .populate("user", "firstName lastName instituteName")
       .populate({
         path: "variant",
-        populate: { path: "productId", select: "name" },
+        populate: { path: "productId", select: "name commission" },
       })
-      .sort({ deliveredAt: -1 });
+      .sort({ updatedAt: -1 }); // ✅ FIX
 
-    res.status(200).json({
-      success: true,
-      orders,
-    });
+    res.status(200).json({ success: true, orders });
   })
 );
+
 
 module.exports = router;
