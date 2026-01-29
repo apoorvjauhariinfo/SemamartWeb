@@ -898,9 +898,8 @@ router.put(
 router.get(
   "/seller-dashboard-stats",
   isSeller,
-  catchAsyncErrors(async (req, res) => {
-    const mongoose = require("mongoose");
-    const shopId = new mongoose.Types.ObjectId(req.seller._id);
+  catchAsyncErrors(async (req, res, next) => {
+    const shopId = req.seller._id;
 
     const result = await Order.aggregate([
       { $match: { shop: shopId, status: "Delivered" } },
@@ -929,9 +928,11 @@ router.get(
 router.get(
   "/get-seller-delivered-orders",
   isSeller,
-  catchAsyncErrors(async (req, res) => {
+  catchAsyncErrors(async (req, res, next) => {
+    const shopId = req.seller._id;
+
     const orders = await Order.find({
-      shop: req.seller._id,
+      shop: shopId,
       status: "Delivered",
     })
       .select("-shippingAddress -paymentInfo")
@@ -940,11 +941,13 @@ router.get(
         path: "variant",
         populate: { path: "productId", select: "name commission" },
       })
-      .sort({ updatedAt: -1 }); // ✅ FIX
+      .sort({ deliveredAt: -1 });
 
-    res.status(200).json({ success: true, orders });
+    res.status(200).json({
+      success: true,
+      orders,
+    });
   })
 );
-
 
 module.exports = router;
