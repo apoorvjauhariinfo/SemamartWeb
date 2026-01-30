@@ -2,6 +2,7 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 let currencySymbol = "Rs."; // fallback
 
@@ -49,8 +50,17 @@ async function generateOrderPdf(order) {
   console.log("generateOrderPdf called for:", order?._id);
   return new Promise((resolve, reject) => {
     try {
+      if (!order || !order._id) {
+        return reject(new Error("Invalid order passed to generateOrderPdf"));
+      }
+
       const pdfDir = path.join(process.cwd(), "uploads", "invoices");
-      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+      try {
+        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
+      } catch (mkdirErr) {
+        console.error("❌ Could not create invoices directory:", mkdirErr);
+        return reject(mkdirErr);
+      }
 
       // --- Order count handling (SM/<YEAR>/<COUNT>) ---
       const counterFile = path.join(pdfDir, "order_count.json");
@@ -70,55 +80,98 @@ async function generateOrderPdf(order) {
       } catch (err) {
         orderCount = 1;
       }
-      try { fs.writeFileSync(counterFile, JSON.stringify({ year: nowYear, count: orderCount }, null, 2), "utf8"); } catch (e) { console.warn("Could not write counter", e); }
-
-      const filename = `${order._id}.pdf`;
-      const filePath = path.join(pdfDir, filename);
-      const writeStream = fs.createWriteStream(filePath);
-
-      // A5 (portrait) with margin
-      const doc = new PDFDocument({ size: "A5", margin: 28, info: { Title: `Invoice - ${order._id}`, Author: "SEMA Healthcare Pvt. Ltd." } });
-
-      // load a font with Rupee glyph if available
-      const possibleFonts = [
-        path.join(process.cwd(), "assets", "fonts", "DejaVuSans.ttf"),
-        path.join(process.cwd(), "public", "fonts", "DejaVuSans.ttf"),
-        path.join(process.cwd(), "assets", "fonts", "NotoSans-Regular.ttf"),
-        path.join(process.cwd(), "public", "fonts", "NotoSans-Regular.ttf")
-      ];
-      const fontPath = possibleFonts.find(p => fs.existsSync(p));
-      if (fontPath) {
-        try { doc.registerFont("Main", fontPath); doc.font("Main"); currencySymbol = "₹"; }
-        catch (e) { doc.font("Helvetica"); currencySymbol = "Rs."; }
-      } else {
-        doc.font("Helvetica"); currencySymbol = "Rs.";
+      try {
+        fs.writeFileSync(counterFile, JSON.stringify({ year: nowYear, count: orderCount }, null, 2), "utf8");
+      } catch (e) {
+        console.warn("⚠️ Could not write order counter file:", e && e.message ? e.message : e);
       }
 
+      const filename = `${order._id}.pdf`;
+      const finalPath = path.join(pdfDir, filename);
+
+      // tmp filename (unique)
+      const tmpName = `${order._id}.${Date.now()}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+      const tmpPath = path.join(pdfDir, tmpName);
+
+      // create write stream to tmp - attach handlers early
+      const writeStream = fs.createWriteStream(tmpPath);
+      let writeErrored = false;
+      writeStream.on("error", (err) => {
+        writeErrored = true;
+        console.error("❌ PDF writeStream error (tmp):", err);
+        // cleanup tmp file if exists
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+        return reject(err);
+      });
+
+      // A5 (portrait)
+      const doc = new PDFDocument({ size: "A5", margin: 28, info: { Title: `Invoice - ${order._id}`, Author: "SEMA Healthcare Pvt. Ltd." } });
+
+      // Safe font loading
+      try {
+        const possibleFonts = [
+          path.join(process.cwd(), "assets", "fonts", "DejaVuSans.ttf"),
+          path.join(process.cwd(), "public", "fonts", "DejaVuSans.ttf"),
+          path.join(process.cwd(), "assets", "fonts", "NotoSans-Regular.ttf"),
+          path.join(process.cwd(), "public", "fonts", "NotoSans-Regular.ttf")
+        ];
+        const fontPath = possibleFonts.find(p => p && fs.existsSync(p));
+        if (fontPath) {
+          try {
+            doc.registerFont("Main", fontPath);
+            doc.font("Main");
+            currencySymbol = "₹";
+          } catch (e) {
+            console.error("⚠️ Font register/load failed:", e && e.message ? e.message : e);
+            doc.font("Helvetica");
+            currencySymbol = "Rs.";
+          }
+        } else {
+          doc.font("Helvetica");
+          currencySymbol = "Rs.";
+        }
+      } catch (fontErr) {
+        console.error("⚠️ Unexpected font handling error:", fontErr);
+        doc.font("Helvetica");
+        currencySymbol = "Rs.";
+      }
+
+      // pipe doc to tmp stream
       doc.pipe(writeStream);
-      console.log("Writing PDF to:", filePath);
+      console.log("Writing PDF (tmp) to:", tmpPath);
 
       // geometry helpers
       const pageW = doc.page.width, pageH = doc.page.height, margin = doc.page.margins.left;
       const usableW = pageW - margin * 2;
 
       // ===== header: logo + company =====
-      const possibleLogos = [
-        path.join(process.cwd(), "assets", "Logo.png"),
-        path.join(process.cwd(), "assets", "Logo-imag.png"),
-        path.join(process.cwd(), "public", "Logo.png"),
-        path.join(process.cwd(), "public", "Logo-imag.png"),
-        path.join(__dirname, "..", "assets", "Logo.png")
-      ];
-      const logoPath = possibleLogos.find(p => fs.existsSync(p));
+      let logoPath = null;
       const logoW = 150;
-      const logoH = 80; // slightly larger vertical footprint to leave some space
-      if (logoPath) {
-        try { doc.image(logoPath, margin, margin, { fit: [logoW, logoH], align: "left", valign: "top" }); } catch (e) { /* ignore */ }
+      const logoH = 80;
+      try {
+        const possibleLogos = [
+          path.join(process.cwd(), "assets", "Logo.png"),
+          path.join(process.cwd(), "assets", "Logo-imag.png"),
+          path.join(process.cwd(), "public", "Logo.png"),
+          path.join(process.cwd(), "public", "Logo-imag.png"),
+          path.join(__dirname, "..", "assets", "Logo.png")
+        ];
+        logoPath = possibleLogos.find(p => p && fs.existsSync(p)) || null;
+        if (logoPath) {
+          try { doc.image(logoPath, margin, margin, { fit: [logoW, logoH] }); } catch (e) { console.error("⚠️ Logo image load failed:", e && e.message ? e.message : e); }
+        }
+      } catch (e) {
+        console.error("⚠️ Logo handling error:", e && e.message ? e.message : e);
       }
 
       const compBlockW = Math.min(usableW * 0.45, 220);
       const rightAlignX = pageW - margin - compBlockW;
-      doc.fontSize(11).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text("Sema Healthcare Pvt. Ltd.", rightAlignX, margin, { width: compBlockW, align: "right" });
+      try {
+        doc.fontSize(11).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold")
+          .text("Sema Healthcare Pvt. Ltd.", rightAlignX, margin, { width: compBlockW, align: "right" });
+      } catch (e) {
+        doc.fontSize(11).fillColor("#0b5560").text("Sema Healthcare Pvt. Ltd.", rightAlignX, margin, { width: compBlockW, align: "right" });
+      }
 
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(8).fillColor("#111");
       const companyLines = [
@@ -135,12 +188,11 @@ async function generateOrderPdf(order) {
       });
 
       // Title & separator
-      // Restored more vertical gap by subtracting a smaller value (keep some space)
-      const invoiceY = margin + Math.max(logoPath ? logoH : 0, (cy - margin)) + 6; // less aggressive pull-up
-      doc.moveTo(margin, invoiceY + 22).lineTo(pageW - margin, invoiceY + 22).strokeColor("#e6eef6").lineWidth(1).stroke(); // separator placed slightly below title
+      const invoiceY = margin + Math.max(logoPath ? logoH : 0, (cy - margin)) + 6;
+      try { doc.moveTo(margin, invoiceY + 22).lineTo(pageW - margin, invoiceY + 22).strokeColor("#e6eef6").lineWidth(1).stroke(); } catch (e) {}
       doc.fontSize(14).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text("ORDER INVOICE", margin, invoiceY);
 
-      // Invoice meta (SM/<YEAR>/<COUNT>)
+      // Invoice meta
       const invDateObj = order.verifiedAt || new Date();
       const invoiceYear = invDateObj ? new Date(invDateObj).getFullYear() : new Date().getFullYear();
       const invoiceNo = `SM/${invoiceYear}/${orderCount}`;
@@ -159,7 +211,19 @@ async function generateOrderPdf(order) {
       doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoiceY + 34);
 
       // Billing / Shipping boxes
-      const billObj = (order.user && typeof order.user === "object") ? order.user : (order.billingAddress || {});
+      let billObj = {};
+      try {
+        if (order.user && Array.isArray(order.user.addresses) && order.user.addresses.length) {
+          billObj = order.user.addresses[0];
+        } else if (order.user && typeof order.user === "object") {
+          billObj = order.user;
+        } else if (order.billingAddress) {
+          billObj = order.billingAddress;
+        }
+      } catch (e) {
+        billObj = order.user || {};
+      }
+
       const billingLines = [];
       if (order.user && order.user.instituteName) billingLines.push(order.user.instituteName);
       else if (billObj.name) billingLines.push(billObj.name);
@@ -195,7 +259,7 @@ async function generateOrderPdf(order) {
       const shippingHeight = doc.heightOfString(shippingText || "-", textOptions);
       const minBoxH = 72;
       const boxH = Math.max(minBoxH, billingHeight + 20, shippingHeight + 20);
-      const boxTop = invoiceY + 64; // restore a bit more gap so header breathes
+      const boxTop = invoiceY + 64;
       doc.lineWidth(0.8).strokeColor("#c7dff3");
       doc.rect(margin, boxTop, boxColW, boxH).stroke();
       doc.rect(margin + usableW * 0.52, boxTop, boxColW, boxH).stroke();
@@ -210,10 +274,9 @@ async function generateOrderPdf(order) {
       const tableLeft = margin;
       const tableWidth = usableW;
 
-      // NEW: make Description column smaller, give more width to numeric columns
       const colSno = 28;
       const colQty = 36;
-      const descFraction = 0.36; // reduced description width
+      const descFraction = 0.36;
       const hsnFraction = 0.12;
       const unitFraction = 0.18;
       const colDesc = Math.round(tableWidth * descFraction);
@@ -231,21 +294,18 @@ async function generateOrderPdf(order) {
         { key: "totalPrice", width: colTotal },
       ];
 
-      // header styling
-      doc.rect(tableLeft, tableTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke();
+      try { doc.rect(tableLeft, tableTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke(); } catch (e) {}
       doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9);
       let x = tableLeft + 6;
       const titles = ["S.No", "Description of Goods", "HSN", "Qty", "Unit Price", "Total Price"];
       for (let i = 0; i < cols.length; i++) {
-        // right-align numeric headers
         const rightAlign = ["qty", "unitPrice", "totalPrice"].includes(cols[i].key);
         doc.text(titles[i], x, tableTop + 6, { width: cols[i].width - 8, align: rightAlign ? "right" : "left" });
         x += cols[i].width;
       }
       doc.fillColor("#000").font("Main" in doc._fontFamilies ? "Main" : "Helvetica");
 
-      // build items array
-      const items = Array.isArray(order.items) && order.items.length ? order.items : [
+      const itemsArr = Array.isArray(order.items) && order.items.length ? order.items : [
         {
           name: (product && product.name) || "Item",
           hsn: (product && (product.hsn || product.hsnCode)) || "",
@@ -254,29 +314,25 @@ async function generateOrderPdf(order) {
         }
       ];
 
-      // draw each row with wrapped description
       let cursorY = tableTop + 26;
       const rowPadding = 6;
-      const footerReserve = 140; // reserve for totals and signature
-      for (let idx = 0; idx < items.length; idx++) {
-        const it = items[idx];
+      const footerReserve = 140;
+      for (let idx = 0; idx < itemsArr.length; idx++) {
+        const it = itemsArr[idx];
         const desc = String(it.name || "");
         const hsn = String(it.hsn || "");
         const qty = String(it.qty == null ? 1 : it.qty);
         const unitPrice = Number(it.unitPrice || 0);
         const totalPrice = Number((unitPrice * Number(qty)).toFixed(2));
 
-        // measure description height (wrap)
         const descWidth = cols[1].width - 8;
         const descHeight = doc.heightOfString(desc || "-", { width: descWidth, lineGap: 2 });
         const cellHeight = Math.max(20, descHeight + rowPadding * 2);
 
-        // page break if needed
         if (cursorY + cellHeight + footerReserve > pageH - margin) {
           doc.addPage();
-          // re-render header on new page
           const newTop = margin;
-          doc.rect(tableLeft, newTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke();
+          try { doc.rect(tableLeft, newTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke(); } catch (e) {}
           doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9);
           let xx = tableLeft + 6;
           for (let i = 0; i < cols.length; i++) {
@@ -288,12 +344,10 @@ async function generateOrderPdf(order) {
           cursorY = newTop + 26;
         }
 
-        // zebra background for readability
         if (idx % 2 === 1) {
-          doc.rect(tableLeft, cursorY - 4, tableWidth, cellHeight + 4).fillOpacity(0.03).fill("#000").fillOpacity(1);
+          try { doc.rect(tableLeft, cursorY - 4, tableWidth, cellHeight + 4).fillOpacity(0.03).fill("#000").fillOpacity(1); } catch (e) {}
         }
 
-        // draw text in each column (numeric columns right-aligned)
         let cx = tableLeft + 6;
         doc.text(String(idx + 1), cx, cursorY, { width: cols[0].width - 8, align: "left" });
         cx += cols[0].width;
@@ -312,28 +366,28 @@ async function generateOrderPdf(order) {
 
         doc.text(formatCurrency(totalPrice), cx, cursorY, { width: cols[5].width - 8, align: "right" });
 
-        // draw borders for this row
         const rowBottom = cursorY + cellHeight;
-        doc.lineWidth(0.5).strokeColor("#cfcfcf");
-        doc.rect(tableLeft, cursorY - 4, tableWidth, cellHeight + 4).stroke();
-        // verticals
-        let vx = tableLeft;
-        cols.forEach(col => {
-          doc.moveTo(vx, cursorY - 4).lineTo(vx, rowBottom).stroke();
-          vx += col.width;
-        });
-        doc.moveTo(tableLeft + tableWidth, cursorY - 4).lineTo(tableLeft + tableWidth, rowBottom).stroke();
+        try {
+          doc.lineWidth(0.5).strokeColor("#cfcfcf");
+          doc.rect(tableLeft, cursorY - 4, tableWidth, cellHeight + 4).stroke();
+          let vx = tableLeft;
+          cols.forEach(col => {
+            doc.moveTo(vx, cursorY - 4).lineTo(vx, rowBottom).stroke();
+            vx += col.width;
+          });
+          doc.moveTo(tableLeft + tableWidth, cursorY - 4).lineTo(tableLeft + tableWidth, rowBottom).stroke();
+        } catch (e) {}
 
         cursorY = rowBottom + 6;
       }
 
-      // compute totals based on items
-      const subtotal = items.reduce((s, it) => s + (Number(it.unitPrice || 0) * Number(it.qty || 1)), 0);
+      // compute totals
+      const subtotal = itemsArr.reduce((s, it) => s + (Number(it.unitPrice || 0) * Number(it.qty || 1)), 0);
       const gstRate = (order.tax != null ? Number(order.tax) : (product.tax != null ? Number(product.tax) : 0));
       const gstAmount = Number((subtotal * gstRate / 100).toFixed(2));
       const grandTotal = Number((subtotal + gstAmount).toFixed(2));
 
-      // totals block (right side)
+      // totals block
       const totalsX = tableLeft + tableWidth * 0.52;
       let ty = Math.max(cursorY, tableTop + 80);
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#555").text("GST Type:", totalsX, ty);
@@ -360,46 +414,99 @@ async function generateOrderPdf(order) {
       doc.text("Amount In Words:", margin, ty + 26);
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000").text(amountToWords(Math.round(grandTotal)), margin + 110, ty + 22, { width: usableW - 120 });
 
-      // Signature: try to find auth image
-      const possibleSignatures = [
-        path.join(process.cwd(), "assets", "auth.png"),
-        path.join(process.cwd(), "public", "auth.png"),
-        path.join(process.cwd(), "public", "assets", "auth.png"),
-        path.join(__dirname, "..", "assets", "auth.png"),
-        path.join(process.cwd(), "backend", "assets", "auth.png")
-      ];
-      const sigPath = possibleSignatures.find(p => fs.existsSync(p));
-      if (sigPath) {
-        try {
-          const sigW = 110;
-          // place signature above the "Authorized Signatory" label
-          const sigX = totalsX + 8;
-          const sigY = ty + 24;
-          doc.image(sigPath, sigX, sigY, { width: sigW });
-        } catch (e) {
-          // ignore image errors
+      // Signature (guarded)
+      try {
+        const possibleSignatures = [
+          path.join(process.cwd(), "assets", "auth.png"),
+          path.join(process.cwd(), "public", "auth.png"),
+          path.join(process.cwd(), "public", "assets", "auth.png"),
+          path.join(__dirname, "..", "assets", "auth.png"),
+          path.join(process.cwd(), "backend", "assets", "auth.png")
+        ];
+        const sigPath = possibleSignatures.find(p => p && fs.existsSync(p));
+        if (sigPath) {
+          try {
+            const sigW = 110;
+            const sigX = totalsX + 8;
+            const sigY = ty + 24;
+            doc.image(sigPath, sigX, sigY, { width: sigW });
+          } catch (e) {
+            console.error("⚠️ Signature image load failed:", e && e.message ? e.message : e);
+          }
         }
+      } catch (e) {
+        console.error("⚠️ Signature handling error:", e && e.message ? e.message : e);
       }
 
-      // Authorized label under signature
+      // Authorized label
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#666").text("Authorized Signatory", totalsX + 16, ty + 64);
 
       // Footer
-      doc.fontSize(8).fillColor("#999").text("This is a computer generated invoice.", margin, pageH - margin - 18, { align: "center", width: usableW });
+      try { doc.fontSize(8).fillColor("#999").text("This is a computer generated invoice.", margin, pageH - margin - 18, { align: "center", width: usableW }); } catch (e) {}
 
-      // finalize
+      // finalize - attach listeners BEFORE doc.end()
+      let finished = false;
       writeStream.on("finish", () => {
-        console.log("✅ PDF written to:", filePath);
-        resolve(`invoices/${filename}`);
-      });
-      writeStream.on("error", err => {
-        console.error("❌ PDF writeStream error:", err);
-        reject(err);
+        // rename tmp -> final atomically
+        try {
+          if (fs.existsSync(finalPath)) {
+            try { fs.unlinkSync(finalPath); } catch (_) {}
+          }
+          fs.rename(tmpPath, finalPath, (err) => {
+            if (err) {
+              console.error("Failed to rename tmp PDF to final:", err);
+              try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+              return reject(err);
+            }
+            finished = true;
+            console.log("✅ PDF written and moved to:", finalPath);
+            return resolve(`invoices/${filename}`);
+          });
+        } catch (renameErr) {
+          console.error("Unexpected rename error:", renameErr);
+          try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+          return reject(renameErr);
+        }
       });
 
-      doc.end();
+      writeStream.on("close", () => {
+        if (!finished) {
+          // some environments emit close instead of finish
+          try {
+            if (fs.existsSync(tmpPath)) {
+              if (fs.existsSync(finalPath)) {
+                try { fs.unlinkSync(finalPath); } catch (_) {}
+              }
+              fs.renameSync(tmpPath, finalPath);
+              finished = true;
+              console.log("✅ PDF stream closed -> moved tmp to final:", finalPath);
+              return resolve(`invoices/${filename}`);
+            }
+          } catch (e) {
+            console.error("Error in close handler:", e);
+            try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+            return reject(e);
+          }
+        }
+      });
+
+      writeStream.on("error", (err) => {
+        console.error("❌ PDF writeStream error (late):", err);
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+        return reject(err);
+      });
+
+      try {
+        doc.end();
+      } catch (e) {
+        console.error("❌ doc.end() failed:", e && e.message ? e.message : e);
+        try { writeStream.destroy(); } catch (_) {}
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {}
+        return reject(e);
+      }
     } catch (err) {
-      reject(err);
+      console.error("❌ Unexpected error in generateOrderPdf:", err && err.stack ? err.stack : err);
+      return reject(err);
     }
   });
 }
