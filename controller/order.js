@@ -15,6 +15,9 @@ const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
 const fs = require("fs");
 const { generateInvoice } = require("../utils/pdfGeneration");
+const generateOrderPdf = require("../utils/generateOrderPdf");
+console.log("generateOrderPdf type:", typeof generateOrderPdf);
+
 
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
@@ -519,18 +522,65 @@ router.put(
   "/update-order-payment/:id",
   uploadV2.single("payment_file"),
   catchAsyncErrors(async (req, res) => {
+
+    console.log("🔥 update-order-payment HIT");
+
+    if (!req.file) throw new ErrorHandler("No payment file uploaded", 400);
+
     const order = await Order.findById(req.params.id);
     if (!order) throw new ErrorHandler("Order not found", 404);
-    if (order.paymentFile)
-      throw new ErrorHandler("Payment verification still pending", 402);
+
     order.paymentFile = req.file.filename;
     order.status = "Paid";
+    order.paidAt = new Date();
+
     order.statusHistory.push({
       status: "Paid",
       updatedAt: new Date(),
     });
+
     await order.save();
 
+    console.log("✅ Order saved:", order._id);
+
+    // FORCE populate
+    const populated = await Order.findById(order._id)
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: { path: "productId" },
+      })
+      .populate("shop");
+
+    console.log("🔥 Populated order ready");
+
+    // FORCE invoice generation
+    let invoicePath = null;
+
+    try {
+      invoicePath = await generateOrderPdf(populated);
+      console.log("🔥 Invoice generated:", invoicePath);
+    } catch (e) {
+      console.error("❌ Invoice generation failed:", e);
+    }
+
+    if (invoicePath) {
+      populated.invoicePdf = invoicePath;
+      await populated.save();
+      console.log("✅ invoicePdf saved to DB");
+    }
+
+    const finalOrder = await Order.findById(order._id)
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: { path: "productId" },
+      })
+      .populate("shop");
+
+    console.log("🔥 FINAL invoicePdf:", finalOrder.invoicePdf);
+
+    // ---- Admin email (same as before) ----
     const mailSubject = "Payment Receipt Added";
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
@@ -538,11 +588,18 @@ router.put(
         <p>New Payment receipt has been uploaded by customer for order: ${order._id}.</p>
       </div>
     `;
-    await sentMailToAdmin(mailSubject, htmlBody);
 
-    res.status(200).json(order);
+    try {
+      await sentMailToAdmin(mailSubject, htmlBody);
+      console.log("✅ Admin email sent");
+    } catch (err) {
+      console.error("⚠️ Admin email failed:", err);
+    }
+
+    return res.status(200).json(finalOrder);
   })
 );
+
 
 router.put(
   "/update-tracking-details/:id",
