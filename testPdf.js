@@ -12,7 +12,8 @@ const mockOrder = {
       name: "Sample Medical Product hbhsbhvbhdshbvnvhadvb",
       hsn: "3004",
       tax: 18,
-      dispatchCity: "Delhi",
+      dispatchState:"Delhi",
+      dispatchDistrict:"king",
     },
   },
 

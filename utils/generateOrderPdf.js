@@ -203,12 +203,30 @@ async function generateOrderPdf(order) {
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).text(`Invoice Date: ${fmtDate(invDateObj)}`, metaX, invoiceY + 12);
 
       // Place of supply / delivery
-      const product = (order.variant && order.variant.productId) || {};
-      const placeOfSupply = product.dispatchLocation || product.dispatchState || product.dispatchCity || "";
-      const placeOfDelivery = (order.shippingAddress && (order.shippingAddress.state || order.shippingAddress.district || order.shippingAddress.city)) || "";
-      doc.fontSize(9).fillColor("#333");
-      doc.text(`Place of Supply: ${placeOfSupply}`, margin, invoiceY + 34);
-      doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoiceY + 34);
+      // Place of supply / delivery
+const product = (order.variant && order.variant.productId) || {};
+
+let placeOfSupply = "";
+
+if (product.dispatchLocation) {
+  placeOfSupply = product.dispatchLocation;
+} else {
+  const st = product.dispatchState || "";
+  const dist = product.dispatchDistrict || "";
+  placeOfSupply = [st, dist].filter(Boolean).join(", ");
+}
+
+const placeOfDelivery =
+  (order.shippingAddress &&
+    (order.shippingAddress.state ||
+      order.shippingAddress.district ||
+      order.shippingAddress.city)) ||
+  "";
+
+doc.fontSize(9).fillColor("#333");
+doc.text(`Place of Supply: ${placeOfSupply}`, margin, invoiceY + 34);
+doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoiceY + 34);
+
 
       // Billing / Shipping boxes
       let billObj = {};
@@ -426,7 +444,7 @@ async function generateOrderPdf(order) {
         const sigPath = possibleSignatures.find(p => p && fs.existsSync(p));
         if (sigPath) {
           try {
-            const sigW = 110;
+            const sigW = 80;
             const sigX = totalsX + 8;
             const sigY = ty + 24;
             doc.image(sigPath, sigX, sigY, { width: sigW });
