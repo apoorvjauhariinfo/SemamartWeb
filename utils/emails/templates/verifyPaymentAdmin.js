@@ -2,7 +2,7 @@
 const baseLayout = require("../layouts/baseLayout");
 
 const verifyPaymentAdminTemplate = ({
-  instituteName,
+  customerName,
   orderId,
   items,
   totalAmount,
@@ -43,7 +43,7 @@ const verifyPaymentAdminTemplate = ({
 
     <p style="margin: 0 0 24px; font-size: 16px; color: #2a2a2e; line-height: 1.6;">
       Hello Admin,<br/><br/>
-      A new payment has been submitted by <strong>${instituteName}</strong> and requires manual verification. 
+      A new payment has been submitted by <strong>${customerName}</strong> and requires manual verification. 
       Please cross-reference this with the bank records and confirm the order status.
     </p>
 
@@ -58,7 +58,7 @@ const verifyPaymentAdminTemplate = ({
                   Institute / Customer
                 </p>
                 <p style="margin: 4px 0 0; font-size: 16px; font-weight: 600; color: #111827;">
-                  ${instituteName}
+                  ${customerName}
                 </p>
                 <p style="margin: 12px 0 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-weight: 600;">
                   Order ID
