@@ -110,7 +110,7 @@ router.get("/get-bulk-order", async (req, res) => {
         select: "firstName lastName phoneNumber email instituteName",
       }) // populate user details
       .populate({ path: "product_id", select: "name " }) // populate product details
-      .populate({ path: "variant_id", select: "discountPrice" }) // populate variant details
+      .populate({ path: "variant_id", select: "discountPrice thumbnail" }) // populate variant details
       .sort({ createdAt: -1 });
 
     return res.status(200).json({ success: true, bulkOrders });
