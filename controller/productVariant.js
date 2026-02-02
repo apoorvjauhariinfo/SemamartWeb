@@ -48,7 +48,7 @@ router.post(
       return;
     }
     throw new ErrorHandler();
-  })
+  }),
 );
 
 router.put(
@@ -72,7 +72,7 @@ router.put(
           process.cwd(),
           "uploads",
           "images",
-          variant.thumbnail
+          variant.thumbnail,
         );
         if (fs.existsSync(imgPath)) {
           fs.unlinkSync(imgPath);
@@ -94,22 +94,22 @@ router.put(
     // prepare product payload (your templates expect an array)
     const productsPayload = [
       {
-        productName: variant.productId.name,
+        productName: variant.productId?.name || "Unknown Product", // Added optional chaining
         variant:
           [variant.size, variant.colorOption].filter(Boolean).join(" / ") ||
           "Default",
-        stock: newStock,
-        minQty,
+        stock: newStock || 0,
+        minQty: minQty || 0,
       },
     ];
 
     // 🟥 OUT OF STOCK (crossing only)
     if (oldStock > 0 && newStock === 0) {
-      await sendProductOutOfStockSellerEmail({
+      sendProductOutOfStockSellerEmail({
         sellerEmail: req.seller.email,
         sellerName: req.seller.businessName || req.seller.name,
         products: productsPayload,
-      });
+      }).catch((err) => console.error("Out of Stock Email Error:", err));
     }
 
     // 🟧 BELOW MOQ (crossing only)
@@ -126,7 +126,7 @@ router.put(
       await notifyUsers();
     }
     res.json({ success: true });
-  })
+  }),
 );
 
 module.exports = router;

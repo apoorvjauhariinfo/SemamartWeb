@@ -4,7 +4,7 @@ const sendMail = require("./sendMail");
 async function sentMailToAdmin(subject, body) {
   try {
     const admin = await User.findOne({role:"Admin"})
-    const adminEmail = admin.email;
+    const adminEmail = "semaahealthcare@gmail.com";
     sendMail({ email: adminEmail, subject: subject, html: body });
   } catch (err) {
     console.log("failed to send mail to admin")

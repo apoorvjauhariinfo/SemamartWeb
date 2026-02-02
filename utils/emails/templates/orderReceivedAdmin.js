@@ -17,11 +17,15 @@ const orderReceivedAdminTemplate = ({
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
               <td>
-                <p style="margin: 0; font-size: 14px; color: #111827; font-weight: 600;">${i.name}</p>
-                <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280;">Qty: ${i.quantity}</p>
+                <p style="margin: 0; font-size: 14px; color: #111827; font-weight: 600;">
+                ${i.name || "Product"} 
+              </p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #6b7280;">
+                Qty: ${i.quantity || 0}
+              </p>
               </td>
               <td align="right" style="font-size: 14px; color: #111827; font-weight: 600;">
-                ₹${i.price}
+                ₹${i.price || 0}
               </td>
             </tr>
           </table>

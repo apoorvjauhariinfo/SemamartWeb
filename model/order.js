@@ -106,6 +106,11 @@ const orderSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  invoicePdf: {
+  type: String,
+  default: null,
+},
+
 });
 
 const MAIN_FLOW = [

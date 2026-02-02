@@ -24,9 +24,11 @@ const sendOrderShippedSellerEmail = require("../utils/emails/orderShippedSeller"
 const sendVerifyPaymentCustomerEmail = require("../utils/emails/verifyPaymentCustomer");
 const sendVerifyPaymentAdminEmail = require("../utils/emails/verifyPaymentAdmin");
 
+const generateOrderPdf = require("../utils/generateOrderPdf");
 const sendMail = require("../utils/sendMail");
 const fs = require("fs");
 const { generateInvoice } = require("../utils/pdfGeneration");
+//console.log("generateOrderPdf type:", typeof generateOrderPdf);
 
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
@@ -114,7 +116,7 @@ function getMonthDateRange(year, monthIndex) {
 
 //       await sendOrderReceivedAdminEmail({
 //         orderId: orders.map((o) => o._id).join(", "),
-//         instituteName: adminInstituteName, 
+//         instituteName: adminInstituteName,
 //         items: itemsForAdmin,
 //         totalAmount,
 //       });
@@ -131,7 +133,7 @@ router.get(
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId).populate(
       "cart.productId",
-      "variants name manufacturerName"
+      "variants name manufacturerName",
     );
 
     if (!order) {
@@ -139,14 +141,14 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
     const { cart, shippingAddress, user, paymentInfo } = req.body;
-    
+
     const userDoc = await User.findById(user);
     if (!userDoc) return next(new ErrorHandler("User not found", 404));
 
@@ -155,24 +157,31 @@ router.post(
     }
 
     const orders = [];
+    const itemsForAdmin = [];
 
     for (const item of cart) {
       // 1. Find the variant and populate product details
-      const variant = await ProductVariant.findById(item.variantId).populate("productId");
+      const variant = await ProductVariant.findById(item.variantId).populate(
+        "productId",
+      );
 
       if (!variant) {
-        return next(new ErrorHandler(`Variant not found for item: ${item.name}`, 404));
+        return next(
+          new ErrorHandler(`Variant not found for item: ${item.name}`, 404),
+        );
       }
 
-      const variantLabel = [variant.size, variant.colorOption].filter(Boolean).join(" / ");
+      const variantLabel = [variant.size, variant.colorOption]
+        .filter(Boolean)
+        .join(" / ");
 
       // 2. Check Stock
       if (variant.stock < item.qty) {
         return next(
           new ErrorHandler(
             `Insufficient stock for ${variant.productId.name}${variantLabel ? ` (${variantLabel})` : ""}`,
-            400
-          )
+            400,
+          ),
         );
       }
 
@@ -204,30 +213,33 @@ router.post(
         productName: variant.productId.name,
         qty: item.qty,
         totalAmount: item.totalPrice,
-      }).catch(err => console.error("Email Error:", err));
+      }).catch((err) => console.error("Email Error:", err));
+
+      // 6. Admin Summary Logic
+      itemsForAdmin.push({
+        name: variant.productId.name, // Matches ${i.name} in template
+        quantity: item.qty, // Matches ${i.quantity}
+        price: item.unitPrice, // Matches ${i.price}
+      });
     }
 
-    // 6. Admin Summary Logic
-    const itemsForAdmin = orders.map((order) => ({
-      orderId: order._id,
-      quantity: order.qty,
-      unitPrice: order.unitPrice,
-      totalPrice: order.totalPrice,
-    }));
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + order.totalPrice,
+      0,
+    );
 
-    const totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+    const adminInstituteName =
+      userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
 
-    const adminInstituteName = userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
-
-    await sendOrderReceivedAdminEmail({
+    sendOrderReceivedAdminEmail({
       orderId: orders.map((o) => o._id).join(", "),
-      instituteName: adminInstituteName, 
+      instituteName: adminInstituteName,
       items: itemsForAdmin,
       totalAmount,
-    });
+    }).catch((err) => console.error("❌ Admin Email Error:", err));
 
     res.status(201).json({ success: true, orders });
-  })
+  }),
 );
 
 router.get(
@@ -248,7 +260,7 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 // ✅ Get all orders of a user
@@ -274,7 +286,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 router.get(
@@ -315,7 +327,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Get all orders of a seller
@@ -338,7 +350,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Update order status (for sellers)
@@ -394,7 +406,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Refund request (user)
@@ -419,7 +431,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Refund approval (seller)
@@ -459,7 +471,7 @@ router.put(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 // ✅ Admin: get all orders
@@ -486,7 +498,7 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 router.get(
@@ -507,7 +519,7 @@ router.get(
     }
 
     res.json(order);
-  })
+  }),
 );
 
 router.put(
@@ -515,6 +527,7 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
+    const { status } = req.body;
     const order = await Order.findById(req.params.id)
       .populate("shop")
       .populate("user")
@@ -541,50 +554,56 @@ router.put(
       updatedAt: new Date(),
     });
 
+    if (status === "Delivered") order.deliveredAt = Date.now();
+
     await order.save();
+
+    // Helper variables to prevent 'undefined' in emails
+    const productName = order.variant?.productId?.name || "Product";
+    const customerName = order.user?.firstName || "Customer";
+    const sellerName = order.shop?.businessName || order.shop?.name || "Seller";
+    
     if (order.status === "Shipped") {
       await sendOrderShippedAdminEmail({
         orderId: order._id,
-        instituteName:
-          order.user.instituteName ||
-          `${order.user.firstName} ${order.user.lastName}`,
-      });
+        instituteName: order.user?.instituteName || customerName,
+      }).catch(e => console.log("Mail Error:", e));
     }
 
     if (order.status === "Shipped") {
       await sendOrderShippedCustomerEmail({
         customerEmail: order.user.email,
-        customerName: order.user.firstName,
+        customerName: customerName,
         orderId: order._id,
-        productName: order.variant.productId.name,
+        productName,
         qty: order.qty,
         totalAmount: order.totalPrice,
-      });
+      }).catch(e => console.log("Mail Error:", e));
     }
 
     if (order.status === "Shipped") {
       await sendOrderShippedSellerEmail({
-        sellerEmail: req.seller.email,
-        sellerName: req.seller.businessName || req.seller.name,
+        sellerEmail: order.shop.email,
+        sellerName,
         orderId: order._id,
-        productName: order.variant.productId.name,
+        productName,
         quantity: order.qty,
         totalAmount: order.totalPrice,
-      });
+      }).catch(e => console.log("Mail Error:", e));
     }
 
     if (order.status === "Processing") {
       await sendOrderReceivedSellerEmail({
         sellerEmail: order.shop.email,
-        sellerName: order.shop.businessName || order.shop.name,
+        sellerName,
         orderId: order._id,
-        productName: order.variant.productId.name,
+        productName,
         quantity: order.qty,
         unitPrice: order.unitPrice,
         tax: order.tax,
         totalAmount: order.totalPrice,
         frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
-      });
+      }).catch(e => console.log("Mail Error:", e));
     }
 
     if (order.status === "Delivered") {
@@ -598,18 +617,18 @@ router.put(
     if (order.status === "Delivered") {
       await sendOrderDeliveredCustomerEmail({
         customerEmail: order.user.email,
-        customerName: order.user.firstName,
+        customerName: customerName,
         orderId: order._id,
         totalAmount: order.totalPrice,
-      });
+      }).catch(e => console.log("Mail Error:", e));
     }
 
     if (order.status === "Delivered") {
       await sendOrderDeliveredSellerEmail({
         sellerEmail: order.shop.email,
-        sellerName: order.shop.businessName || order.shop.name,
+        sellerName,
         orderId: order._id,
-        productName: order.variant.productId.name,
+        productName,
         quantity: order.qty,
         unitPrice: order.unitPrice,
         tax: order.tax,
@@ -617,41 +636,56 @@ router.put(
       });
     }
     res.status(201).json({ success: true });
-  })
+  }),
 );
 
 router.put(
   "/update-order-payment/:id",
   uploadV2.single("payment_file"),
   catchAsyncErrors(async (req, res) => {
+    console.log("🔥 update-order-payment HIT");
+
+    if (!req.file) throw new ErrorHandler("No payment file uploaded", 400);
+
     const order = await Order.findById(req.params.id)
       .populate("user")
       .populate({
         path: "variant",
         populate: { path: "productId" },
       });
+
+    if (!order) throw new ErrorHandler("Order not found", 404);
+
+    const customerName = order.user
+      ? `${order.user.firstName} ${order.user.lastName}`
+      : "Customer";
+    const instituteName = order.user?.instituteName || "Not Provided";
+    const productName = order.variant?.productId?.name || "Product";
+
     const items = [
       {
-        productName: order.variant.productId.name,
+        name: productName,
         quantity: order.qty,
-        unitPrice: order.unitPrice,
+        price: order.unitPrice,
         totalPrice: order.totalPrice,
       },
     ];
 
-    if (!order) throw new ErrorHandler("Order not found", 404);
-    if (order.paymentFile)
-      throw new ErrorHandler("Payment verification still pending", 402);
     order.paymentFile = req.file.filename;
     order.status = "Paid";
+    order.paidAt = new Date();
+
     order.statusHistory.push({
       status: "Paid",
       updatedAt: new Date(),
     });
-    await order.save();
 
+    await order.save();
+    console.log("✅ Order saved:", order._id);
+
+    // existing verify-payment emails
     await sendVerifyPaymentAdminEmail({
-      customerName: order.user.firstName,
+      customerName: instituteName, // This fixes the "Submitted by" line
       orderId: order._id,
       items,
       totalAmount: order.totalPrice,
@@ -660,14 +694,50 @@ router.put(
 
     await sendVerifyPaymentCustomerEmail({
       customerEmail: order.user.email,
-      customerName: order.user.firstName,
+      customerName: customerName,
       orderId: order._id,
       items,
       totalAmount: order.totalPrice,
     });
 
-    res.status(200).json(order);
-  })
+    // ---- FORCE populate for PDF ----
+    const populated = await Order.findById(order._id)
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: { path: "productId" },
+      })
+      .populate("shop");
+
+    console.log("🔥 Populated order ready for PDF");
+
+    // ---- Generate invoice ----
+    let invoicePath = null;
+    try {
+      invoicePath = await generateOrderPdf(populated);
+      console.log("🔥 Invoice generated:", invoicePath);
+    } catch (e) {
+      console.error("❌ Invoice generation failed:", e);
+    }
+
+    if (invoicePath) {
+      populated.invoicePdf = invoicePath;
+      await populated.save();
+      console.log("✅ invoicePdf saved to DB");
+    }
+
+    const finalOrder = await Order.findById(order._id)
+      .populate("user")
+      .populate({
+        path: "variant",
+        populate: { path: "productId" },
+      })
+      .populate("shop");
+
+    console.log("🔥 FINAL invoicePdf:", finalOrder.invoicePdf);
+
+    return res.status(200).json(finalOrder);
+  }),
 );
 
 router.put(
@@ -707,7 +777,7 @@ router.put(
           process.cwd(),
           "uploads",
           "payment-docs",
-          order.trackingDetails.trackingDocument
+          order.trackingDetails.trackingDocument,
         );
         if (fs.existsSync(docPath)) {
           fs.unlinkSync(docPath);
@@ -736,7 +806,7 @@ router.put(
       message: "Tracking details updated successfully",
       order,
     });
-  })
+  }),
 );
 
 // ✅ Generate invoice per order
@@ -761,7 +831,7 @@ router.get("/invoice/:orderId", async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename=invoice-${orderId}.pdf`
+      `attachment; filename=invoice-${orderId}.pdf`,
     );
     res.setHeader("Content-Type", "application/pdf");
     generateInvoice(res, order);
@@ -885,14 +955,14 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
+  }),
 );
 
 router.put(
   "/add-order-payment",
   catchAsyncErrors(async (req, res) => {
     res.send("nnnn");
-  })
+  }),
 );
 
 router.get(
@@ -922,7 +992,7 @@ router.get(
       totalSales: stats.totalSales,
       deliveredOrders: stats.deliveredOrders,
     });
-  })
+  }),
 );
 
 router.get(
@@ -947,7 +1017,7 @@ router.get(
       success: true,
       orders,
     });
-  })
+  }),
 );
 
 module.exports = router;
