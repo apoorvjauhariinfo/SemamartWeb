@@ -1,6 +1,6 @@
+// utils/emails/sendOrderShippedCustomerEmail.js
 const sendMail = require("../sendMail");
-const orderShippedCustomerTemplate =
-  require("./templates/orderShippedCustomer");
+const orderShippedCustomerTemplate = require("./templates/orderShippedCustomer");
 
 const sendOrderShippedCustomerEmail = async ({
   customerEmail,
@@ -9,6 +9,8 @@ const sendOrderShippedCustomerEmail = async ({
   productName,
   qty,
   totalAmount,
+  logisticPartner, // Added
+  trackingNumber,  // Added
 }) => {
   const html = orderShippedCustomerTemplate({
     customerName,
@@ -16,8 +18,9 @@ const sendOrderShippedCustomerEmail = async ({
     productName,
     qty,
     totalAmount,
-    bannerImageUrl:
-      "https://res.cloudinary.com/deom4dy3l/image/upload/v1769521671/order-shipped-customer_rplnbc.png",
+    logisticPartner, // Pass to template
+    trackingNumber,  // Pass to template
+    bannerImageUrl: "https://res.cloudinary.com/deom4dy3l/image/upload/v1769521671/order-shipped-customer_rplnbc.png",
     frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   });
 

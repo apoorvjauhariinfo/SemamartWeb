@@ -4,7 +4,7 @@ const baseLayout = require("../layouts/baseLayout");
 const orderDeliveredSellerTemplate = ({
   sellerName,
   orderId,
-  items, // Expected as an array: [{ name, quantity, price }]
+  items = [], // Default to empty array to prevent .map crash  
   totalAmount,
   bannerImageUrl,
   frontendUrl,

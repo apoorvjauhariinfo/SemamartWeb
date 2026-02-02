@@ -562,43 +562,14 @@ router.put(
     const productName = order.variant?.productId?.name || "Product";
     const customerName = order.user?.firstName || "Customer";
     const sellerName = order.shop?.businessName || order.shop?.name || "Seller";
-    
-    if (order.status === "Shipped") {
-      await sendOrderShippedAdminEmail({
-        orderId: order._id,
-        instituteName: order.user?.instituteName || customerName,
-      }).catch(e => console.log("Mail Error:", e));
-    }
-
-    if (order.status === "Shipped") {
-      await sendOrderShippedCustomerEmail({
-        customerEmail: order.user.email,
-        customerName: customerName,
-        orderId: order._id,
-        productName,
-        qty: order.qty,
-        totalAmount: order.totalPrice,
-      }).catch(e => console.log("Mail Error:", e));
-    }
-
-    if (order.status === "Shipped") {
-      await sendOrderShippedSellerEmail({
-        sellerEmail: order.shop.email,
-        sellerName,
-        orderId: order._id,
-        productName,
-        quantity: order.qty,
-        totalAmount: order.totalPrice,
-      }).catch(e => console.log("Mail Error:", e));
-    }
 
     if (order.status === "Processing") {
       await sendOrderReceivedSellerEmail({
-        sellerEmail: order.shop.email,
+        sellerEmail: order.shop?.email,
         sellerName,
         orderId: order._id,
         productName,
-        quantity: order.qty,
+        qty: order.qty,
         unitPrice: order.unitPrice,
         tax: order.tax,
         totalAmount: order.totalPrice,
@@ -624,16 +595,20 @@ router.put(
     }
 
     if (order.status === "Delivered") {
-      await sendOrderDeliveredSellerEmail({
-        sellerEmail: order.shop.email,
-        sellerName,
-        orderId: order._id,
-        productName,
+      // Map the order data to the structure the template expects
+      const itemsArray = [{
+        name: order.variant?.productId?.name || "Product",
         quantity: order.qty,
-        unitPrice: order.unitPrice,
-        tax: order.tax,
+        price: order.unitPrice
+      }];
+
+      await sendOrderDeliveredSellerEmail({
+        sellerEmail: order.shop?.email,
+        sellerName: order.shop?.businessName || "Seller",
+        orderId: order._id,
+        items: itemsArray,
         totalAmount: order.totalPrice,
-      });
+      }).catch(e => console.log("Delivered Seller Mail Error:", e));
     }
     res.status(201).json({ success: true });
   }),
@@ -753,7 +728,13 @@ router.put(
       throw new ErrorHandler("Bad Request", 402);
     }
 
-    const order = await Order.findById(id).populate("user");
+    const order = await Order.findById(id)
+    .populate("user")
+    .populate("shop")
+    .populate({
+      path: "variant",
+      populate: { path: "productId" },
+    });
     if (!order) {
       throw new ErrorHandler("Order not found", 404);
     }
@@ -787,26 +768,69 @@ router.put(
     }
 
     await order.save();
-    const mailSubject = "Order tracking details added";
-    const htmlBody = `
-      <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
-        <h2 style="color: #2c3e50;">Order tracking details uploaded</h2>
-        <p>Tracking details uploaded by seller for order: ${order._id}.</p>
-      </div>
-    `;
-    const customerEmail = order.user.email;
-    await sendMail({
-      email: customerEmail,
-      subject: mailSubject,
-      html: htmlBody,
-    });
+    // 3. Prepare placeholders
+    const productName = order.variant?.productId?.name || "Product";
+    const customerName = order.user?.firstName || "Customer";
+    const sellerName = order.shop?.businessName || order.shop?.name || "Seller";
+
+    // To SELLER (Their Confirmation)
+    await sendOrderShippedSellerEmail({
+      sellerEmail: order.shop?.email,
+      sellerName,
+      orderId: order._id,
+      productName,
+      qty: order.qty,
+      totalAmount: order.totalPrice,
+      logisticPartner,
+      trackingNumber,
+    }).catch(e => console.log("Seller Mail Error:", e));
+
+    // To Customer (Includes Tracking Info)
+    await sendOrderShippedCustomerEmail({
+      customerEmail: order.user.email,
+      customerName: customerName,
+      orderId: order._id,
+      productName,
+      qty: order.qty,
+      totalAmount: order.totalPrice,
+      logisticPartner, // Pass these to your email template!
+      trackingNumber,
+    }).catch(e => console.log("Mail Error:", e));
+
+    // To Admin
+    await sendOrderShippedAdminEmail({
+      orderId: order._id,
+      instituteName: order.user?.instituteName || "Client",
+      trackingNumber: trackingNumber, // From req.body
+      carrierName: logisticPartner,   // From req.body
+    }).catch(e => console.log("Mail Error:", e));
 
     res.status(200).json({
       success: true,
-      message: "Tracking details updated successfully",
+      message: "Order marked as Shipped and tracking updated",
       order,
     });
-  }),
+  })
+  //   const mailSubject = "Order tracking details added";
+  //   const htmlBody = `
+  //     <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+  //       <h2 style="color: #2c3e50;">Order tracking details uploaded</h2>
+  //       <p>Tracking details uploaded by seller for order: ${order._id}.</p>
+  //     </div>
+  //   `;
+  //   const customerEmail = order.user.email;
+  //   await sendMail({
+  //     email: customerEmail,
+  //     subject: mailSubject,
+  //     html: htmlBody,
+  //   });
+
+  //   res.status(200).json({
+  //     success: true,
+  //     message: "Tracking details updated successfully",
+  //     order,
+  //   });
+  // }),
 );
 
 // ✅ Generate invoice per order

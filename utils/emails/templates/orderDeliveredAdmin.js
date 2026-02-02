@@ -38,7 +38,7 @@ const orderDeliveredAdminTemplate = ({
             <tr>
               <td style="padding-bottom: 16px; border-bottom: 1px solid #f3f4f6;">
                 <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; font-weight: 600;">
-                  Reference Number
+                  Order ID
                 </p>
                 <p style="margin: 4px 0 0; font-size: 16px; font-weight: 700; color: #111827;">
                   #${orderId}
