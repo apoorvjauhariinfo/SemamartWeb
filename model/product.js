@@ -215,7 +215,11 @@ const productSchema = new mongoose.Schema(
     },
 
     //////
-    dispatchLocation: {
+    dispatchState: {
+      type: String,
+      required: true,
+    },
+    dispatchDistrict: {
       type: String,
       required: true,
     },
