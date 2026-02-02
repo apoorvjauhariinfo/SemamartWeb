@@ -527,6 +527,7 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
+    const { status } = req.body;
     const order = await Order.findById(req.params.id)
       .populate("shop")
       .populate("user")
@@ -684,8 +685,7 @@ router.put(
 
     // existing verify-payment emails
     await sendVerifyPaymentAdminEmail({
-      customerName: customerName, // This fixes the "Submitted by" line
-      // instituteName: instituteName, // Pass this if your template supports it
+      customerName: instituteName, // This fixes the "Submitted by" line
       orderId: order._id,
       items,
       totalAmount: order.totalPrice,
