@@ -424,7 +424,7 @@ router.get(
   })
 );
 
-router.post(
+router.get(
   "/logout",
   catchAsyncErrors(async (req, res, next) => {
     try {
