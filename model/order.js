@@ -94,6 +94,12 @@ const orderSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  dispatchState: {
+      type: String,
+  },
+  dispatchDistrict: {
+      type: String,
+  },
   statusHistory: [orderStatusHistorySchema],
   trackingDetails: {
     logisticPartner: { type: String, trim: true },

@@ -201,6 +201,8 @@ router.post(
         unitPrice: item.unitPrice,
         paymentInfo,
         statusHistory: [{ status: "Created", updatedAt: new Date() }],
+        dispatchState: item.dispatchState,
+        dispatchDistrict: item.dispatchDistrict,
       });
 
       orders.push(order);
