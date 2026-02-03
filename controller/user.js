@@ -22,6 +22,39 @@ const sendNewInstituteRegisteredAdminEmail = require("../utils/emails/newInstitu
 
 const router = express.Router();
 
+// --- add this helper after your imports (generateUserPdf is already imported) ---
+/**
+ * Regenerate registration PDF for a given mongoose user document.
+ * Updates user.registrationPdf and saves the user if generation succeeds.
+ * Errors are swallowed (logged) so they don't block the HTTP response.
+ */
+async function regenerateUserRegistrationPdf(user) {
+  try {
+    if (!user || !user._id) return null;
+    // Ensure we have a mongoose document
+    // if user is a plain object, try to fetch fresh doc
+    let doc = user;
+    if (!user.save || typeof user.save !== "function") {
+      doc = await User.findById(user._id);
+      if (!doc) return null;
+    }
+
+    const relPath = await generateUserPdf(doc); // expected to return something like 'pdfs/<id>.pdf'
+    if (relPath) {
+      doc.registrationPdf = relPath;
+      await doc.save();
+      console.log("✅ User registration PDF regenerated:", doc._id, relPath);
+      return relPath;
+    }
+    console.warn("⚠️ generateUserPdf returned falsy for user:", doc._id);
+    return null;
+  } catch (err) {
+    console.error("⚠️ Failed to regenerate registration PDF for user:", user && user._id, err);
+    return null;
+  }
+}
+
+
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
     const { firstName, lastName, phoneNumber, email, instituteName, password } =
@@ -303,6 +336,9 @@ compare the provided password with the stored password for authentication purpos
 
       await user.save();
 
+       // Regenerate registration PDF so we have latest info
+      await regenerateUserRegistrationPdf(user);
+       
       res.status(201).json({
         success: true,
         user,
@@ -341,6 +377,9 @@ router.patch(
 
       if (!user) return next(new ErrorHandler("User not found", 404));
 
+       // Regenerate registration PDF so we have latest info
+      await regenerateUserRegistrationPdf(user);
+
       res.status(200).json({ success: true, user });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -376,6 +415,9 @@ router.put(
         },
         { new: true }
       );
+
+       // Regenerate registration PDF so we have latest info
+      await regenerateUserRegistrationPdf(user);
 
       res.status(200).json({
         success: true,
@@ -417,6 +459,9 @@ router.put(
 
       await user.save();
 
+       // Regenerate registration PDF so we have latest info
+      await regenerateUserRegistrationPdf(user);
+       
       res.status(200).json({
         success: true,
         user,
@@ -446,6 +491,9 @@ router.delete(
       );
 
       const user = await User.findById(userId);
+
+       // Regenerate registration PDF so we have latest info
+      await regenerateUserRegistrationPdf(user);
 
       res.status(200).json({ success: true, user });
     } catch (error) {

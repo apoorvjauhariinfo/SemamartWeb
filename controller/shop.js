@@ -19,6 +19,38 @@ const sendNewSellerAdminVerifyEmail = require("../utils/emails/newSellerAdminVer
 const sendSelfVerifySellerEmail = require("../utils/emails/selfVerifySeller");
 const sendRegistrationCompleteSellerEmail = require("../utils/emails/registrationCompleteSeller");
 
+// --- add this helper after your imports (generateSellerPdf is already imported) ---
+/**
+ * Regenerate registration PDF for a given shop document.
+ * Updates shop.registrationPdf and saves the shop if generation succeeds.
+ * Errors are swallowed (logged) so they don't block the HTTP response.
+ */
+async function regenerateSellerRegistrationPdf(shop) {
+  try {
+    if (!shop || !shop._id) return null;
+    // Ensure we have a mongoose document with save()
+    let doc = shop;
+    if (!shop.save || typeof shop.save !== "function") {
+      doc = await Shop.findById(shop._id);
+      if (!doc) return null;
+    }
+
+    const relPath = await generateSellerPdf(doc); // expected to return 'pdfs/<id>.pdf' or similar
+    if (relPath) {
+      doc.registrationPdf = relPath;
+      await doc.save();
+      console.log("✅ Seller registration PDF regenerated:", doc._id, relPath);
+      return relPath;
+    }
+    console.warn("⚠️ generateSellerPdf returned falsy for seller:", doc._id);
+    return null;
+  } catch (err) {
+    console.error("⚠️ Failed to regenerate registration PDF for seller:", shop && shop._id, err);
+    return null;
+  }
+}
+
+
 // create shop (seller email verification)
 // Now: create Shop document immediately (verified: false), generate registration PDF, then send activation email.
 // PDF errors won't block registration or email.
@@ -424,7 +456,7 @@ router.get(
   })
 );
 
-router.post(
+router.get(
   "/logout",
   catchAsyncErrors(async (req, res, next) => {
     try {
@@ -497,6 +529,13 @@ router.put(
         },
       });
 
+      
+      // Regenerate registration PDF (contains avatar if your PDF uses it)
+      regenerateSellerRegistrationPdf(seller).catch((e) => {
+        // regenerate helper already logs; this double-catch is defensive
+        console.error("Regenerate seller PDF (avatar) error:", e);
+      });
+
       res.status(200).json({
         success: true,
         seller,
@@ -546,6 +585,13 @@ router.put(
       description: `${shop.businessName} updated shop profile information`,
       metaData: metaData,
     });
+
+    
+      // Regenerate registration PDF (contains avatar if your PDF uses it)
+      regenerateSellerRegistrationPdf(seller).catch((e) => {
+        // regenerate helper already logs; this double-catch is defensive
+        console.error("Regenerate seller PDF (avatar) error:", e);
+      });
 
     res.status(201).json({
       success: true,

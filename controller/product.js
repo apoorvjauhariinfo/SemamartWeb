@@ -1324,4 +1324,67 @@ router.put(
   }),
 );
 
+/* ------------------ DELETE DOCUMENT (admin/seller) ------------------ */
+router.delete(
+  "/delete-doc/:productId",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    const { productId } = req.params;
+    const { docType, idx } = req.body; // idx is passed for array fields
+
+    const product = await Product.findById(productId);
+
+    if (!product) {
+      return next(new ErrorHandler("Product not found", 404));
+    }
+
+    // Authorization check
+    if (req.seller._id.toString() !== product.shopId.toString()) {
+      return next(new ErrorHandler("Not authorized", 402));
+    }
+
+    let fileToDelete = "";
+    const metaData = { [docType]: { oldValue: product[docType] } };
+
+    // Case 1: Deleting from an Array (e.g., msds_ifu_leaflet)
+    if (idx !== undefined && Array.isArray(product[docType])) {
+      fileToDelete = product[docType][idx];
+      product[docType].splice(idx, 1); // Remove specifically that index
+    } 
+    // Case 2: Deleting a single field (e.g., oemLetter)
+    else {
+      fileToDelete = product[docType];
+      product[docType] = ""; // Clear the field
+    }
+
+    // Physically delete file from server
+    if (fileToDelete) {
+      const filePath = path.join(process.cwd(), "uploads", "docs", fileToDelete);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    await product.save();
+
+    // Log the activity
+    metaData[docType].newValue = product[docType];
+    await addActivityLog({
+      userId: req.seller._id,
+      userType: "Shop",
+      action: "Product Update",
+      entityType: "Product",
+      entityId: product._id,
+      description: `${req.seller.businessName} deleted document: ${docType}`,
+      metaData: metaData,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Document deleted successfully",
+      product,
+    });
+  })
+);
+
 module.exports = router;
