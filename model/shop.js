@@ -52,6 +52,12 @@ const shopSchema = new mongoose.Schema({
     type: String,
     default: "Seller",
   },
+  state: {
+    type: String,
+  },
+  district: {
+    type: String,
+  },
   avatar: {
     type: String,
     // required: true,

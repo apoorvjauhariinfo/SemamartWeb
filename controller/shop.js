@@ -98,6 +98,8 @@ router.post(
         email,
         password: req.body.password,
         phoneNumber: req.body.phoneNumber,
+        state: req.body.state,
+        district: req.body.district,
         profilePic,
         banner,
         verified: false, // not verified until activation
