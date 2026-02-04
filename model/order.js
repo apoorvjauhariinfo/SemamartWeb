@@ -62,6 +62,12 @@ const orderSchema = new mongoose.Schema({
     type: Number,
     required: true,
   },
+  adminCommision: {
+    type: Number,
+  },
+  sellerPayout: {
+    type: Number,
+  },
   status: {
     type: String,
     default: "Created",

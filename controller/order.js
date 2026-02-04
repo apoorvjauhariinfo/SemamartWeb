@@ -203,6 +203,8 @@ router.post(
         statusHistory: [{ status: "Created", updatedAt: new Date() }],
         dispatchState: item.dispatchState,
         dispatchDistrict: item.dispatchDistrict,
+        adminCommision: item.adminCommision,
+        sellerPayout: item.sellerPayout,
       });
 
       orders.push(order);
