@@ -206,15 +206,16 @@ async function generateOrderPdf(order) {
       // Place of supply / delivery
 const product = (order.variant && order.variant.productId) || {};
 
-let placeOfSupply = "";
+let placeOfSupply = [order.dispatchState, order.dispatchDistrict].filter(Boolean).join(", ");
 
-if (product.dispatchLocation) {
-  placeOfSupply = product.dispatchLocation;
-} else {
-  const st = product.dispatchState || "";
-  const dist = product.dispatchDistrict || "";
-  placeOfSupply = [st, dist].filter(Boolean).join(", ");
-}
+
+// if (product.dispatchLocation) {
+//   placeOfSupply = product.dispatchLocation;
+// } else {
+//   const st = product.dispatchState || "";
+//   const dist = product.dispatchDistrict || "";
+//   placeOfSupply = [st, dist].filter(Boolean).join(", ");
+// }
 
 const placeOfDelivery =
   (order.shippingAddress &&

@@ -836,6 +836,8 @@ router.put(
 );
 
 // ✅ Generate invoice per order
+
+
 router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
 
@@ -855,17 +857,26 @@ router.get("/invoice/:orderId", async (req, res) => {
       return res.status(404).json({ error: "Order not found" });
     }
 
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=invoice-${orderId}.pdf`,
+    // 🔥 Generate PDF file (your function already does this)
+    const relativePath = await generateOrderPdf(order);
+
+    const absolutePath = path.join(
+      process.cwd(),
+      "uploads",
+      relativePath
     );
-    res.setHeader("Content-Type", "application/pdf");
-    generateInvoice(res, order);
+
+    // 🔥 Send file as download
+    return res.download(
+      absolutePath,
+      `invoice-${orderId}.pdf`
+    );
   } catch (err) {
     console.error("Invoice generation error:", err);
-    res.status(500).json({ error: "Failed to generate invoice" });
+    return res.status(500).json({ error: "Failed to generate invoice" });
   }
 });
+
 
 router.get(
   "/admin-dashboard-summary",
