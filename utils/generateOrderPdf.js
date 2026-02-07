@@ -105,7 +105,7 @@ async function generateOrderPdf(order) {
       });
 
       // A5 (portrait)
-      const doc = new PDFDocument({ size: "A5", margin: 28, info: { Title: `Invoice - ${order._id}`, Author: "SEMA Healthcare Pvt. Ltd." } });
+      const doc = new PDFDocument({ size: "A5", margin: 12, info: { Title: `Invoice - ${order._id}`, Author: "SEMA Healthcare Pvt. Ltd." } });
 
       // Safe font loading
       try {
@@ -190,23 +190,31 @@ async function generateOrderPdf(order) {
       // Title & separator
       const invoiceY = margin + Math.max(logoPath ? logoH : 0, (cy - margin)) + 6;
       try { doc.moveTo(margin, invoiceY + 22).lineTo(pageW - margin, invoiceY + 22).strokeColor("#e6eef6").lineWidth(1).stroke(); } catch (e) {}
-      doc.fontSize(14).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text("ORDER INVOICE", margin, invoiceY);
+      doc.fontSize(14).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text("TAX INVOICE", margin, invoiceY);
 
       // Invoice meta
-      const invDateObj = order.verifiedAt || new Date();
-      const invoiceYear = invDateObj ? new Date(invDateObj).getFullYear() : new Date().getFullYear();
-      const invoiceNo = `SM/${invoiceYear}/${orderCount}`;
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#333");
-      const metaX = margin + usableW * 0.55;
-      doc.text("Invoice No.:", metaX, invoiceY);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text(invoiceNo, metaX + 72, invoiceY);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).text(`Invoice Date: ${fmtDate(invDateObj)}`, metaX, invoiceY + 12);
+     // --- Invoice meta ---
+const invDateObj = order.verifiedAt || new Date();
+const invoiceYear = invDateObj ? new Date(invDateObj).getFullYear() : new Date().getFullYear();
+const invoiceNo = `SM/${invoiceYear}/${orderCount}`;
+
+doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#333");
+const metaX = margin + usableW * 0.55;
+
+// FIXED: Reduced offset from 72 to 55 to close the gap
+doc.text("Invoice No.:", metaX, invoiceY);
+doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold")
+   .text(invoiceNo, metaX + 47, invoiceY); 
+
+doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica")
+   .fontSize(9)
+   .text(`Invoice Date: ${fmtDate(invDateObj)}`, metaX, invoiceY + 12);
 
       // Place of supply / delivery
       // Place of supply / delivery
 const product = (order.variant && order.variant.productId) || {};
 
-let placeOfSupply = [order.dispatchState, order.dispatchDistrict].filter(Boolean).join(", ");
+let placeOfSupply = [order.dispatchState].filter(Boolean).join(", ");
 
 
 // if (product.dispatchLocation) {
@@ -257,7 +265,8 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       const cityStateBill = (order.user && (order.user.city || order.user.state)) ? `${order.user.city || ""}${order.user.city ? ", " : ""}${order.user.state || ""}` : ((billObj.city || "") + (billObj.city ? ", " : "") + (billObj.state || ""));
       if (cityStateBill.trim()) billingLines.push(cityStateBill);
       if ((order.user && order.user.pincode) || billObj.pincode) billingLines.push(String(order.user?.pincode || billObj.pincode || ""));
-      if (order.user?.email) billingLines.push(`Email: ${order.user.email}`);
+      if (order.user?.email) billingLines.push( order.user.email);
+      if (order.user?.phoneNumber) billingLines.push( order.user.phoneNumber);
       const billingText = billingLines.filter(Boolean).join("\n");
 
       const ship = order.shippingAddress || {};
@@ -293,15 +302,18 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       const tableLeft = margin;
       const tableWidth = usableW;
 
-      const colSno = 28;
-      const colQty = 36;
-      const descFraction = 0.36;
-      const hsnFraction = 0.12;
-      const unitFraction = 0.18;
+      const colSno = 25;      // was 28
+      const colQty = 20;      // was 36
+
+      const descFraction = 0.30; // was 0.36 (big win here)
+      const hsnFraction = 0.13;  // was 0.12
+      const unitFraction = 0.15; // was 0.18
+
       const colDesc = Math.round(tableWidth * descFraction);
       const colHsn = Math.round(tableWidth * hsnFraction);
       const colUnit = Math.round(tableWidth * unitFraction);
-      const colSumBeforeLast = colSno + colDesc + colHsn + colQty + colUnit;
+      const colDiscount = Math.round(tableWidth * 0.15); // was 0.12
+      const colSumBeforeLast = colSno + colDesc + colHsn + colQty + colUnit + colDiscount;
       const colTotal = tableWidth - colSumBeforeLast;
 
       const cols = [
@@ -310,15 +322,16 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
         { key: "hsn", width: colHsn },
         { key: "qty", width: colQty },
         { key: "unitPrice", width: colUnit },
+        { key: "discount", width: colDiscount },
         { key: "totalPrice", width: colTotal },
       ];
 
       try { doc.rect(tableLeft, tableTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke(); } catch (e) {}
-      doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9);
+      doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(7);
       let x = tableLeft + 6;
-      const titles = ["S.No", "Description of Goods", "HSN", "Qty", "Unit Price", "Total Price"];
+      const titles = ["S.No", "Description of Goods", "HSN", "Qty", "Unit Price", "Discounted Price", "Total Price"];
       for (let i = 0; i < cols.length; i++) {
-        const rightAlign = ["qty", "unitPrice", "totalPrice"].includes(cols[i].key);
+        const rightAlign = ["qty", "unitPrice", "discount",  "totalPrice"].includes(cols[i].key);
         doc.text(titles[i], x, tableTop + 6, { width: cols[i].width - 8, align: rightAlign ? "right" : "left" });
         x += cols[i].width;
       }
@@ -329,7 +342,9 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
           name: (product && product.name) || "Item",
           hsn: (product && (product.hsn || product.hsnCode)) || "",
           qty: order.qty || 1,
-          unitPrice: order.unitPrice || 0
+          unitPrice: order.unitPrice || 0,
+          discount: order.discounted_amount || 0,
+          totalPrice: (order.discounted_amount) * (order.qty ) 
         }
       ];
 
@@ -342,7 +357,8 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
         const hsn = String(it.hsn || "");
         const qty = String(it.qty == null ? 1 : it.qty);
         const unitPrice = Number(it.unitPrice || 0);
-        const totalPrice = Number((unitPrice * Number(qty)).toFixed(2));
+        const discount = Number(it.discount || 0);
+        const totalPrice = Number(it.totalPrice || 0);
 
         const descWidth = cols[1].width - 8;
         const descHeight = doc.heightOfString(desc || "-", { width: descWidth, lineGap: 2 });
@@ -355,7 +371,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
           doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9);
           let xx = tableLeft + 6;
           for (let i = 0; i < cols.length; i++) {
-            const rightAlign = ["qty", "unitPrice", "totalPrice"].includes(cols[i].key);
+            const rightAlign = ["qty", "unitPrice", "discount", "totalPrice"].includes(cols[i].key);
             doc.text(titles[i], xx, newTop + 6, { width: cols[i].width - 8, align: rightAlign ? "right" : "left" });
             xx += cols[i].width;
           }
@@ -383,7 +399,10 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
         doc.text(formatCurrency(unitPrice), cx, cursorY, { width: cols[4].width - 8, align: "right" });
         cx += cols[4].width;
 
-        doc.text(formatCurrency(totalPrice), cx, cursorY, { width: cols[5].width - 8, align: "right" });
+        doc.text(formatCurrency(discount), cx, cursorY, { width: cols[5].width - 8, align: "right" });
+        cx += cols[5].width;
+
+        doc.text(formatCurrency(totalPrice), cx, cursorY, { width: cols[6].width - 8, align: "right" });
 
         const rowBottom = cursorY + cellHeight;
         try {
@@ -400,29 +419,140 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
         cursorY = rowBottom + 6;
       }
 
+        // ===== GST TABLE WITH TOTAL TAX AMOUNT COLUMN =====
+        let gstTableTop = cursorY + 10;
+        const gstRowHeight = 18;
+
+        // Page break safety
+        if (gstTableTop + 120 > pageH - margin) {
+          doc.addPage();
+          gstTableTop = margin;
+        }
+
+        const gstTableWidth = usableW;
+
+        // Column widths
+        const colTaxType = Math.round(gstTableWidth * 0.25);
+        const colRate = Math.round(gstTableWidth * 0.15);
+        const colAmount = Math.round(gstTableWidth * 0.25);
+        const colTotalTax = gstTableWidth - colTaxType - colRate - colAmount;
+
+        // GST rows
+        const gstRows = [
+          { label: "CGST", rate: order.cgst_rate, amount: order.cgst_amount },
+          { label: "SGST", rate: order.sgst_rate, amount: order.sgst_amount },
+          { label: "IGST", rate: order.igst_rate, amount: order.igst_amount }
+        ].filter(r => Number(r.amount) > 0);
+
+        // Total tax amount (CGST + SGST + IGST)
+        const totalTaxAmount = gstRows.reduce(
+          (sum, r) => sum + Number(r.amount || 0),
+          0
+        );
+
+        // Table height
+        const tableHeight = gstRowHeight * (gstRows.length + 1);
+
+        // Outer border
+        doc.lineWidth(0.8).strokeColor("#c7dff3");
+        doc.rect(margin, gstTableTop, gstTableWidth, tableHeight).stroke();
+
+        // Header background
+        doc.rect(margin, gstTableTop, gstTableWidth, gstRowHeight)
+          .fill("#f7fbff");
+
+        // Header text
+        doc.fillColor("#333")
+          .fontSize(8)
+          .font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold");
+
+        doc.text("Tax Type", margin + 6, gstTableTop + 5);
+        doc.text("Rate (%)", margin + colTaxType + 6, gstTableTop + 5);
+        doc.text("Amount", margin + colTaxType + colRate + 6, gstTableTop + 5);
+        doc.text(
+          "Total Tax Amount",
+          margin + colTaxType + colRate + colAmount + 6,
+          gstTableTop + 5,
+          { width: colTotalTax - 12, align: "right" }
+        );
+
+        // Vertical lines
+        let vx = margin;
+        [
+          colTaxType,
+          colRate,
+          colAmount
+        ].forEach(w => {
+          vx += w;
+          doc.moveTo(vx, gstTableTop)
+            .lineTo(vx, gstTableTop + tableHeight)
+            .stroke();
+        });
+
+        // Reset font
+        doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica")
+          .fillColor("#000");
+
+        // Rows
+        let rowY = gstTableTop + gstRowHeight;
+
+        gstRows.forEach((row, index) => {
+          // Horizontal line
+          doc.moveTo(margin, rowY)
+            .lineTo(margin + gstTableWidth, rowY)
+            .stroke();
+
+          // Row text
+          doc.text(row.label, margin + 6, rowY + 5);
+          doc.text(`${row.rate || 0}%`, margin + colTaxType + 6, rowY + 5);
+          doc.text(
+            formatCurrency(row.amount || 0),
+            margin + colTaxType + colRate + 6,
+            rowY + 5
+          );
+
+          // Show total tax amount only in FIRST row
+          if (index === 0) {
+            doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold");
+            doc.text(
+              formatCurrency(totalTaxAmount),
+              margin + colTaxType + colRate + colAmount + 6,
+              rowY + 5,
+              { width: colTotalTax - 12, align: "right" }
+            );
+            doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica");
+          }
+
+          rowY += gstRowHeight;
+        });
+
+        // Bottom border
+        doc.moveTo(margin, gstTableTop + tableHeight)
+          .lineTo(margin + gstTableWidth, gstTableTop + tableHeight)
+          .stroke();
+
+        // Move cursor down
+        cursorY = gstTableTop + tableHeight + 10;
+
+
+
       // compute totals
-      const subtotal = itemsArr.reduce((s, it) => s + (Number(it.unitPrice || 0) * Number(it.qty || 1)), 0);
-      const gstRate = (order.tax != null ? Number(order.tax) : (product.tax != null ? Number(product.tax) : 0));
-      const gstAmount = Number((subtotal * gstRate / 100).toFixed(2));
-      const grandTotal = Number((subtotal + gstAmount).toFixed(2));
+      const subtotal = itemsArr.reduce((s, it) => s + (Number(it.discount || 0) * Number(it.qty || 1)), 0);
+      const grandTotal = Number((order.totalPrice).toFixed(2));
 
       // totals block
       const totalsX = tableLeft + tableWidth * 0.52;
-      let ty = Math.max(cursorY, tableTop + 80);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#555").text("GST Type:", totalsX, ty);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fillColor("#000").text("", totalsX + 84, ty, { align: "right" });
+      let ty = cursorY + 10;
 
-      ty += 12;
-      doc.fontSize(9).fillColor("#555").text("GST Rate:", totalsX, ty);
-      doc.fillColor("#000").text(`${gstRate}%`, totalsX + 84, ty, { align: "right" });
-
+    
       ty += 12;
       doc.fontSize(9).fillColor("#555").text("GST Amount:", totalsX, ty);
-      doc.fillColor("#000").text(formatCurrency(gstAmount), totalsX + 84, ty, { align: "right" });
+      doc.fillColor("#000").text(formatCurrency(totalTaxAmount), totalsX + 84, ty, { align: "right" });
 
       ty += 12;
       doc.fontSize(9).fillColor("#555").text("Subtotal:", totalsX, ty);
       doc.fillColor("#000").text(formatCurrency(subtotal), totalsX + 84, ty, { align: "right" });
+
 
       ty += 14;
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(10).fillColor("#000").text("Grand Total:", totalsX, ty);
@@ -430,35 +560,52 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
 
       // Amount in words
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#333");
-      doc.text("Amount In Words:", margin, ty + 26);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000").text(amountToWords(Math.round(grandTotal)), margin + 110, ty + 22, { width: usableW - 120 });
+      ty += 26; 
+        doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#333");
+        doc.text("Amount In Words:", margin, ty);
+
+        // Reduced gap: moving the words closer to the label
+        const wordsX = margin + 85; 
+        doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000");
+        doc.text(amountToWords(Math.round(grandTotal)), wordsX, ty, { 
+            width: usableW - 90, 
+            align: "left" 
+        });
+    
 
       // Signature (guarded)
-      try {
-        const possibleSignatures = [
-          path.join(process.cwd(), "assets", "auth.png"),
-          path.join(process.cwd(), "public", "auth.png"),
-          path.join(process.cwd(), "public", "assets", "auth.png"),
-          path.join(__dirname, "..", "assets", "auth.png"),
-          path.join(process.cwd(), "backend", "assets", "auth.png")
-        ];
-        const sigPath = possibleSignatures.find(p => p && fs.existsSync(p));
-        if (sigPath) {
-          try {
-            const sigW = 80;
-            const sigX = totalsX + 8;
-            const sigY = ty + 24;
-            doc.image(sigPath, sigX, sigY, { width: sigW });
-          } catch (e) {
-            console.error("⚠️ Signature image load failed:", e && e.message ? e.message : e);
-          }
-        }
-      } catch (e) {
-        console.error("⚠️ Signature handling error:", e && e.message ? e.message : e);
-      }
+  try {
+  const possibleSignatures = [
+    path.join(process.cwd(), "assets", "auth.png"),
+    path.join(process.cwd(), "public", "auth.png"),
+    path.join(process.cwd(), "public", "assets", "auth.png"),
+    path.join(__dirname, "..", "assets", "auth.png"),
+    path.join(process.cwd(), "backend", "assets", "auth.png")
+  ];
+  const sigPath = possibleSignatures.find(p => p && fs.existsSync(p));
+  
+  // Define dimensions and coordinates for bottom right
+  const sigW = 80;
+  const sigX = pageW - margin - sigW - 10; // 10px padding from right margin
+  const sigY = pageH - margin - 80;        // Positioned above the footer
 
-      // Authorized label
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#666").text("Authorized Signatory", totalsX + 16, ty + 64);
+  if (sigPath) {
+    try {
+      doc.image(sigPath, sigX, sigY, { width: sigW });
+    } catch (e) {
+      console.error("⚠️ Signature image load failed:", e.message);
+    }
+  }
+
+  // Authorized label - positioned directly under the seal
+  doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica")
+     .fontSize(9)
+     .fillColor("#666")
+     .text("Authorized Signatory", sigX - 10, sigY + 45, { width: sigW + 20, align: "center" });
+
+} catch (e) {
+  console.error("⚠️ Signature handling error:", e.message);
+}
 
       // Footer
       try { doc.fontSize(8).fillColor("#999").text("This is a computer generated invoice.", margin, pageH - margin - 18, { align: "center", width: usableW }); } catch (e) {}

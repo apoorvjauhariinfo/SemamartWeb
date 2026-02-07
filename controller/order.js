@@ -189,6 +189,33 @@ router.post(
       variant.stock -= item.qty;
       await variant.save();
 
+      let cgst = false;
+      let sgst = false;
+      let igst = false;
+      let cgstRate = 0;
+      let sgstRate = 0;
+      let igstRate = 0;
+      let cgstAmount = 0;
+      let sgstAmount = 0;
+      let igstAmount = 0;
+
+      const defaultAddress = userDoc.addresses?.[0]; // or use find() if multiple
+        const userState = defaultAddress?.state;
+
+  
+      const TAX_RATE = item.tax ;
+      if (userState === "Delhi") {
+        cgst = true;
+        sgst = true;
+        cgstRate = TAX_RATE / 2; 
+        sgstRate = TAX_RATE / 2; 
+        cgstAmount = (item.discounted_price * cgstRate) / 100 * item.qty;;
+        sgstAmount = (item.discounted_price * sgstRate) / 100 * item.qty;;
+      } else {
+        igst = true;
+        igstAmount = (item.discounted_price * TAX_RATE) / 100 * item.qty;;
+      }
+
       // 4. Create Order
       const order = await Order.create({
         shop: item.shopId,
@@ -205,6 +232,16 @@ router.post(
         dispatchDistrict: item.dispatchDistrict,
         adminCommision: item.adminCommision,
         sellerPayout: item.sellerPayout,
+        cgst,
+        sgst,
+        igst,
+        cgst_rate: cgstRate,
+        sgst_rate: sgstRate,
+        igst_rate: igstRate,
+        cgst_amount: cgstAmount,
+        sgst_amount: sgstAmount,
+        igst_amount: igstAmount,
+        discounted_amount: item.discounted_price || 0,
       });
 
       orders.push(order);
@@ -875,7 +912,7 @@ router.get("/invoice/:orderId", async (req, res) => {
     );
   } catch (err) {
     console.error("Invoice generation error:", err);
-    return res.status(500).json({ error: "Failed to generate invoice" });
+    res.status(500).json({ error: "Failed to generate invoice" });
   }
 });
 

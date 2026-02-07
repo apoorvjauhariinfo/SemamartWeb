@@ -121,7 +121,52 @@ const orderSchema = new mongoose.Schema({
   invoicePdf: {
   type: String,
   default: null,
-},
+  },
+  cgst: {
+    type: Boolean,
+    default: false,
+  },
+
+  sgst: {
+    type: Boolean,
+    default: false,
+  },
+
+  igst: {
+    type: Boolean,
+    default: false,
+  },
+
+  cgst_rate: {
+  type: Number,
+  default: 0,
+  },
+
+  sgst_rate: {
+    type: Number,
+    default: 0,
+  },
+
+  sgst_amount: {
+    type: Number,
+    default: 0,
+  },
+
+  cgst_amount: {
+    type: Number,
+    default: 0,
+  },
+
+  igst_amount: {
+    type: Number,
+    default: 0,
+  },
+
+  discounted_amount: {
+    type: Number,
+    default: 0,
+  },
+
 
 });
 
