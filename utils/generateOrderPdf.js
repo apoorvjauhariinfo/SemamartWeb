@@ -267,6 +267,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       if ((order.user && order.user.pincode) || billObj.pincode) billingLines.push(String(order.user?.pincode || billObj.pincode || ""));
       if (order.user?.email) billingLines.push( order.user.email);
       if (order.user?.phoneNumber) billingLines.push( order.user.phoneNumber);
+      if (order.user?.gstNumber) billingLines.push( `GST: ${order.user.gstNumber}`);
       const billingText = billingLines.filter(Boolean).join("\n");
 
       const ship = order.shippingAddress || {};
