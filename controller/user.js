@@ -57,7 +57,7 @@ async function regenerateUserRegistrationPdf(user) {
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
-    const { firstName, lastName, phoneNumber, email, instituteName, password } =
+    const { firstName, lastName, phoneNumber, email, instituteName, password, gstNumber } =
       req.body;
 
     const userEmail = await User.findOne({ email });
@@ -80,6 +80,7 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
       password,
       phoneNumber,
       instituteName,
+      gstNumber,
       addresses: (req.body.addresses || []).map((addr) => ({
         reciever_name: addr.reciever_name,
         instituteAddress1: addr.instituteAddress1,

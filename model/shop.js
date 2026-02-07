@@ -21,7 +21,7 @@ const shopSchema = new mongoose.Schema({
   },
   gstNumber: {
     type: String,
-    required: [true, "Please enter your shop name!"],
+    required: [true, "Please enter your shop's GST number!"],
   },
   name: {
     type: String,

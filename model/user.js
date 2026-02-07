@@ -22,6 +22,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: [true, "Please enter your instituteName!"],
   },
+  gstNumber: {
+        type: String,
+        required: [true, "Please enter your Institute's GST number!"],
+      },
   name: {
     type: String,
     // required: [true, "Please enter your name!"],
