@@ -176,8 +176,9 @@ async function generateOrderPdf(order) {
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(8).fillColor("#111");
       const companyLines = [
         "317, 3rd Floor, SS Plaza, Mahavir Enclave",
-        "Dwarka Sec-1, Delhi-110045",
-        "Ph: 01149982773 / 9667747553",
+        "Dwarka Sec-1, Delhi",
+        "Pin Code: 110075",
+        "Phone No: 01149982773 / 9667747553",
         "Info@semamart.com",
         "GSTIN: 07ABKCS8538F1ZX"
       ];
@@ -194,17 +195,19 @@ async function generateOrderPdf(order) {
 
       // Invoice meta
      // --- Invoice meta ---
+// --- Invoice meta ---
 const invDateObj = order.verifiedAt || new Date();
 const invoiceYear = invDateObj ? new Date(invDateObj).getFullYear() : new Date().getFullYear();
 const invoiceNo = `SM/${invoiceYear}/${orderCount}`;
 
 doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#333");
-const metaX = margin + usableW * 0.55;
 
-// FIXED: Reduced offset from 72 to 55 to close the gap
+// CHANGE: Align metaX with the shipping box column (0.52 fraction)
+const metaX = margin + usableW * 0.52; 
+
 doc.text("Invoice No.:", metaX, invoiceY);
 doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold")
-   .text(invoiceNo, metaX + 47, invoiceY); 
+   .text(invoiceNo, metaX + 55, invoiceY); // Adjusted offset for better spacing
 
 doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica")
    .fontSize(9)
@@ -234,7 +237,9 @@ const placeOfDelivery =
 
 doc.fontSize(9).fillColor("#333");
 doc.text(`Place of Supply: ${placeOfSupply}`, margin, invoiceY + 34);
-doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoiceY + 34);
+
+// CHANGE: Use the same starting X as the shipping address box
+doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoiceY + 34);
 
 
       // Billing / Shipping boxes
@@ -267,7 +272,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       if ((order.user && order.user.pincode) || billObj.pincode) billingLines.push(String(order.user?.pincode || billObj.pincode || ""));
       if (order.user?.email) billingLines.push( order.user.email);
       if (order.user?.phoneNumber) billingLines.push( order.user.phoneNumber);
-      if (order.user?.gstNumber) billingLines.push( `GST: ${order.user.gstNumber}`);
+      if (order.user?.gstNumber) billingLines.push( `GSTIN: ${order.user.gstNumber}`);
       const billingText = billingLines.filter(Boolean).join("\n");
 
       const ship = order.shippingAddress || {};
@@ -293,9 +298,9 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       doc.rect(margin, boxTop, boxColW, boxH).stroke();
       doc.rect(margin + usableW * 0.52, boxTop, boxColW, boxH).stroke();
 
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#666").text("Billing Address:", margin + 8, boxTop + 6);
+      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#000").text("Billing Address:", margin + 8, boxTop + 6);
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000").text(billingText || "-", margin + 8, boxTop + 20, textOptions);
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#666").text("Shipping Address:", margin + usableW * 0.52 + 8, boxTop + 6);
+      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#000").text("Shipping Address:", margin + usableW * 0.52 + 8, boxTop + 6);
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000").text(shippingText || "-", margin + usableW * 0.52 + 8, boxTop + 20, textOptions);
 
       // === Items table with wrapping and measured row height ===
@@ -545,33 +550,47 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
       const totalsX = tableLeft + tableWidth * 0.52;
       let ty = cursorY + 10;
 
-    
       ty += 12;
-      doc.fontSize(9).fillColor("#555").text("GST Amount:", totalsX, ty);
-      doc.fillColor("#000").text(formatCurrency(totalTaxAmount), totalsX + 84, ty, { align: "right" });
+      doc.fontSize(9).fillColor("#555").text("Total Price:", totalsX, ty);
+      doc.fillColor("#000").text(formatCurrency(subtotal), totalsX + 84, ty, { align: "right" });
 
       ty += 12;
-      doc.fontSize(9).fillColor("#555").text("Subtotal:", totalsX, ty);
-      doc.fillColor("#000").text(formatCurrency(subtotal), totalsX + 84, ty, { align: "right" });
+      doc.fontSize(9).fillColor("#555").text("Tax Amount:", totalsX, ty);
+      doc.fillColor("#000").text(formatCurrency(totalTaxAmount), totalsX + 84, ty, { align: "right" });
+
+     
 
 
       ty += 14;
       doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(10).fillColor("#000").text("Grand Total:", totalsX, ty);
       doc.text(formatCurrency(grandTotal), totalsX + 84, ty, { align: "right" });
 
-      // Amount in words
-      doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#333");
-      ty += 26; 
-        doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9).fillColor("#333");
-        doc.text("Amount In Words:", margin, ty);
+      // Define the width (e.g., 75% of the page)
+      const increasedWidth = usableW * 0.75; 
+      const leftColumnX = margin; 
+      const wordsBoxHeight = 35; 
+      const boxY = ty + 14; 
 
-        // Reduced gap: moving the words closer to the label
-        const wordsX = margin + 85; 
-        doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica").fontSize(9).fillColor("#000");
-        doc.text(amountToWords(Math.round(grandTotal)), wordsX, ty, { 
-            width: usableW - 90, 
+      // Draw the border
+      doc.lineWidth(0.8).strokeColor("#c7dff3");
+      doc.rect(leftColumnX, boxY, increasedWidth, wordsBoxHeight).stroke();
+
+      // FIX: Use the 'Main' registration check you have at the top of your file
+      const boldFont = "Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold";
+      const regularFont = "Main" in doc._fontFamilies ? "Main" : "Helvetica";
+
+      // Label - Using Safe Bold Font
+      doc.font(boldFont).fontSize(9).fillColor("#000")
+        .text("Amount In Words:", leftColumnX + 6, boxY + 6);
+
+      // Value - Using Safe Regular Font
+      doc.font(regularFont).fontSize(9).fillColor("#000")
+        .text(amountToWords(Math.round(grandTotal)), leftColumnX + 6, boxY + 18, { 
+            width: increasedWidth - 12, 
             align: "left" 
         });
+
+      cursorY = boxY + wordsBoxHeight + 10;
     
 
       // Signature (guarded)
@@ -609,7 +628,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.5, invoic
 }
 
       // Footer
-      try { doc.fontSize(8).fillColor("#999").text("This is a computer generated invoice.", margin, pageH - margin - 18, { align: "center", width: usableW }); } catch (e) {}
+      try { doc.fontSize(8).fillColor("#999").text("This is a computer generated invoice.", margin, pageH - margin - 14, { align: "center", width: usableW }); } catch (e) {}
 
       // finalize - attach listeners BEFORE doc.end()
       let finished = false;
