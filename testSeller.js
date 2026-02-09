@@ -19,7 +19,8 @@ const mockSeller = {
   // must exist if you want images, otherwise leave null
   profilePic: null, // example: "profile.jpg"
   banner: null,     // example: "banner.jpg"
-
+  state:"chico",
+  district:"jordan",
   createdAt: new Date(),
 
   // optional – not directly used but common in mongoose docs
