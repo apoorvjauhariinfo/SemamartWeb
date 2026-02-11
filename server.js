@@ -50,12 +50,22 @@ const allowedOriginsCors = [
   "http://semamart.com",
   "https://www.semamart.com",
   "http://www.semamart.com",
+  "https://smartgateway.hdfcuat.bank.in",
+  "https://smartgateway.hdfcbank.com",
+  "https://docs.hdfcbank.juspay.in",
+  "https://dashboard.smartgateway.hdfcuat.bank.in",
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOriginsCors.includes(origin)) {
+      const hdfcOrigin =
+        typeof origin === "string" &&
+        (origin.includes("hdfcuat.bank.in") ||
+          origin.includes("hdfcbank.com") ||
+          origin.includes("hdfc.bank.in"));
+
+      if (!origin || allowedOriginsCors.includes(origin) || hdfcOrigin) {
         callback(null, true);
       } else {
         callback(new Error("Not allowed by CORS"));
