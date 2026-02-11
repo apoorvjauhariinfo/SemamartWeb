@@ -75,8 +75,9 @@ router.post("/hdfc/webhook", async (req, res) => {
       return res.status(400).json({ success: false, message: "Missing order_id" });
     }
 
+    const Order = require("../model/order");
+
     if (status === "CHARGED") {
-      const Order = require("../model/order");
       const now = new Date();
 
       await Order.updateMany(
@@ -92,6 +93,31 @@ router.post("/hdfc/webhook", async (req, res) => {
         },
       );
     }
+
+    await Order.updateMany(
+      { "paymentInfo.groupId": orderId },
+      {
+        $push: {
+          paymentAttempts: {
+            attemptedAt: new Date(),
+            gateway: "HDFC",
+            status: status || "UNKNOWN",
+            paymentId: payload.id || payload.txn_id || null,
+            orderGroupId: orderId,
+            message:
+              payload.resp_message ||
+              payload.bank_error_message ||
+              payload.error_message ||
+              "",
+            responseSnapshot: payload,
+          },
+        },
+        $set: {
+          "paymentInfo.status": status === "CHARGED" ? "Paid" : "Failed",
+          "paymentInfo.transactionId": payload.id || payload.txn_id || undefined,
+        },
+      },
+    );
 
     const checkoutSession = await CheckoutSession.findOne({
       paymentGroupId: orderId,
