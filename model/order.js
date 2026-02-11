@@ -88,6 +88,8 @@ const orderSchema = new mongoose.Schema({
     id: { type: String },
     status: { type: String },
     method: { type: String },
+    groupId: { type: String },
+    transactionId: { type: String },
   },
   paidAt: {
     type: Date,

@@ -23,6 +23,7 @@ const sendOrderReceivedSellerEmail = require("../utils/emails/orderReceivedSelle
 const sendOrderShippedSellerEmail = require("../utils/emails/orderShippedSeller");
 const sendVerifyPaymentCustomerEmail = require("../utils/emails/verifyPaymentCustomer");
 const sendVerifyPaymentAdminEmail = require("../utils/emails/verifyPaymentAdmin");
+const crypto = require("crypto");
 
 const generateOrderPdf = require("../utils/generateOrderPdf");
 const sendMail = require("../utils/sendMail");
@@ -34,6 +35,64 @@ function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
   return { start, end };
+}
+
+function generatePaymentGroupId() {
+  // 20-char, non-sequential, alphanumeric (hex) id
+  return crypto.randomBytes(10).toString("hex");
+}
+
+async function fetchHdfcOrderStatus(orderId) {
+  const url = `${process.env.BASE_URL}/orders/${orderId}`;
+  const hdfcResponse = await fetch(url, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Basic ${process.env.BASE_64_API}`,
+    },
+  });
+
+  if (!hdfcResponse.ok) {
+    throw new ErrorHandler("Failed to fetch HDFC order status", 502);
+  }
+
+  return hdfcResponse.json();
+}
+
+async function markGroupPaid(orderId, transactionId) {
+  const now = new Date();
+
+  await Order.updateMany(
+    {
+      "paymentInfo.groupId": orderId,
+      status: "Created",
+    },
+    {
+      $set: {
+        status: "Paid",
+        paidAt: now,
+        "paymentInfo.status": "Paid",
+        "paymentInfo.transactionId": transactionId || undefined,
+      },
+      $push: {
+        statusHistory: { status: "Paid", updatedAt: now },
+      },
+    },
+  );
+
+  // Paid -> Processing
+  await Order.updateMany(
+    {
+      "paymentInfo.groupId": orderId,
+      status: "Paid",
+    },
+    {
+      $set: { status: "Processing" },
+      $push: {
+        statusHistory: { status: "Processing", updatedAt: now },
+      },
+    },
+  );
 }
 
 // ✅ Create new order(s)
@@ -147,7 +206,7 @@ router.get(
 router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
-    const { cart, shippingAddress, user, paymentInfo } = req.body;
+    const { cart, shippingAddress, user, paymentInfo, paymentMethod } = req.body;
 
     const userDoc = await User.findById(user);
     if (!userDoc) return next(new ErrorHandler("User not found", 404));
@@ -155,6 +214,13 @@ router.post(
     if (!cart || cart.length === 0) {
       return next(new ErrorHandler("Cart is empty", 400));
     }
+
+    const resolvedPaymentMethod =
+      paymentMethod || paymentInfo?.method || "Manual";
+    const useHdfc =
+      typeof resolvedPaymentMethod === "string" &&
+      ["hdfc", "online"].includes(resolvedPaymentMethod.toLowerCase());
+    const paymentGroupId = useHdfc ? generatePaymentGroupId() : null;
 
     const orders = [];
     const itemsForAdmin = [];
@@ -226,7 +292,13 @@ router.post(
         totalPrice: item.totalPrice,
         tax: item.tax,
         unitPrice: item.unitPrice,
-        paymentInfo,
+        paymentInfo: {
+          ...paymentInfo,
+          method: resolvedPaymentMethod,
+          status: paymentInfo?.status || "Pending",
+          id: paymentGroupId || paymentInfo?.id || "pending",
+          groupId: paymentGroupId || paymentInfo?.groupId,
+        },
         statusHistory: [{ status: "Created", updatedAt: new Date() }],
         dispatchState: item.dispatchState,
         dispatchDistrict: item.dispatchDistrict,
@@ -279,7 +351,129 @@ router.post(
       totalAmount,
     }).catch((err) => console.error("❌ Admin Email Error:", err));
 
-    res.status(201).json({ success: true, orders });
+    res.status(201).json({
+      success: true,
+      orders,
+      paymentMethod: resolvedPaymentMethod,
+      paymentGroupId,
+    });
+  }),
+);
+
+router.post(
+  "/create-payment-session",
+  catchAsyncErrors(async (req, res) => {
+    const { paymentGroupId, orderId } = req.body;
+
+    let groupId = paymentGroupId;
+
+    if (!groupId && orderId) {
+      const order = await Order.findById(orderId);
+      if (!order) throw new ErrorHandler("Order not found", 404);
+
+      if (!order.paymentInfo?.groupId) {
+        groupId = generatePaymentGroupId();
+        await Order.updateOne(
+          { _id: orderId },
+          {
+            $set: {
+              "paymentInfo.groupId": groupId,
+              "paymentInfo.id": groupId,
+              "paymentInfo.method": "HDFC",
+              "paymentInfo.status": "Pending",
+            },
+          },
+        );
+      } else {
+        groupId = order.paymentInfo.groupId;
+      }
+    }
+
+    if (!groupId) {
+      throw new ErrorHandler("paymentGroupId or orderId is required", 400);
+    }
+
+    const orders = await Order.find({
+      "paymentInfo.groupId": groupId,
+    }).populate("user", "email phoneNumber");
+
+    if (!orders || orders.length === 0) {
+      throw new ErrorHandler("No orders found for this payment group", 404);
+    }
+
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + order.totalPrice,
+      0,
+    );
+
+    const customer = orders[0]?.user;
+    const customerId =
+      customer?._id?.toString?.() || groupId || generatePaymentGroupId();
+
+    const hdfcPayload = {
+      merchant_id: process.env.HDFC_MERCHANT_ID,
+      order_id: groupId,
+      amount: totalAmount,
+      currency: "INR",
+      payment_page_client_id: process.env.HDFC_PAYMENT_PAGE_CLIENT_ID,
+      return_url: `${process.env.HDFC_RETURN_URL_BASE}/payment/hdfc/return`,
+      customer_id: customerId,
+      customer_email: customer?.email,
+      customer_phone: customer?.phoneNumber,
+    };
+
+    const hdfcResponse = await fetch(`${process.env.BASE_URL}/session`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${process.env.BASE_64_API}`,
+      },
+      body: JSON.stringify(hdfcPayload),
+    });
+
+    const hdfcResponseData = await hdfcResponse.json();
+    const paymentSessionId = hdfcResponseData.id;
+    const paymentLink = hdfcResponseData?.payment_links?.web;
+
+    if (!paymentSessionId || !paymentLink) {
+      throw new ErrorHandler("Invalid HDFC session response", 502);
+    }
+
+    res.status(200).json({
+      success: true,
+      paymentSessionId,
+      paymentLink,
+      paymentGroupId: groupId,
+    });
+  }),
+);
+
+router.get(
+  "/order-confirmation/:orderId",
+  catchAsyncErrors(async (req, res) => {
+    const { orderId } = req.params;
+    const hdfcData = await fetchHdfcOrderStatus(orderId);
+
+    if (hdfcData?.status === "CHARGED") {
+      await markGroupPaid(orderId, hdfcData?.id);
+    }
+
+    const orders = await Order.find({
+      "paymentInfo.groupId": orderId,
+    }).select("totalPrice");
+
+    const totalAmount = orders.reduce(
+      (sum, order) => sum + order.totalPrice,
+      0,
+    );
+
+    return res.status(200).json({
+      success: true,
+      status: hdfcData?.status,
+      orderId: hdfcData?.order_id || orderId,
+      paymentId: hdfcData?.id,
+      amount: totalAmount,
+    });
   }),
 );
 

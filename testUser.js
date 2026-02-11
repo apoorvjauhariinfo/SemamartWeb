@@ -1,95 +1,51 @@
-// backend/testpdf.js
+// backend/test-generate-user-pdf.js
 const path = require("path");
-const generateOrderPdf = require("./utils/generateOrderPdf");
+const generateUserPdf = require("./utils/generateUserPdf");
 
-// ---- mock user ----
-const testUser = {
+const mockUser = {
+  _id: "USER-TEST-001",
+
   firstName: "Vansh",
   lastName: "Jaiswal",
-  email: "vansh@test.com",
 
-  instituteName: "Demo Institute of Medical Sciences",
-  instituteAddress1: "317, SS Plaza",
-  instituteAddress2: "Mahavir Enclave",
-  city: "Delhi",
-  state: "Delhi",
-  pincode: "110045",
+  email: "user@test.com",
+  phoneNumber: "9876543210",
+  instituteName: "Demo Institute of Technology",
+  gstNumber:"12673167136",
+  createdAt: new Date(),
 
   addresses: [
     {
-      name: "Vansh Jaiswal",
-      addressLine1: "Billing Street 1",
-      addressLine2: "Near Metro Station",
-      city: "Delhi",
+      reciever_name: "Vansh Jaiswal",
+      instituteAddress1: "123 Main Road",
+      instituteAddress2: "Near City Hospital",
+      district: "New Delhi",
       state: "Delhi",
-      pincode: "110045",
-    },
-  ],
-};
-
-// ---- mock order ----
-const mockOrder = {
-  _id: "TEST_" + Date.now(),
-
-  qty: 2,
-  unitPrice: 499243,
-  tax: 18,
-  verifiedAt: new Date(),
-
-  variant: {
-    productId: {
-      name: "Sample Medical Product hbhsbhvbhdshbvnvhadvb (Long Name Test)",
-      hsn: "3004",
-      tax: 18,
-      dispatchState: "Delhi",
-      dispatchDistrict: "King",
-    },
-  },
-
-  user: testUser,
-
-  shippingAddress: {
-    reciever_name: "Vansh Jaiswal",
-    addressLine1: "Shipping Street 99",
-    addressLine2: "Near Hospital",
-    city: "Delhi",
-    district: "South West",
-    state: "Delhi",
-    pincode: "110045",
-    phone: "9999999999",
-  },
-
-  // optional: multiple items test
-  items: [
-    {
-      name: "Sample Medical Product hbhsbhvbhdshbvnvhadvb",
-      hsn: "3004",
-      qty: 2,
-      unitPrice: 499243,
+      pincode: "110001",
+      phone: "9876543210",
     },
     {
-      name: "Second Product With Very Very Long Description For Wrapping Test",
-      hsn: "9018",
-      qty: 1,
-      unitPrice: 1200,
+      reciever_name: "Accounts Dept",
+      instituteAddress1: "Warehouse Area",
+      instituteAddress2: "",
+      district: "Gurgaon",
+      state: "Haryana",
+      pincode: "122001",
+      phone: "9123456789",
     },
   ],
 };
 
 (async () => {
   try {
-    console.log("🧪 Generating test PDF...");
+    const pdfPath = await generateUserPdf(mockUser);
 
-    const pdfRelPath = await generateOrderPdf(mockOrder);
-
-    console.log("✅ PDF created successfully!");
-    console.log("📄 Relative path:", pdfRelPath);
+    console.log("✅ User PDF created:", pdfPath);
     console.log(
-      "📁 Absolute path:",
-      path.join(process.cwd(), "uploads", pdfRelPath)
+      "📂 Full path:",
+      path.join(process.cwd(), "uploads", pdfPath)
     );
   } catch (err) {
-    console.error("❌ Test PDF generation failed:");
-    console.error(err);
+    console.error("❌ Failed to generate user PDF:", err);
   }
 })();

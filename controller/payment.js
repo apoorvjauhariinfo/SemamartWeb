@@ -59,4 +59,51 @@ router.post("/verify", async (req, res) => {
   }
 });
 
+// HDFC SmartGateway webhook
+router.post("/hdfc/webhook", async (req, res) => {
+  try {
+    const payload = req.body || {};
+    const orderId =
+      payload.order_id ||
+      payload.orderId ||
+      payload?.order?.order_id ||
+      payload?.order?.orderId;
+    const status = payload.status || payload?.order?.status;
+
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: "Missing order_id" });
+    }
+
+    if (status === "CHARGED") {
+      const Order = require("../model/order");
+      const now = new Date();
+
+      await Order.updateMany(
+        { "paymentInfo.groupId": orderId, status: "Created" },
+        {
+          $set: {
+            status: "Paid",
+            paidAt: now,
+            "paymentInfo.status": "Paid",
+            "paymentInfo.transactionId": payload.id || payload.txn_id || undefined,
+          },
+          $push: { statusHistory: { status: "Paid", updatedAt: now } },
+        },
+      );
+
+      await Order.updateMany(
+        { "paymentInfo.groupId": orderId, status: "Paid" },
+        {
+          $set: { status: "Processing" },
+          $push: { statusHistory: { status: "Processing", updatedAt: now } },
+        },
+      );
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
