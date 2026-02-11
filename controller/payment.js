@@ -1,6 +1,7 @@
 const express = require("express");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
+const CheckoutSession = require("../model/checkoutSession");
 
 const router = express.Router();
 
@@ -90,14 +91,20 @@ router.post("/hdfc/webhook", async (req, res) => {
           $push: { statusHistory: { status: "Paid", updatedAt: now } },
         },
       );
+    }
 
-      await Order.updateMany(
-        { "paymentInfo.groupId": orderId, status: "Paid" },
-        {
-          $set: { status: "Processing" },
-          $push: { statusHistory: { status: "Processing", updatedAt: now } },
-        },
-      );
+    const checkoutSession = await CheckoutSession.findOne({
+      paymentGroupId: orderId,
+    });
+    if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
+      checkoutSession.hdfcStatus = status || null;
+      checkoutSession.paymentId = payload.id || payload.txn_id || null;
+      if (status === "CHARGED") {
+        checkoutSession.status = "CHARGED";
+      } else if (status) {
+        checkoutSession.status = "FAILED";
+      }
+      await checkoutSession.save();
     }
 
     return res.status(200).json({ success: true });

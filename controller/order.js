@@ -6,6 +6,7 @@ const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
 const Order = require("../model/order");
+const CheckoutSession = require("../model/checkoutSession");
 const Shop = require("../model/shop");
 const User = require("../model/user");
 const { Product, ProductVariant } = require("../model/product");
@@ -40,6 +41,27 @@ function getMonthDateRange(year, monthIndex) {
 function generatePaymentGroupId() {
   // 20-char, non-sequential, alphanumeric (hex) id
   return crypto.randomBytes(10).toString("hex");
+}
+
+function resolveHdfcReturnBase() {
+  const candidates = [process.env.HDFC_RETURN_URL_BASE, process.env.FRONTEND_URL];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const raw = candidate.trim();
+    if (!raw) continue;
+    if (/port\s*=|port%20=/i.test(raw)) continue;
+
+    try {
+      const parsed = new URL(raw);
+      if (/comport/i.test(parsed.hostname)) continue;
+      return parsed.origin;
+    } catch (e) {
+      continue;
+    }
+  }
+
+  return "https://semamart.com";
 }
 
 async function fetchHdfcOrderStatus(orderId) {
@@ -79,20 +101,147 @@ async function markGroupPaid(orderId, transactionId) {
       },
     },
   );
+}
 
-  // Paid -> Processing
-  await Order.updateMany(
-    {
-      "paymentInfo.groupId": orderId,
-      status: "Paid",
-    },
-    {
-      $set: { status: "Processing" },
-      $push: {
-        statusHistory: { status: "Processing", updatedAt: now },
+async function createOrdersForCheckout({
+  cart,
+  shippingAddress,
+  user,
+  paymentInfo,
+  paymentMethod,
+}) {
+  const userDoc = await User.findById(user);
+  if (!userDoc) throw new ErrorHandler("User not found", 404);
+  if (!cart || cart.length === 0) throw new ErrorHandler("Cart is empty", 400);
+
+  const resolvedPaymentMethod =
+    paymentMethod || paymentInfo?.method || "Manual";
+  const useHdfc =
+    typeof resolvedPaymentMethod === "string" &&
+    ["hdfc", "online"].includes(resolvedPaymentMethod.toLowerCase());
+  const paymentGroupId = useHdfc
+    ? paymentInfo?.groupId || generatePaymentGroupId()
+    : null;
+
+  const orders = [];
+  const itemsForAdmin = [];
+
+  for (const item of cart) {
+    const variant = await ProductVariant.findById(item.variantId).populate(
+      "productId",
+    );
+
+    if (!variant) {
+      throw new ErrorHandler(`Variant not found for item: ${item.name}`, 404);
+    }
+
+    const variantLabel = [variant.size, variant.colorOption]
+      .filter(Boolean)
+      .join(" / ");
+
+    if (variant.stock < item.qty) {
+      throw new ErrorHandler(
+        `Insufficient stock for ${variant.productId.name}${variantLabel ? ` (${variantLabel})` : ""}`,
+        400,
+      );
+    }
+
+    variant.stock -= item.qty;
+    await variant.save();
+
+    let cgst = false;
+    let sgst = false;
+    let igst = false;
+    let cgstRate = 0;
+    let sgstRate = 0;
+    let igstRate = 0;
+    let cgstAmount = 0;
+    let sgstAmount = 0;
+    let igstAmount = 0;
+
+    const defaultAddress = userDoc.addresses?.[0];
+    const userState = defaultAddress?.state;
+    const TAX_RATE = item.tax;
+
+    if (userState === "Delhi") {
+      cgst = true;
+      sgst = true;
+      cgstRate = TAX_RATE / 2;
+      sgstRate = TAX_RATE / 2;
+      cgstAmount = ((item.discounted_price || 0) * cgstRate) / 100 * item.qty;
+      sgstAmount = ((item.discounted_price || 0) * sgstRate) / 100 * item.qty;
+    } else {
+      igst = true;
+      igstAmount = ((item.discounted_price || 0) * TAX_RATE) / 100 * item.qty;
+    }
+
+    const order = await Order.create({
+      shop: item.shopId,
+      variant: item.variantId,
+      qty: item.qty,
+      shippingAddress,
+      user,
+      totalPrice: item.totalPrice,
+      tax: item.tax,
+      unitPrice: item.unitPrice,
+      paymentInfo: {
+        ...paymentInfo,
+        method: resolvedPaymentMethod,
+        status: paymentInfo?.status || "Pending",
+        id: paymentGroupId || paymentInfo?.id || "pending",
+        groupId: paymentGroupId || paymentInfo?.groupId,
       },
-    },
-  );
+      statusHistory: [{ status: "Created", updatedAt: new Date() }],
+      dispatchState: item.dispatchState,
+      dispatchDistrict: item.dispatchDistrict,
+      adminCommision: item.adminCommision,
+      sellerPayout: item.sellerPayout,
+      cgst,
+      sgst,
+      igst,
+      cgst_rate: cgstRate,
+      sgst_rate: sgstRate,
+      igst_rate: igstRate,
+      cgst_amount: cgstAmount,
+      sgst_amount: sgstAmount,
+      igst_amount: igstAmount,
+      discounted_amount: item.discounted_price || 0,
+    });
+
+    orders.push(order);
+
+    sendOrderPlacedCustomerEmail({
+      customerEmail: userDoc.email,
+      customerName: userDoc.firstName,
+      orderId: order._id,
+      productName: variant.productId.name,
+      qty: item.qty,
+      totalAmount: item.totalPrice,
+    }).catch((err) => console.error("Email Error:", err));
+
+    itemsForAdmin.push({
+      name: variant.productId.name,
+      quantity: item.qty,
+      price: item.unitPrice,
+    });
+  }
+
+  const totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+  const adminInstituteName =
+    userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
+
+  sendOrderReceivedAdminEmail({
+    orderId: orders.map((o) => o._id).join(", "),
+    instituteName: adminInstituteName,
+    items: itemsForAdmin,
+    totalAmount,
+  }).catch((err) => console.error("Admin Email Error:", err));
+
+  return {
+    orders,
+    paymentMethod: resolvedPaymentMethod,
+    paymentGroupId,
+  };
 }
 
 // ✅ Create new order(s)
@@ -207,155 +356,17 @@ router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
     const { cart, shippingAddress, user, paymentInfo, paymentMethod } = req.body;
-
-    const userDoc = await User.findById(user);
-    if (!userDoc) return next(new ErrorHandler("User not found", 404));
-
-    if (!cart || cart.length === 0) {
-      return next(new ErrorHandler("Cart is empty", 400));
-    }
-
-    const resolvedPaymentMethod =
-      paymentMethod || paymentInfo?.method || "Manual";
-    const useHdfc =
-      typeof resolvedPaymentMethod === "string" &&
-      ["hdfc", "online"].includes(resolvedPaymentMethod.toLowerCase());
-    const paymentGroupId = useHdfc ? generatePaymentGroupId() : null;
-
-    const orders = [];
-    const itemsForAdmin = [];
-
-    for (const item of cart) {
-      // 1. Find the variant and populate product details
-      const variant = await ProductVariant.findById(item.variantId).populate(
-        "productId",
-      );
-
-      if (!variant) {
-        return next(
-          new ErrorHandler(`Variant not found for item: ${item.name}`, 404),
-        );
-      }
-
-      const variantLabel = [variant.size, variant.colorOption]
-        .filter(Boolean)
-        .join(" / ");
-
-      // 2. Check Stock
-      if (variant.stock < item.qty) {
-        return next(
-          new ErrorHandler(
-            `Insufficient stock for ${variant.productId.name}${variantLabel ? ` (${variantLabel})` : ""}`,
-            400,
-          ),
-        );
-      }
-
-      // 3. Deduct Stock from Variant
-      variant.stock -= item.qty;
-      await variant.save();
-
-      let cgst = false;
-      let sgst = false;
-      let igst = false;
-      let cgstRate = 0;
-      let sgstRate = 0;
-      let igstRate = 0;
-      let cgstAmount = 0;
-      let sgstAmount = 0;
-      let igstAmount = 0;
-
-      const defaultAddress = userDoc.addresses?.[0]; // or use find() if multiple
-        const userState = defaultAddress?.state;
-
-  
-      const TAX_RATE = item.tax ;
-      if (userState === "Delhi") {
-        cgst = true;
-        sgst = true;
-        cgstRate = TAX_RATE / 2; 
-        sgstRate = TAX_RATE / 2; 
-        cgstAmount = (item.discounted_price * cgstRate) / 100 * item.qty;;
-        sgstAmount = (item.discounted_price * sgstRate) / 100 * item.qty;;
-      } else {
-        igst = true;
-        igstAmount = (item.discounted_price * TAX_RATE) / 100 * item.qty;;
-      }
-
-      // 4. Create Order
-      const order = await Order.create({
-        shop: item.shopId,
-        variant: item.variantId,
-        qty: item.qty,
-        shippingAddress,
-        user,
-        totalPrice: item.totalPrice,
-        tax: item.tax,
-        unitPrice: item.unitPrice,
-        paymentInfo: {
-          ...paymentInfo,
-          method: resolvedPaymentMethod,
-          status: paymentInfo?.status || "Pending",
-          id: paymentGroupId || paymentInfo?.id || "pending",
-          groupId: paymentGroupId || paymentInfo?.groupId,
-        },
-        statusHistory: [{ status: "Created", updatedAt: new Date() }],
-        dispatchState: item.dispatchState,
-        dispatchDistrict: item.dispatchDistrict,
-        adminCommision: item.adminCommision,
-        sellerPayout: item.sellerPayout,
-        cgst,
-        sgst,
-        igst,
-        cgst_rate: cgstRate,
-        sgst_rate: sgstRate,
-        igst_rate: igstRate,
-        cgst_amount: cgstAmount,
-        sgst_amount: sgstAmount,
-        igst_amount: igstAmount,
-        discounted_amount: item.discounted_price || 0,
-      });
-
-      orders.push(order);
-
-      // 5. Send Email to Customer (Non-blocking)
-      sendOrderPlacedCustomerEmail({
-        customerEmail: userDoc.email,
-        customerName: userDoc.firstName,
-        orderId: order._id,
-        productName: variant.productId.name,
-        qty: item.qty,
-        totalAmount: item.totalPrice,
-      }).catch((err) => console.error("Email Error:", err));
-
-      // 6. Admin Summary Logic
-      itemsForAdmin.push({
-        name: variant.productId.name, // Matches ${i.name} in template
-        quantity: item.qty, // Matches ${i.quantity}
-        price: item.unitPrice, // Matches ${i.price}
-      });
-    }
-
-    const totalAmount = orders.reduce(
-      (sum, order) => sum + order.totalPrice,
-      0,
-    );
-
-    const adminInstituteName =
-      userDoc.instituteName || `${userDoc.firstName} ${userDoc.lastName}`;
-
-    sendOrderReceivedAdminEmail({
-      orderId: orders.map((o) => o._id).join(", "),
-      instituteName: adminInstituteName,
-      items: itemsForAdmin,
-      totalAmount,
-    }).catch((err) => console.error("❌ Admin Email Error:", err));
+    const result = await createOrdersForCheckout({
+      cart,
+      shippingAddress,
+      user,
+      paymentInfo,
+      paymentMethod,
+    });
 
     res.status(201).json({
       success: true,
-      orders,
-      paymentMethod: resolvedPaymentMethod,
-      paymentGroupId,
+      ...result,
     });
   }),
 );
@@ -363,9 +374,19 @@ router.post(
 router.post(
   "/create-payment-session",
   catchAsyncErrors(async (req, res) => {
-    const { paymentGroupId, orderId } = req.body;
+    const {
+      paymentGroupId,
+      orderId,
+      cart,
+      shippingAddress,
+      user,
+      totalPrice,
+    } = req.body;
 
     let groupId = paymentGroupId;
+    let checkoutSession = null;
+    let totalAmount = 0;
+    let customer = null;
 
     if (!groupId && orderId) {
       const order = await Order.findById(orderId);
@@ -389,24 +410,44 @@ router.post(
       }
     }
 
+    if (!groupId && cart && shippingAddress && user) {
+      groupId = generatePaymentGroupId();
+      checkoutSession = await CheckoutSession.create({
+        paymentGroupId: groupId,
+        cart,
+        shippingAddress,
+        user,
+        totalPrice,
+        paymentMethod: "HDFC",
+        status: "PENDING",
+      });
+    }
+
     if (!groupId) {
-      throw new ErrorHandler("paymentGroupId or orderId is required", 400);
+      throw new ErrorHandler(
+        "paymentGroupId, orderId, or checkout payload is required",
+        400,
+      );
     }
 
-    const orders = await Order.find({
-      "paymentInfo.groupId": groupId,
-    }).populate("user", "email phoneNumber");
+    if (!checkoutSession) {
+      const orders = await Order.find({
+        "paymentInfo.groupId": groupId,
+      }).populate("user", "email phoneNumber");
 
-    if (!orders || orders.length === 0) {
-      throw new ErrorHandler("No orders found for this payment group", 404);
+      if (!orders || orders.length === 0) {
+        throw new ErrorHandler("No orders found for this payment group", 404);
+      }
+
+      totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+      customer = orders[0]?.user;
+    } else {
+      totalAmount = checkoutSession.totalPrice;
+      customer = await User.findById(checkoutSession.user).select(
+        "email phoneNumber",
+      );
     }
 
-    const totalAmount = orders.reduce(
-      (sum, order) => sum + order.totalPrice,
-      0,
-    );
-
-    const customer = orders[0]?.user;
     const customerId =
       customer?._id?.toString?.() || groupId || generatePaymentGroupId();
 
@@ -416,7 +457,7 @@ router.post(
       amount: totalAmount,
       currency: "INR",
       payment_page_client_id: process.env.HDFC_PAYMENT_PAGE_CLIENT_ID,
-      return_url: `${process.env.HDFC_RETURN_URL_BASE}/payment/hdfc/return`,
+      return_url: `${resolveHdfcReturnBase()}/payment/hdfc/return`,
       customer_id: customerId,
       customer_email: customer?.email,
       customer_phone: customer?.phoneNumber,
@@ -439,6 +480,12 @@ router.post(
       throw new ErrorHandler("Invalid HDFC session response", 502);
     }
 
+    if (checkoutSession) {
+      checkoutSession.hdfcSessionId = paymentSessionId;
+      checkoutSession.hdfcStatus = "PENDING";
+      await checkoutSession.save();
+    }
+
     res.status(200).json({
       success: true,
       paymentSessionId,
@@ -453,26 +500,79 @@ router.get(
   catchAsyncErrors(async (req, res) => {
     const { orderId } = req.params;
     const hdfcData = await fetchHdfcOrderStatus(orderId);
+    const checkoutSession = await CheckoutSession.findOne({
+      paymentGroupId: orderId,
+    });
 
     if (hdfcData?.status === "CHARGED") {
-      await markGroupPaid(orderId, hdfcData?.id);
+      if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
+        const created = await createOrdersForCheckout({
+          cart: checkoutSession.cart,
+          shippingAddress: checkoutSession.shippingAddress,
+          user: checkoutSession.user,
+          paymentInfo: {
+            id: orderId,
+            groupId: orderId,
+            method: "HDFC",
+            status: "Paid",
+            transactionId: hdfcData?.id,
+          },
+          paymentMethod: "HDFC",
+        });
+
+        const paidAt = new Date();
+        await Order.updateMany(
+          { _id: { $in: created.orders.map((o) => o._id) } },
+          {
+            $set: {
+              status: "Paid",
+              paidAt,
+              "paymentInfo.status": "Paid",
+              "paymentInfo.transactionId": hdfcData?.id,
+            },
+            $push: {
+              statusHistory: { status: "Paid", updatedAt: paidAt },
+            },
+          },
+        );
+
+        checkoutSession.status = "ORDER_CREATED";
+        checkoutSession.hdfcStatus = hdfcData?.status;
+        checkoutSession.paymentId = hdfcData?.id || null;
+        checkoutSession.createdOrderIds = created.orders.map((o) => o._id);
+        await checkoutSession.save();
+      } else {
+        await markGroupPaid(orderId, hdfcData?.id);
+      }
+    } else if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
+      checkoutSession.status = "FAILED";
+      checkoutSession.hdfcStatus = hdfcData?.status || "FAILED";
+      checkoutSession.errorMessage = hdfcData?.resp_message || "Payment failed";
+      await checkoutSession.save();
     }
 
     const orders = await Order.find({
-      "paymentInfo.groupId": orderId,
+      $or: [
+        { "paymentInfo.groupId": orderId },
+        ...(checkoutSession?.createdOrderIds?.length
+          ? [{ _id: { $in: checkoutSession.createdOrderIds } }]
+          : []),
+      ],
     }).select("totalPrice");
 
     const totalAmount = orders.reduce(
       (sum, order) => sum + order.totalPrice,
       0,
     );
+    const finalAmount = totalAmount || checkoutSession?.totalPrice || 0;
 
     return res.status(200).json({
       success: true,
       status: hdfcData?.status,
       orderId: hdfcData?.order_id || orderId,
       paymentId: hdfcData?.id,
-      amount: totalAmount,
+      amount: finalAmount,
+      orderCreated: checkoutSession?.status === "ORDER_CREATED" || orders.length > 0,
     });
   }),
 );
@@ -1291,3 +1391,4 @@ router.get(
 );
 
 module.exports = router;
+
