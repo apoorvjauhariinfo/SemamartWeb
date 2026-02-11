@@ -24,11 +24,17 @@
     "mongoose": "^7.0.0",
     "multer": "^1.4.5-lts.1",
     "node-mailjet": "^6.0.9",
-    "nodemailer": "^6.9.1",
-    "nodemon": "^2.0.20",
+    "nodemailer": "^7.0.11",
+    "nodemon": "^3.1.11",
     "pdfkit": "^0.17.2",
+    "pdfkit-table": "^0.1.99",
+    "puppeteer": "^24.36.1",
     "razorpay": "^2.9.6",
     "stripe": "^12.0.0"
   },
-  "description": ""
+  "description": "",
+  "devDependencies": {
+    "eslint": "^9.39.2",
+    "eslint-plugin-import": "^2.32.0"
+  }
 }

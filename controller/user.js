@@ -304,6 +304,100 @@ router.get(
   })
 );
 
+
+router.post(
+  "/registerStaff",
+  catchAsyncErrors(async (req, res, next) => {
+    const { email, password } = req.body;
+
+    // Validation
+    if (!email || !password) {
+      return next(new ErrorHandler("Please enter email & password", 400));
+    }
+
+    // Find user & select password
+    const user = await User.findOne({ email }).select("+password");
+
+    if (!user) {
+      return next(new ErrorHandler("Invalid email or password", 401));
+    }
+
+    // Compare password
+    const isPasswordMatched = await user.comparePassword(password);
+
+    if (!isPasswordMatched) {
+      return next(new ErrorHandler("Invalid email or password", 401));
+    }
+
+    // Generate JWT
+    const token = user.getJwtToken();
+
+    // Cookie options
+    const options = {
+      expires: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    };
+
+    // IMPORTANT: password remove
+    user.password = undefined;
+
+    res
+      .status(200)
+      .cookie("token", token, options)
+      .json({
+        success: true,
+        user,
+      });
+  })
+);
+
+
+// ==================================================
+// 2️⃣ REGISTER STAFF (ADMIN ONLY)
+// ==================================================
+router.post(
+  "/mregisterStaff",
+  
+  catchAsyncErrors(async (req, res, next) => {
+    const { firstName, lastName, email, password, role } = req.body;
+
+    // Allowed staff roles
+    const allowedRoles = ["Product Manager", "Accountant"];
+
+    if (!allowedRoles.includes(role)) {
+      return next(new ErrorHandler("Invalid staff role", 400));
+    }
+
+    // Check if user already exists
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return next(new ErrorHandler("User already exists with this email", 400));
+    }
+
+    // Create staff
+    const user = await User.create({
+      firstName,
+      lastName,
+      email,
+      password,
+      role,
+      isVerified: true, // Admin created
+    });
+
+    // Remove password from response
+    user.password = undefined;
+
+    res.status(201).json({
+      success: true,
+      message: `${role} registered successfully`,
+      user,
+    });
+  })
+);
+
+
 // update user info
 router.put(
   "/update-user-info",
