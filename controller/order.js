@@ -244,6 +244,80 @@ async function createOrdersForCheckout({
   };
 }
 
+async function syncHdfcPaymentAndOrders(orderId) {
+  const hdfcData = await fetchHdfcOrderStatus(orderId);
+  const checkoutSession = await CheckoutSession.findOne({
+    paymentGroupId: orderId,
+  });
+
+  if (hdfcData?.status === "CHARGED") {
+    if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
+      const created = await createOrdersForCheckout({
+        cart: checkoutSession.cart,
+        shippingAddress: checkoutSession.shippingAddress,
+        user: checkoutSession.user,
+        paymentInfo: {
+          id: orderId,
+          groupId: orderId,
+          method: "HDFC",
+          status: "Paid",
+          transactionId: hdfcData?.id,
+        },
+        paymentMethod: "HDFC",
+      });
+
+      const paidAt = new Date();
+      await Order.updateMany(
+        { _id: { $in: created.orders.map((o) => o._id) } },
+        {
+          $set: {
+            status: "Paid",
+            paidAt,
+            "paymentInfo.status": "Paid",
+            "paymentInfo.transactionId": hdfcData?.id,
+          },
+          $push: {
+            statusHistory: { status: "Paid", updatedAt: paidAt },
+          },
+        },
+      );
+
+      checkoutSession.status = "ORDER_CREATED";
+      checkoutSession.hdfcStatus = hdfcData?.status;
+      checkoutSession.paymentId = hdfcData?.id || null;
+      checkoutSession.createdOrderIds = created.orders.map((o) => o._id);
+      await checkoutSession.save();
+    } else {
+      await markGroupPaid(orderId, hdfcData?.id);
+    }
+  } else if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
+    checkoutSession.status = "FAILED";
+    checkoutSession.hdfcStatus = hdfcData?.status || "FAILED";
+    checkoutSession.errorMessage = hdfcData?.resp_message || "Payment failed";
+    await checkoutSession.save();
+  }
+
+  const orders = await Order.find({
+    $or: [
+      { "paymentInfo.groupId": orderId },
+      ...(checkoutSession?.createdOrderIds?.length
+        ? [{ _id: { $in: checkoutSession.createdOrderIds } }]
+        : []),
+    ],
+  }).select("totalPrice");
+
+  const totalAmount = orders.reduce((sum, order) => sum + order.totalPrice, 0);
+  const finalAmount = totalAmount || checkoutSession?.totalPrice || 0;
+
+  return {
+    status: hdfcData?.status,
+    orderId: hdfcData?.order_id || orderId,
+    paymentId: hdfcData?.id,
+    amount: finalAmount,
+    orderCreated: checkoutSession?.status === "ORDER_CREATED" || orders.length > 0,
+  };
+}
+
 // ✅ Create new order(s)
 // router.post(
 //   "/create-order",
@@ -356,6 +430,18 @@ router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
     const { cart, shippingAddress, user, paymentInfo, paymentMethod } = req.body;
+    const isHdfcCreate =
+      typeof paymentMethod === "string" &&
+      ["hdfc", "online"].includes(paymentMethod.toLowerCase());
+
+    // Prevent accidental order creation before online payment success.
+    if (isHdfcCreate && !paymentInfo?.groupId) {
+      throw new ErrorHandler(
+        "For HDFC payments, create payment session first and create order after payment confirmation.",
+        400,
+      );
+    }
+
     const result = await createOrdersForCheckout({
       cart,
       shippingAddress,
@@ -457,7 +543,7 @@ router.post(
       amount: totalAmount,
       currency: "INR",
       payment_page_client_id: process.env.HDFC_PAYMENT_PAGE_CLIENT_ID,
-      return_url: `${resolveHdfcReturnBase()}/payment/hdfc/return`,
+      return_url: `${resolveHdfcReturnBase()}/api/v2/order/hdfc/return`,
       customer_id: customerId,
       customer_email: customer?.email,
       customer_phone: customer?.phoneNumber,
@@ -499,81 +585,46 @@ router.get(
   "/order-confirmation/:orderId",
   catchAsyncErrors(async (req, res) => {
     const { orderId } = req.params;
-    const hdfcData = await fetchHdfcOrderStatus(orderId);
-    const checkoutSession = await CheckoutSession.findOne({
-      paymentGroupId: orderId,
-    });
-
-    if (hdfcData?.status === "CHARGED") {
-      if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
-        const created = await createOrdersForCheckout({
-          cart: checkoutSession.cart,
-          shippingAddress: checkoutSession.shippingAddress,
-          user: checkoutSession.user,
-          paymentInfo: {
-            id: orderId,
-            groupId: orderId,
-            method: "HDFC",
-            status: "Paid",
-            transactionId: hdfcData?.id,
-          },
-          paymentMethod: "HDFC",
-        });
-
-        const paidAt = new Date();
-        await Order.updateMany(
-          { _id: { $in: created.orders.map((o) => o._id) } },
-          {
-            $set: {
-              status: "Paid",
-              paidAt,
-              "paymentInfo.status": "Paid",
-              "paymentInfo.transactionId": hdfcData?.id,
-            },
-            $push: {
-              statusHistory: { status: "Paid", updatedAt: paidAt },
-            },
-          },
-        );
-
-        checkoutSession.status = "ORDER_CREATED";
-        checkoutSession.hdfcStatus = hdfcData?.status;
-        checkoutSession.paymentId = hdfcData?.id || null;
-        checkoutSession.createdOrderIds = created.orders.map((o) => o._id);
-        await checkoutSession.save();
-      } else {
-        await markGroupPaid(orderId, hdfcData?.id);
-      }
-    } else if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
-      checkoutSession.status = "FAILED";
-      checkoutSession.hdfcStatus = hdfcData?.status || "FAILED";
-      checkoutSession.errorMessage = hdfcData?.resp_message || "Payment failed";
-      await checkoutSession.save();
-    }
-
-    const orders = await Order.find({
-      $or: [
-        { "paymentInfo.groupId": orderId },
-        ...(checkoutSession?.createdOrderIds?.length
-          ? [{ _id: { $in: checkoutSession.createdOrderIds } }]
-          : []),
-      ],
-    }).select("totalPrice");
-
-    const totalAmount = orders.reduce(
-      (sum, order) => sum + order.totalPrice,
-      0,
-    );
-    const finalAmount = totalAmount || checkoutSession?.totalPrice || 0;
+    const result = await syncHdfcPaymentAndOrders(orderId);
 
     return res.status(200).json({
       success: true,
-      status: hdfcData?.status,
-      orderId: hdfcData?.order_id || orderId,
-      paymentId: hdfcData?.id,
-      amount: finalAmount,
-      orderCreated: checkoutSession?.status === "ORDER_CREATED" || orders.length > 0,
+      ...result,
     });
+  }),
+);
+
+router.all(
+  "/hdfc/return",
+  catchAsyncErrors(async (req, res) => {
+    const orderId =
+      req.query?.order_id ||
+      req.query?.orderId ||
+      req.body?.order_id ||
+      req.body?.orderId ||
+      req.body?.id;
+
+    const frontendBase = resolveHdfcReturnBase();
+
+    if (!orderId) {
+      return res.redirect(`${frontendBase}/checkout?payment=hdfc&status=failed`);
+    }
+
+    try {
+      const result = await syncHdfcPaymentAndOrders(orderId);
+      if (result.status === "CHARGED" && result.orderCreated) {
+        return res.redirect(
+          `${frontendBase}/payment/hdfc/return?order_id=${encodeURIComponent(orderId)}&status=success`,
+        );
+      }
+      return res.redirect(
+        `${frontendBase}/payment/hdfc/return?order_id=${encodeURIComponent(orderId)}&status=failed`,
+      );
+    } catch (error) {
+      return res.redirect(
+        `${frontendBase}/payment/hdfc/return?order_id=${encodeURIComponent(orderId)}&status=failed`,
+      );
+    }
   }),
 );
 
