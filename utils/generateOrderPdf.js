@@ -150,11 +150,11 @@ async function generateOrderPdf(order) {
       const logoH = 80;
       try {
         const possibleLogos = [
-          path.join(process.cwd(), "assets", "Logo.png"),
-          path.join(process.cwd(), "assets", "Logo-imag.png"),
-          path.join(process.cwd(), "public", "Logo.png"),
-          path.join(process.cwd(), "public", "Logo-imag.png"),
-          path.join(__dirname, "..", "assets", "Logo.png")
+          path.join(process.cwd(), "assets", "logo.png"),
+         
+          path.join(process.cwd(), "public", "logo.png"),
+       
+          path.join(__dirname, "..", "assets", "logo.png")
         ];
         logoPath = possibleLogos.find(p => p && fs.existsSync(p)) || null;
         if (logoPath) {
@@ -596,11 +596,11 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
       // Signature (guarded)
   try {
   const possibleSignatures = [
-    path.join(process.cwd(), "assets", "auth.png"),
-    path.join(process.cwd(), "public", "auth.png"),
-    path.join(process.cwd(), "public", "assets", "auth.png"),
-    path.join(__dirname, "..", "assets", "auth.png"),
-    path.join(process.cwd(), "backend", "assets", "auth.png")
+    path.join(process.cwd(), "assets", "Auth.png"),
+    path.join(process.cwd(), "public", "Auth.png"),
+    path.join(process.cwd(), "public", "assets", "Auth.png"),
+    path.join(__dirname, "..", "assets", "Auth.png"),
+    path.join(process.cwd(), "backend", "assets", "Auth.png")
   ];
   const sigPath = possibleSignatures.find(p => p && fs.existsSync(p));
   
