@@ -429,17 +429,35 @@ router.get(
 router.post(
   "/create-order",
   catchAsyncErrors(async (req, res, next) => {
-    const { cart, shippingAddress, user, paymentInfo, paymentMethod } = req.body;
+    const { cart, shippingAddress, user, paymentInfo, paymentMethod, totalPrice } = req.body;
     const isHdfcCreate =
       typeof paymentMethod === "string" &&
       ["hdfc", "online"].includes(paymentMethod.toLowerCase());
 
-    // Prevent accidental order creation before online payment success.
+    // Backward compatible path: old frontend calls create-order first for HDFC.
+    // We create only a checkout session here; actual orders are created post-payment success.
     if (isHdfcCreate && !paymentInfo?.groupId) {
-      throw new ErrorHandler(
-        "For HDFC payments, create payment session first and create order after payment confirmation.",
-        400,
-      );
+      if (!cart || !shippingAddress || !user) {
+        throw new ErrorHandler("Incomplete HDFC checkout payload", 400);
+      }
+      const paymentGroupId = generatePaymentGroupId();
+      await CheckoutSession.create({
+        paymentGroupId,
+        cart,
+        shippingAddress,
+        user,
+        totalPrice,
+        paymentMethod: "HDFC",
+        status: "PENDING",
+      });
+
+      return res.status(201).json({
+        success: true,
+        orders: [],
+        paymentMethod: "HDFC",
+        paymentGroupId,
+        deferredOrderCreation: true,
+      });
     }
 
     const result = await createOrdersForCheckout({
@@ -514,6 +532,12 @@ router.post(
         "paymentGroupId, orderId, or checkout payload is required",
         400,
       );
+    }
+
+    if (!checkoutSession) {
+      checkoutSession = await CheckoutSession.findOne({
+        paymentGroupId: groupId,
+      });
     }
 
     if (!checkoutSession) {
