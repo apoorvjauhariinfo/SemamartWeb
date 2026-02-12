@@ -5,106 +5,124 @@ const jwt = require("jsonwebtoken");
 const userSchema = new mongoose.Schema({
   firstName: {
     type: String,
-    required: [true, "Please enter your first name"],
-    trim: true,
+    required: [true, "Please enter your firstName!"],
   },
-
   lastName: {
     type: String,
-    required: [true, "Please enter your last name"],
-    trim: true,
+    required: [true, "Please enter your lastName!"],
   },
-
   email: {
     type: String,
-    required: [true, "Please enter your email"],
-    unique: true,
-    lowercase: true,
-    trim: true,
+    required: [true, "Please enter your email!"],
   },
-
   phoneNumber: {
     type: String,
-    trim: true,
   },
-
-  // ================= CONDITIONAL FIELDS =================
   instituteName: {
     type: String,
-    required: function () {
-      return this.role === "user" || this.role === "seller";
-    },
+    required: [true, "Please enter your instituteName!"],
   },
-
   gstNumber: {
+        type: String,
+        required: [true, "Please enter your Institute's GST number!"],
+      },
+  name: {
     type: String,
-    required: function () {
-      return this.role === "user" || this.role === "seller";
-    },
+    // required: [true, "Please enter your name!"],
   },
 
-  // ================= SECURITY =================
   password: {
     type: String,
     required: [true, "Please enter your password"],
-    minlength: [8, "Password must be at least 8 characters"],
+    minLength: [4, "Password should be greater than 4 characters"],
     select: false,
   },
 
-  // ================= ROLE =================
-  role: {
-    type: String,
-    enum: ["user", "seller", "Admin", "Product Manager", "Accountant"],
-    default: "user",
-  },
-
-  // ================= ADDRESS =================
   addresses: [
     {
-      reciever_name: { type: String, trim: true },
-      state: { type: String, trim: true },
-      district: { type: String, trim: true },
-      instituteAddress1: { type: String },
-      instituteAddress2: { type: String, default: "" },
+     
+      reciever_name: {
+        type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s.'-]+$/, 'Invalid name format'] // Only letters, spaces, and basic punctuation
+      },
+      state: {
+        type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s]+$/, 'State must contain only letters and spaces']
+      },
+      district: {
+        type: String,
+        required: true,
+        trim: true,
+        match: [/^[a-zA-Z\s]+$/, 'District must contain only letters and spaces']
+      },
+      instituteAddress1: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      instituteAddress2: {
+        type: String,
+        trim: true,
+        default: ''
+      },
       pincode: {
         type: String,
-        match: [/^\d{6}$/, "Pincode must be 6 digits"],
+        required: true,
+        match: [/^\d{6}$/, 'Pincode must be exactly 6 digits'] // Strict 6-digit number
       },
-      landmark: { type: String, default: "" },
-      alternatePhone: { type: String, default: "" },
-      phone: { type: String },
+      landmark: {
+        type: String,
+        trim: true,
+        default: ''
+      },
+      alternatePhone: {
+        type: String,
+        match: [/^\d{10}$/, 'Alternate phone must be a 10-digit number'],
+        default: ''
+      },
+      phone: {
+        type: String,
+        required: true,
+        match: [/^\d{10}$/, 'Phone must be a 10-digit number']
+      },
       addressType: {
         type: String,
-        enum: ["Home", "Work"],
-        default: "Home",
-      },
+        enum: ['Home', 'Work',],
+        default: 'Home',
+        required: true
+      }
+
     },
   ],
-
-  // ================= FILES =================
+  role: {
+    type: String,
+    default: "user",
+    enum: ["seller", "user", "Admin"],
+  },
   avatar: {
     type: String,
+    // required: true,
   },
-
   registrationPdf: {
-    type: String,
-  },
-
-  // ================= META =================
-  isVerified: {
-    type: Boolean,
-    default: false,
-  },
-
-  resetPasswordToken: String,
-  resetPasswordTime: Date,
+  type: String, // e.g. 'uploads/pdfs/<userId>.pdf'
+},
 
   createdAt: {
     type: Date,
     default: Date.now,
   },
+  resetPasswordToken: String,
+  resetPasswordTime: Date,
+  isVerified: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
 });
-
 
 //  Hash password
 userSchema.pre("save", async function (next) {
