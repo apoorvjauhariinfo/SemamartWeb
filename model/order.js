@@ -91,6 +91,17 @@ const orderSchema = new mongoose.Schema({
     groupId: { type: String },
     transactionId: { type: String },
   },
+  paymentAttempts: [
+    {
+      attemptedAt: { type: Date, default: Date.now },
+      gateway: { type: String, default: "HDFC" },
+      status: { type: String },
+      paymentId: { type: String },
+      orderGroupId: { type: String },
+      message: { type: String },
+      responseSnapshot: { type: mongoose.Schema.Types.Mixed },
+    },
+  ],
   paidAt: {
     type: Date,
     default: Date.now,

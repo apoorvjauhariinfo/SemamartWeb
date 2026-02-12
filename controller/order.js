@@ -103,6 +103,43 @@ async function markGroupPaid(orderId, transactionId) {
   );
 }
 
+async function appendPaymentAttemptToGroup(orderId, hdfcData) {
+  const status = hdfcData?.status || "UNKNOWN";
+  const paymentId = hdfcData?.id || hdfcData?.txn_id || null;
+  const message =
+    hdfcData?.resp_message ||
+    hdfcData?.bank_error_message ||
+    hdfcData?.error_message ||
+    "";
+
+  const attemptPayload = {
+    attemptedAt: new Date(),
+    gateway: "HDFC",
+    status,
+    paymentId,
+    orderGroupId: orderId,
+    message,
+    responseSnapshot: hdfcData,
+  };
+
+  const query = paymentId
+    ? {
+        "paymentInfo.groupId": orderId,
+        paymentAttempts: {
+          $not: { $elemMatch: { paymentId, status } },
+        },
+      }
+    : { "paymentInfo.groupId": orderId };
+
+  await Order.updateMany(query, {
+    $push: { paymentAttempts: attemptPayload },
+    $set: {
+      "paymentInfo.transactionId": paymentId || undefined,
+      "paymentInfo.status": status === "CHARGED" ? "Paid" : "Failed",
+    },
+  });
+}
+
 async function createOrdersForCheckout({
   cart,
   shippingAddress,
@@ -246,7 +283,7 @@ async function createOrdersForCheckout({
 
 async function syncHdfcPaymentAndOrders(orderId) {
   const hdfcData = await fetchHdfcOrderStatus(orderId);
-  const checkoutSession = await CheckoutSession.findOne({
+  let checkoutSession = await CheckoutSession.findOne({
     paymentGroupId: orderId,
   });
 
@@ -287,14 +324,35 @@ async function syncHdfcPaymentAndOrders(orderId) {
       checkoutSession.paymentId = hdfcData?.id || null;
       checkoutSession.createdOrderIds = created.orders.map((o) => o._id);
       await checkoutSession.save();
+      await appendPaymentAttemptToGroup(orderId, hdfcData);
     } else {
       await markGroupPaid(orderId, hdfcData?.id);
+      await appendPaymentAttemptToGroup(orderId, hdfcData);
     }
   } else if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
-    checkoutSession.status = "FAILED";
+    const created = await createOrdersForCheckout({
+      cart: checkoutSession.cart,
+      shippingAddress: checkoutSession.shippingAddress,
+      user: checkoutSession.user,
+      paymentInfo: {
+        id: orderId,
+        groupId: orderId,
+        method: "HDFC",
+        status: "Failed",
+        transactionId: hdfcData?.id,
+      },
+      paymentMethod: "HDFC",
+    });
+
+    checkoutSession.status = "ORDER_CREATED";
     checkoutSession.hdfcStatus = hdfcData?.status || "FAILED";
     checkoutSession.errorMessage = hdfcData?.resp_message || "Payment failed";
+    checkoutSession.paymentId = hdfcData?.id || null;
+    checkoutSession.createdOrderIds = created.orders.map((o) => o._id);
     await checkoutSession.save();
+    await appendPaymentAttemptToGroup(orderId, hdfcData);
+  } else {
+    await appendPaymentAttemptToGroup(orderId, hdfcData);
   }
 
   const orders = await Order.find({
