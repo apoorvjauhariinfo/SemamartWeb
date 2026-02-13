@@ -536,10 +536,28 @@ router.post(
 router.post(
   "/create-payment-session",
   catchAsyncErrors(async (req, res) => {
+    let selectedOrderIds =
+      req.body?.orderIds ?? req.body?.selectedOrderIds ?? null;
+
+    if (typeof selectedOrderIds === "string") {
+      try {
+        const parsed = JSON.parse(selectedOrderIds);
+        selectedOrderIds = Array.isArray(parsed) ? parsed : [selectedOrderIds];
+      } catch (e) {
+        selectedOrderIds = selectedOrderIds
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean);
+      }
+    }
+
+    if (!Array.isArray(selectedOrderIds)) {
+      selectedOrderIds = [];
+    }
+
     const {
       paymentGroupId,
       orderId,
-      orderIds,
       cart,
       shippingAddress,
       user,
@@ -553,10 +571,9 @@ router.post(
 
     if (
       !groupId &&
-      Array.isArray(orderIds) &&
-      orderIds.length > 0
+      selectedOrderIds.length > 0
     ) {
-      const uniqueOrderIds = [...new Set(orderIds)];
+      const uniqueOrderIds = [...new Set(selectedOrderIds)];
       const orders = await Order.find({
         _id: { $in: uniqueOrderIds },
       }).populate("user", "email phoneNumber");
@@ -627,7 +644,7 @@ router.post(
 
     if (!groupId) {
       throw new ErrorHandler(
-        "paymentGroupId, orderId, or checkout payload is required",
+        "paymentGroupId, orderId, orderIds, or checkout payload is required",
         400,
       );
     }
