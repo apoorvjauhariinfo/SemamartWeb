@@ -539,6 +539,7 @@ router.post(
     const {
       paymentGroupId,
       orderId,
+      orderIds,
       cart,
       shippingAddress,
       user,
@@ -549,6 +550,45 @@ router.post(
     let checkoutSession = null;
     let totalAmount = 0;
     let customer = null;
+
+    if (
+      !groupId &&
+      Array.isArray(orderIds) &&
+      orderIds.length > 0
+    ) {
+      const uniqueOrderIds = [...new Set(orderIds)];
+      const orders = await Order.find({
+        _id: { $in: uniqueOrderIds },
+      }).populate("user", "email phoneNumber");
+
+      if (!orders || orders.length === 0) {
+        throw new ErrorHandler("No orders found for selected ids", 404);
+      }
+
+      const sameUser = orders.every(
+        (o) => String(o.user?._id || o.user) === String(orders[0].user?._id || orders[0].user),
+      );
+      if (!sameUser) {
+        throw new ErrorHandler("Selected orders must belong to one user", 400);
+      }
+
+      groupId = generatePaymentGroupId();
+
+      await Order.updateMany(
+        { _id: { $in: uniqueOrderIds } },
+        {
+          $set: {
+            "paymentInfo.groupId": groupId,
+            "paymentInfo.id": groupId,
+            "paymentInfo.method": "HDFC",
+            "paymentInfo.status": "Pending",
+          },
+        },
+      );
+
+      totalAmount = orders.reduce((sum, order) => sum + (order.totalPrice || 0), 0);
+      customer = orders[0]?.user;
+    }
 
     if (!groupId && orderId) {
       const order = await Order.findById(orderId);
@@ -950,7 +990,7 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const orders = await Order.find()
-        .select("-shippingAddress -paymentInfo")
+        .select("-shippingAddress")
         .populate("user", "firstName lastName instituteName")
         .populate("shop", "businessName")
         .populate({
@@ -1180,6 +1220,58 @@ router.put(
     console.log("🔥 FINAL invoicePdf:", finalOrder.invoicePdf);
 
     return res.status(200).json(finalOrder);
+  }),
+);
+
+router.put(
+  "/update-order-payment-bulk",
+  uploadV2.single("payment_file"),
+  catchAsyncErrors(async (req, res) => {
+    if (!req.file) throw new ErrorHandler("No payment file uploaded", 400);
+
+    let ids = req.body.orderIds;
+    if (typeof ids === "string") {
+      try {
+        ids = JSON.parse(ids);
+      } catch (e) {
+        ids = [ids];
+      }
+    }
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      throw new ErrorHandler("orderIds is required", 400);
+    }
+
+    const objectIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
+    if (objectIds.length === 0) {
+      throw new ErrorHandler("No valid order ids provided", 400);
+    }
+
+    const now = new Date();
+    const updateResult = await Order.updateMany(
+      { _id: { $in: objectIds } },
+      {
+        $set: {
+          paymentFile: req.file.filename,
+          status: "Paid",
+          paidAt: now,
+          "paymentInfo.method": "Manual",
+          "paymentInfo.status": "Pending",
+        },
+        $push: {
+          statusHistory: {
+            status: "Paid",
+            updatedAt: now,
+          },
+        },
+      },
+    );
+
+    return res.status(200).json({
+      success: true,
+      matchedCount: updateResult.matchedCount || 0,
+      modifiedCount: updateResult.modifiedCount || 0,
+    });
   }),
 );
 
