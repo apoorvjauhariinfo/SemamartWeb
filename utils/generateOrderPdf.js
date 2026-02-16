@@ -14,6 +14,29 @@ function formatCurrency(n) {
   return currencySymbol + Number(n).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function getPngDimensions(filePath) {
+  try {
+    const fd = fs.openSync(filePath, "r");
+    const buffer = Buffer.alloc(24);
+    fs.readSync(fd, buffer, 0, 24, 0);
+    fs.closeSync(fd);
+
+    // PNG signature check
+    const isPng =
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47;
+    if (!isPng) return null;
+
+    const width = buffer.readUInt32BE(16);
+    const height = buffer.readUInt32BE(20);
+    return { width, height };
+  } catch (e) {
+    return null;
+  }
+}
+
 function amountToWords(num) {
   if (num == null) return "";
   const a = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten",
@@ -150,13 +173,23 @@ async function generateOrderPdf(order) {
       const logoH = 80;
       try {
         const possibleLogos = [
-          path.join(process.cwd(), "assets", "logo.png"),
-         
-          path.join(process.cwd(), "public", "logo.png"),
-       
-          path.join(__dirname, "..", "assets", "logo.png")
+          // Prefer a reasonably sized logo asset for PDF weight/performance.
+          path.join(process.cwd(), "assets", "Logo-imag.png"),
+          path.join(__dirname, "..", "assets", "Logo-imag.png"),
+          path.join(process.cwd(), "assets", "logo-comp-small.png"),
+          path.join(__dirname, "..", "assets", "logo-comp-small.png"),
+          path.join(process.cwd(), "assets", "logo-comp.png"),
+          path.join(process.cwd(), "public", "logo-comp.png"),
+          path.join(__dirname, "..", "assets", "logo-comp.png")
         ];
-        logoPath = possibleLogos.find(p => p && fs.existsSync(p)) || null;
+        logoPath =
+          possibleLogos.find((p) => {
+            if (!p || !fs.existsSync(p)) return false;
+            const dims = getPngDimensions(p);
+            // Guard against ultra-wide/high-res PNGs that bloat PDF size.
+            if (dims && (dims.width > 6000 || dims.height > 6000)) return false;
+            return true;
+          }) || null;
         if (logoPath) {
           try { doc.image(logoPath, margin, margin, { fit: [logoW, logoH] }); } catch (e) { console.error("⚠️ Logo image load failed:", e && e.message ? e.message : e); }
         }

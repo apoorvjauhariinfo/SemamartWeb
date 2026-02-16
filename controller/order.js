@@ -1079,6 +1079,11 @@ router.put(
       updatedAt: new Date(),
     });
 
+    if (req.body.status === "Processing") {
+      order.paymentInfo = order.paymentInfo || {};
+      order.paymentInfo.status = "Paid";
+    }
+
     if (status === "Delivered") order.deliveredAt = Date.now();
 
     await order.save();
