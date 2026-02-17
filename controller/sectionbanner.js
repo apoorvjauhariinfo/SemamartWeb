@@ -33,8 +33,9 @@ router.post(
     { name: "section3_left", maxCount: 1 },
     { name: "section3_right", maxCount: 1 },
   ]),
+  isAuthenticated,
   hasPermission("uploadImage"),
-    isAuthenticated,
+    
   async (req, res) => {
     try {
       const sections = JSON.parse(req.body.sections);
@@ -118,8 +119,41 @@ router.post(
  * GET: Fetch ALL section banners
  */
 router.get("/getallsectionbanner",
+   isAuthenticated,
   hasPermission("uploadImage"),
-    isAuthenticated,
+   
+  async (req, res) => {
+  try {
+    const banners = await SectionBanner.find({}).sort({ createdAt: 1 });
+
+    const formatted = banners
+      .map((banner) =>
+        banner.sections.map((section) => ({
+          title: section.title,
+          type: banner.type,
+          left: {
+            name: section.left?.name || "",
+            link: section.left?.link || "",
+            image: section.left?.image || "",
+          },
+          right: {
+            name: section.right?.name || "",
+            link: section.right?.link || "",
+            image: section.right?.image || "",
+          },
+        }))
+      )
+      .flat();
+
+    res.status(200).json({ success: true, data: formatted });
+  } catch (error) {
+    console.error("Fetch Section Banners Error:", error);
+    res.status(500).json({ success: false, message: "Failed to fetch section banners" });
+  }
+});
+
+router.get("/getsectionbanner",
+
   async (req, res) => {
   try {
     const banners = await SectionBanner.find({}).sort({ createdAt: 1 });

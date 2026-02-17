@@ -6,8 +6,9 @@ const { isAuthenticated,hasPermission } = require("../middleware/auth");
 
 /* ================= SAVE / UPDATE HERO SECTION ================= */
 router.post("/", uploadV2.array("heroImages"), 
+isAuthenticated,
 hasPermission("uploadImage"),
-  isAuthenticated,
+  
 async (req, res) => {
   try {
     const items = JSON.parse(req.body.heroData);
@@ -91,9 +92,21 @@ async (req, res) => {
 
 /* ================= FETCH HERO SECTION ================= */
 router.get("/getallimg", 
-  
+  isAuthenticated, 
   hasPermission("uploadImage"),
-  isAuthenticated,
+ 
+  async (_, res) => {
+  try {
+    const data = await HeroSection.find().sort({ createdAt: -1 });
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false });
+  }
+});
+
+router.get("/getheroimg", 
+
   async (_, res) => {
   try {
     const data = await HeroSection.find().sort({ createdAt: -1 });

@@ -237,9 +237,9 @@ router.post(
   "/login-user",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const { email, password } = req.body;
+      const { email, password, role } = req.body;
 
-      if (!email || !password) {
+      if (!email || !password || !role) {
         return next(new ErrorHandler("Please provide the all filelds", 400));
       }
       const user = await User.findOne({ email }).select("+password");
@@ -248,7 +248,9 @@ router.post(
       if (!user) {
         return next(new ErrorHandler("User doesn't exist", 400));
       }
-
+      if (user.role !== role) {
+        return next(new ErrorHandler(`You are not allowed to login as ${role}`, 403));
+      }
       if (!user.isVerified)
         return next(new ErrorHandler("Account not verified", 401));
 

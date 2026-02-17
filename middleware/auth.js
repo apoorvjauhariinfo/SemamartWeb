@@ -42,24 +42,34 @@ exports.isAdmin = (...roles) => {
 
 exports.hasPermission = (...requiredPermissions) => {
   return (req, res, next) => {
-    const user = req.user;
+    // Make sure user is authenticated
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
 
-    // Agar Admin ho → access granted
-    if (user.role === "Admin") return next();
+    const { role, permissions = {} } = req.user;
 
-    // Agar user ke paas required permission ho → access granted
-    const hasPerm = requiredPermissions.some(
-      (perm) => user.permissions?.[perm]
-    );
+    // Admin always has access
+    if (role === "Admin") return next();
 
-    if (hasPerm) return next();
+    // Check if the user has at least one required permission
+    const allowed = requiredPermissions.some((perm) => permissions[perm] === true);
 
-    // Agar dono nahi → error
-    return next(
-      new ErrorHandler(`${user.role} cannot access this resource!`)
-    );
+    if (!allowed) {
+      return res.status(403).json({
+        success: false,
+        message: `${role} is not allowed to access this resource`,
+      });
+    }
+
+    // Permission granted
+    next();
   };
 };
+
 
 
 // Why this auth?
