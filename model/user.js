@@ -20,12 +20,16 @@ const userSchema = new mongoose.Schema({
   },
   instituteName: {
     type: String,
-    required: [true, "Please enter your instituteName!"],
+    required: function () {
+      return ["user", "seller"].includes(this.role);
+    },
   },
   gstNumber: {
-        type: String,
-        required: [true, "Please enter your Institute's GST number!"],
-      },
+    type: String,
+    required: function () {
+      return ["user", "seller"].includes(this.role);
+    },
+  },
   name: {
     type: String,
     // required: [true, "Please enter your name!"],
@@ -100,8 +104,12 @@ const userSchema = new mongoose.Schema({
   ],
   role: {
     type: String,
-    default: "user",
-    enum: ["seller", "user", "Admin"],
+    required: true,
+  },
+
+  permissions: {
+    type: Object,
+    default: {},
   },
   avatar: {
     type: String,

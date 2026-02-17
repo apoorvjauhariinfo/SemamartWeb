@@ -7,14 +7,13 @@ const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
 const User = require("../model/user");
-const { isAuthenticated, isAdmin } = require("../middleware/auth");
+const { isAuthenticated, isAdmin, hasPermission } = require("../middleware/auth");
 
 
 
 router.get(
   "/admin-dashboard-summary",
   isAuthenticated,
-  isAdmin("Admin"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const now = new Date();

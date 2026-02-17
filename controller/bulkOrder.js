@@ -5,6 +5,7 @@ const { Product } = require("../model/product");
 const sendBulkOrderRequestAdminEmail = require("../utils/emails/bulkOrderRequestAdmin");
 const sendBulkOrderRequestCustomerEmail = require("../utils/emails/bulkOrderRequestCustomer");
 const mongoose = require("mongoose"); // Add this
+const { isAuthenticated,hasPermission } = require("../middleware/auth");
 
 const ALLOWED_STATUSES = ["NEW", "CONTACTED", "APPROVED", "REJECTED", "CLOSED"];
 
@@ -101,7 +102,10 @@ router.post("/bulk-order", async (req, res) => {
   }
 });
 
-router.get("/get-bulk-order", async (req, res) => {
+router.get("/get-bulk-order", 
+  hasPermission("stockmanagement"),
+    isAuthenticated,
+  async (req, res) => {
   try {
     // Fetch all bulk orders and populate related fields
     const bulkOrders = await BulkOrder.find()

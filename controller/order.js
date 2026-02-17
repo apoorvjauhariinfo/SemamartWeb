@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
-const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
+const { isAuthenticated, isSeller, isAdmin,hasPermission } = require("../middleware/auth");
 const Order = require("../model/order");
 const CheckoutSession = require("../model/checkoutSession");
 const Shop = require("../model/shop");
@@ -945,8 +945,8 @@ router.put(
 // ✅ Admin: get all orders
 router.get(
   "/admin-all-orders",
-  isAuthenticated,
-  isAdmin("Admin"),
+   isAuthenticated,
+   hasPermission("allOrders"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const orders = await Order.find()

@@ -40,6 +40,28 @@ exports.isAdmin = (...roles) => {
   };
 };
 
+exports.hasPermission = (...requiredPermissions) => {
+  return (req, res, next) => {
+    const user = req.user;
+
+    // Agar Admin ho → access granted
+    if (user.role === "Admin") return next();
+
+    // Agar user ke paas required permission ho → access granted
+    const hasPerm = requiredPermissions.some(
+      (perm) => user.permissions?.[perm]
+    );
+
+    if (hasPerm) return next();
+
+    // Agar dono nahi → error
+    return next(
+      new ErrorHandler(`${user.role} cannot access this resource!`)
+    );
+  };
+};
+
+
 // Why this auth?
 // This auth is for the user to login and get the token
 // This token will be used to access the protected routes like create, update, delete, etc. (autharization)

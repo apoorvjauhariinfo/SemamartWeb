@@ -2,9 +2,13 @@ const express = require("express");
 const router = express.Router();
 const HeroSection = require("../model/heroitem");
 const { uploadV2 } = require("../multer");
+const { isAuthenticated,hasPermission } = require("../middleware/auth");
 
 /* ================= SAVE / UPDATE HERO SECTION ================= */
-router.post("/", uploadV2.array("heroImages"), async (req, res) => {
+router.post("/", uploadV2.array("heroImages"), 
+hasPermission("uploadImage"),
+  isAuthenticated,
+async (req, res) => {
   try {
     const items = JSON.parse(req.body.heroData);
     const deletedIds = req.body.deletedIds
@@ -86,7 +90,11 @@ router.post("/", uploadV2.array("heroImages"), async (req, res) => {
 });
 
 /* ================= FETCH HERO SECTION ================= */
-router.get("/getallimg", async (_, res) => {
+router.get("/getallimg", 
+  
+  hasPermission("uploadImage"),
+  isAuthenticated,
+  async (_, res) => {
   try {
     const data = await HeroSection.find().sort({ createdAt: -1 });
     res.json({ success: true, data });

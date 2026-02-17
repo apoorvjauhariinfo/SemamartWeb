@@ -2,6 +2,7 @@
 const express = require("express");
 const path = require("path");
 const User = require("../model/user");
+const Role = require("../model/role");
 const { upload } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
@@ -9,7 +10,7 @@ const jwt = require("jsonwebtoken");
 const sendMail = require("../utils/sendMail");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const sendToken = require("../utils/jwtToken");
-const { isAuthenticated, isAdmin } = require("../middleware/auth");
+const { isAuthenticated, isAdmin, hasPermission} = require("../middleware/auth");
 const crypto = require("crypto"); // <-- added for reset token generation
 const mongoose = require("mongoose");
 const Order = require("../model/order"); // adjust path as needed
@@ -285,6 +286,57 @@ router.get(
   })
 );
 
+router.get(
+  "/getmemberuser",
+  
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const users = await User.find({
+        role: { $nin: ["user", "seller", "Admin"] }
+      });
+
+      if (!users || users.length === 0) {
+        return next(new ErrorHandler("No staff users found", 404));
+      }
+
+      res.status(200).json({
+        success: true,
+        count: users.length,
+        users,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.post(
+  "/create-role",
+  catchAsyncErrors(async (req, res, next) => {
+    const { name } = req.body;
+
+    if (!name) {
+      return next(new ErrorHandler("Role name is required", 400));
+    }
+
+    // Check if role already exists
+    const existingRole = await Role.findOne({ name });
+
+    if (existingRole) {
+      return next(new ErrorHandler("Role already exists", 400));
+    }
+
+    const role = await Role.create({ name });
+
+    res.status(201).json({
+      success: true,
+      message: "Role created successfully",
+      role,
+    });
+  })
+);
+
+
 // log out user
 router.get(
   "/logout",
@@ -301,99 +353,6 @@ router.get(
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
-  })
-);
-
-
-router.post(
-  "/registerStaff",
-  catchAsyncErrors(async (req, res, next) => {
-    const { email, password } = req.body;
-
-    // Validation
-    if (!email || !password) {
-      return next(new ErrorHandler("Please enter email & password", 400));
-    }
-
-    // Find user & select password
-    const user = await User.findOne({ email }).select("+password");
-
-    if (!user) {
-      return next(new ErrorHandler("Invalid email or password", 401));
-    }
-
-    // Compare password
-    const isPasswordMatched = await user.comparePassword(password);
-
-    if (!isPasswordMatched) {
-      return next(new ErrorHandler("Invalid email or password", 401));
-    }
-
-    // Generate JWT
-    const token = user.getJwtToken();
-
-    // Cookie options
-    const options = {
-      expires: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    };
-
-    // IMPORTANT: password remove
-    user.password = undefined;
-
-    res
-      .status(200)
-      .cookie("token", token, options)
-      .json({
-        success: true,
-        user,
-      });
-  })
-);
-
-
-// ==================================================
-// 2️⃣ REGISTER STAFF (ADMIN ONLY)
-// ==================================================
-router.post(
-  "/mregisterStaff",
-  
-  catchAsyncErrors(async (req, res, next) => {
-    const { firstName, lastName, email, password, role } = req.body;
-
-    // Allowed staff roles
-    const allowedRoles = ["Product Manager", "Accountant"];
-
-    if (!allowedRoles.includes(role)) {
-      return next(new ErrorHandler("Invalid staff role", 400));
-    }
-
-    // Check if user already exists
-    const userExists = await User.findOne({ email });
-    if (userExists) {
-      return next(new ErrorHandler("User already exists with this email", 400));
-    }
-
-    // Create staff
-    const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      password,
-      role,
-      isVerified: true, // Admin created
-    });
-
-    // Remove password from response
-    user.password = undefined;
-
-    res.status(201).json({
-      success: true,
-      message: `${role} registered successfully`,
-      user,
-    });
   })
 );
 
@@ -768,11 +727,122 @@ router.get(
   })
 );
 
+router.post("/registerStaff",  async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, role, permissions } = req.body;
+
+    // 1️⃣ Validate required fields
+    if (!firstName || !lastName || !email || !password || !role) {
+      return res.status(400).json({ message: "All fields are required!" });
+    }
+
+    // 2️⃣ Check if user already exists
+    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    if (existingUser) {
+      return res.status(409).json({ message: "Email already registered!" });
+    }
+
+    // 3️⃣ Create new user
+    const newUser = new User({
+      firstName,
+      lastName,
+      email: email.toLowerCase(),
+      password,
+      role,
+      permissions: permissions || {},
+      isVerified: true, // optional
+    });
+
+    // 4️⃣ Save user
+    await newUser.save(); // password hashed automatically
+
+    // 5️⃣ Send response
+    res.status(201).json({
+      message: `${role} registered successfully!`,
+      user: {
+        id: newUser._id,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        email: newUser.email,
+        role: newUser.role,
+        permissions: newUser.permissions,
+      },
+    });
+
+  } catch (error) {
+    console.error("Error registering staff:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+// ===================== EDIT STAFF =====================
+router.put("/updateStaff/:id", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { firstName, lastName, email, role, permissions } = req.body;
+
+    // 1️⃣ Validate required fields
+    if (!firstName || !lastName || !email || !role || !permissions) {
+      return res.status(400).json({ message: "All fields are required!" });
+    }
+
+    // 2️⃣ Find user
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found!" });
+
+    // 3️⃣ Update user fields exactly as sent
+    user.firstName = firstName;
+    user.lastName = lastName;
+    user.email = email.toLowerCase();
+    user.role = role;
+    user.permissions = permissions; // use exactly what came from frontend
+
+    // 4️⃣ Save changes
+    await user.save();
+
+    // 5️⃣ Return updated user
+    res.status(200).json({
+      message: "User updated successfully!",
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        permissions: user.permissions,
+      },
+    });
+  } catch (error) {
+    console.error("Error updating user:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+
+router.get(
+  "/get-roles",
+  catchAsyncErrors(async (req, res, next) => {
+    const roles = await Role.find().sort({ name: 1 }); // A-Z sorting
+
+    if (!roles || roles.length === 0) {
+      return next(new ErrorHandler("No roles found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      count: roles.length,
+      roles,
+    });
+  })
+);
+
+
 // all users --- for admin
 router.get(
   "/admin-all-users",
   isAuthenticated,
-  isAdmin("Admin"),
+  hasPermission("allInstitutes"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find().sort({

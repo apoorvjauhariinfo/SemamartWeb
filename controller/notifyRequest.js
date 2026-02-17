@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
 const NotifyRequest = require("../model/notifyRequest");
+const { isAuthenticated, hasPermission } = require("../middleware/auth");
 
 router.post("/add", async (req, res) => {
   try {
@@ -81,7 +82,10 @@ router.post("/add", async (req, res) => {
 });
 
 // GET /api/notify-request
-router.get("/", async (req, res) => {
+router.get("/", 
+  hasPermission("stockmanagement"),
+    isAuthenticated,
+  async (req, res) => {
   try {
     const data = await NotifyRequest.find()
       .sort({ createdAt: -1 })

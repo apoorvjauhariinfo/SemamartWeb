@@ -5,7 +5,7 @@ const fs = require("fs");
 const jwt = require("jsonwebtoken");
 const sendMail = require("../utils/sendMail");
 const Shop = require("../model/shop");
-const { isAuthenticated, isSeller, isAdmin } = require("../middleware/auth");
+const { isAuthenticated, isSeller, isAdmin, hasPermission } = require("../middleware/auth");
 const { uploadV2 } = require("../multer");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ErrorHandler = require("../utils/ErrorHandler");
@@ -606,7 +606,7 @@ router.put(
 router.get(
   "/admin-all-sellers",
   isAuthenticated,
-  isAdmin("Admin"),
+   hasPermission("allSeller","allSales","requests"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const sellers = await Shop.find().sort({

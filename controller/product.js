@@ -1,6 +1,6 @@
 // backend/controller/product.js
 const express = require("express");
-const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
+const { isSeller, isAuthenticated, isAdmin, hasPermission } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
@@ -199,7 +199,8 @@ router.get(
 
 router.get(
   "/getallproducts/bufferstock/:id",
-  catchAsyncErrors(async (req, res, next) => {
+  catchAsyncErrors,
+  (async (req, res, next) => {
     try {
       const products = await Product.find({ shopId: req.params.id })
         .sort({ createdAt: -1 })
@@ -338,6 +339,8 @@ router.get(
 
 router.get(
   "/get-out-of-stock-products",
+  hasPermission("stockmanagement"),
+  isAuthenticated,
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
@@ -369,7 +372,9 @@ router.get(
 
 router.get(
   "/get-low-stock-products",
-  catchAsyncErrors(async (req, res, next) => {
+  hasPermission("stockmanagement"),
+  isAuthenticated,
+  catchAsyncErrors  (async (req, res, next) => {
     try {
       const products = await Product.find({
          visibilityByAdmin: true,
@@ -601,7 +606,7 @@ router.put(
 router.get(
   "/admin-all-products",
   isAuthenticated,
-  isAdmin("Admin"),
+  hasPermission("allproducts"),
   catchAsyncErrors(async (req, res, next) => {
     const products = await Product.find()
       .sort({ createdAt: -1 })

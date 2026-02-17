@@ -3,6 +3,7 @@ const router = express.Router();
 const path = require("path");
 const SectionBanner = require("../model/sectionbanner");
 const multer = require("multer");
+const { isAuthenticated,hasPermission } = require("../middleware/auth");
 
 // Multer storage: force all images into uploads/images
 const storageImages = multer.diskStorage({
@@ -32,6 +33,8 @@ router.post(
     { name: "section3_left", maxCount: 1 },
     { name: "section3_right", maxCount: 1 },
   ]),
+  hasPermission("uploadImage"),
+    isAuthenticated,
   async (req, res) => {
     try {
       const sections = JSON.parse(req.body.sections);
@@ -114,7 +117,10 @@ router.post(
 /**
  * GET: Fetch ALL section banners
  */
-router.get("/getallsectionbanner", async (req, res) => {
+router.get("/getallsectionbanner",
+  hasPermission("uploadImage"),
+    isAuthenticated,
+  async (req, res) => {
   try {
     const banners = await SectionBanner.find({}).sort({ createdAt: 1 });
 
