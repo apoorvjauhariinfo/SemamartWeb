@@ -15,6 +15,7 @@ const Manufacturer = require("../model/manufacturer");
 const addActivityLog = require("../utils/activityLogHelper");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
+const Review = require("../model/review");
 
 router.post(
   "/create-product-v2",
@@ -339,7 +340,7 @@ router.get(
 
 router.get(
   "/get-out-of-stock-products",
-  hasPermission("stockmanagement"),
+  hasPermission("StockManagement"),
   isAuthenticated,
   catchAsyncErrors(async (req, res, next) => {
     try {
@@ -372,7 +373,7 @@ router.get(
 
 router.get(
   "/get-low-stock-products",
-  hasPermission("stockmanagement"),
+  hasPermission("StockManagement"),
   isAuthenticated,
   catchAsyncErrors  (async (req, res, next) => {
     try {
@@ -518,10 +519,13 @@ router.get(
   "/get-product/:id",
   catchAsyncErrors(async (req, res, next) => {
     const { id } = req.params;
+
     if (!mongoose.isValidObjectId(id)) {
       return next(new ErrorHandler("Invalid product id", 400));
     }
+
     try {
+      // 1️⃣ Fetch product and populate basic references
       const product = await Product.findOne({
         _id: id,
         visibilityBySeller: true,
@@ -529,17 +533,38 @@ router.get(
 
       if (!product) return next(new ErrorHandler("Product not found", 404));
 
-      // ensure attributes exists (defensive): model pre-save covers it, but for read we normalise
+      // Ensure attributes exist (defensive)
       product.attributes = product.attributes || [];
       product.brand = product.brand || null;
 
-      res.status(200).json(product);
+      // 2️⃣ Fetch reviews for this product
+      const reviews = await Review.find({ _id: { $in: product.reviews } })
+        .populate("user", "name") // optional: populate user info
+        .select("rating comment images user")
+        .lean();
+
+      // 3️⃣ Calculate average rating
+      const avgRating =
+        reviews.length > 0
+          ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+          : 0;
+
+      // Round to 1 decimal
+      const roundedAvgRating = parseFloat(avgRating.toFixed(1));
+
+      // 4️⃣ Send response
+      res.status(200).json({
+        ...product.toObject(),
+        avgRating: roundedAvgRating,
+        reviews,
+      });
     } catch (error) {
       console.error(error);
       return next(new ErrorHandler(error.message || error, 400));
     }
-  }),
+  })
 );
+
 
 /* ------------------ AUTH: create review (user) ------------------ */
 router.put(
@@ -606,7 +631,7 @@ router.put(
 router.get(
   "/admin-all-products",
   isAuthenticated,
-  hasPermission("allproducts"),
+  hasPermission("AllProducts"),
   catchAsyncErrors(async (req, res, next) => {
     const products = await Product.find()
       .sort({ createdAt: -1 })

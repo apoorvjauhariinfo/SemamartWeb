@@ -7,7 +7,7 @@ const { isAuthenticated,hasPermission } = require("../middleware/auth");
 /* ================= SAVE / UPDATE HERO SECTION ================= */
 router.post("/", uploadV2.array("heroImages"), 
 isAuthenticated,
-hasPermission("uploadImage"),
+hasPermission("UploadImage"),
   
 async (req, res) => {
   try {
@@ -93,7 +93,7 @@ async (req, res) => {
 /* ================= FETCH HERO SECTION ================= */
 router.get("/getallimg", 
   isAuthenticated, 
-  hasPermission("uploadImage"),
+  hasPermission("UploadImage"),
  
   async (_, res) => {
   try {

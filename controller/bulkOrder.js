@@ -103,7 +103,7 @@ router.post("/bulk-order", async (req, res) => {
 });
 
 router.get("/get-bulk-order", 
-  hasPermission("stockmanagement"),
+  hasPermission("StockManagement"),
     isAuthenticated,
   async (req, res) => {
   try {

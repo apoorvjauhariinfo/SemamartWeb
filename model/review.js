@@ -11,6 +11,11 @@ const reviewSchema = new mongoose.Schema({
     ref: "Product",
     required: true,
   },
+  orderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Order",
+    required: true,
+  },
   rating: {
     type: Number,
     required: true,
@@ -22,12 +27,12 @@ const reviewSchema = new mongoose.Schema({
     trim: true,
   },
   images: {
-    type: [String], // store image paths
+    type: [String],
     default: [],
   },
 }, { timestamps: true });
 
-// Prevent duplicate review per user per product
-reviewSchema.index({ user: 1, productId: 1 }, { unique: true });
+// Each user can review the same order only once
+reviewSchema.index({ user: 1, orderId: 1 }, { unique: true });
 
 module.exports = mongoose.model("Review", reviewSchema);
