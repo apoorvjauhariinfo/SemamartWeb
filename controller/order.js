@@ -1047,12 +1047,16 @@ router.get(
   }),
 );
 
+// ADD AT THE TOP OF THE FILE (if not already present):
+// const { Product } = require("../model/product"); // <-- adjust path if needed
+
 router.put(
   "/update-order-status-admin/:id",
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
     const { status } = req.body;
+
     const order = await Order.findById(req.params.id)
       .populate("shop")
       .populate("user")
@@ -1073,18 +1077,45 @@ router.put(
       throw new ErrorHandler("Invalid order", 404);
     }
 
-    order.status = req.body.status;
+    // Keep old status to avoid double-counting
+    const prevStatus = order.status;
+
+    // Update status & history
+    order.status = status;
     order.statusHistory.push({
-      status: req.body.status,
+      status,
       updatedAt: new Date(),
     });
 
-    if (req.body.status === "Processing") {
+    if (status === "Processing") {
       order.paymentInfo = order.paymentInfo || {};
       order.paymentInfo.status = "Paid";
     }
 
-    if (status === "Delivered") order.deliveredAt = Date.now();
+    if (status === "Delivered") {
+      order.deliveredAt = Date.now();
+    }
+
+    // --- Increment product counters only once when transitioning into "Delivered" ---
+    try {
+      if (status === "Delivered" && prevStatus !== "Delivered") {
+        // productId might be populated or an ObjectId depending on populate
+        const productId =
+          order.variant?.productId?._id || order.variant?.productId;
+
+        if (productId) {
+          await Product.findByIdAndUpdate(productId, {
+            $inc: {
+              totalOrderedQuantity: order.qty || 0, // add quantity
+              totalOrders: 1, // count this order as 1
+            },
+          }).exec();
+        }
+      }
+    } catch (incErr) {
+      // Log but don't block the main flow; change behavior if you prefer stricter handling
+      console.error("Failed to increment product order counters:", incErr);
+    }
 
     await order.save();
 
@@ -1104,7 +1135,7 @@ router.put(
         tax: order.tax,
         totalAmount: order.totalPrice,
         frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
-      }).catch(e => console.log("Mail Error:", e));
+      }).catch((e) => console.log("Mail Error:", e));
     }
 
     if (order.status === "Delivered") {
@@ -1113,24 +1144,23 @@ router.put(
         instituteName:
           order.user.instituteName ||
           `${order.user.firstName} ${order.user.lastName}`,
-      });
-    }
-    if (order.status === "Delivered") {
+      }).catch((e) => console.log("Mail Error:", e));
+
       await sendOrderDeliveredCustomerEmail({
         customerEmail: order.user.email,
         customerName: customerName,
         orderId: order._id,
         totalAmount: order.totalPrice,
-      }).catch(e => console.log("Mail Error:", e));
-    }
+      }).catch((e) => console.log("Mail Error:", e));
 
-    if (order.status === "Delivered") {
       // Map the order data to the structure the template expects
-      const itemsArray = [{
-        name: order.variant?.productId?.name || "Product",
-        quantity: order.qty,
-        price: order.unitPrice
-      }];
+      const itemsArray = [
+        {
+          name: order.variant?.productId?.name || "Product",
+          quantity: order.qty,
+          price: order.unitPrice,
+        },
+      ];
 
       await sendOrderDeliveredSellerEmail({
         sellerEmail: order.shop?.email,
@@ -1138,11 +1168,13 @@ router.put(
         orderId: order._id,
         items: itemsArray,
         totalAmount: order.totalPrice,
-      }).catch(e => console.log("Delivered Seller Mail Error:", e));
+      }).catch((e) => console.log("Delivered Seller Mail Error:", e));
     }
+
     res.status(201).json({ success: true });
-  }),
+  })
 );
+
 
 router.put(
   "/update-order-payment/:id",

@@ -1392,4 +1392,144 @@ router.delete(
   })
 );
 
+
+// Query params:
+// - shopId (optional): filter by shop
+// - limit (optional): number of products to return (default 10, max 100)
+// - skip (optional): for pagination offset
+// - qtyWeight (optional): weight for totalOrderedQuantity (default 1)
+// - ordersWeight (optional): weight for totalOrders (default 5)
+router.get(
+  "/best-sellers",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      // parse & sanitize query params
+      const {
+        shopId,
+        category: categoryParam, // supports single id or comma-separated list
+        limit: limitQ,
+        skip: skipQ,
+        qtyWeight: qtyWeightQ,
+        ordersWeight: ordersWeightQ,
+      } = req.query;
+
+      const limit = Math.min(Math.max(parseInt(limitQ || "10", 10), 1), 100);
+      const skip = Math.max(parseInt(skipQ || "0", 10), 0);
+      const qtyWeight = parseFloat(qtyWeightQ ?? "1");
+      const ordersWeight = parseFloat(ordersWeightQ ?? "5");
+
+      const pipeline = [];
+
+      // Build a single match object for optional filters (shopId, category)
+      const match = {};
+
+      if (shopId) {
+        if (!mongoose.isValidObjectId(String(shopId))) {
+          return next(new ErrorHandler("Invalid shopId", 400));
+        }
+        match.shopId = new mongoose.Types.ObjectId(String(shopId));
+      }
+
+      if (categoryParam) {
+        // categoryParam may be comma-separated list
+        const raw = String(categoryParam);
+        const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+
+        // convert to ObjectId array (validate)
+        const catIds = [];
+        for (const p of parts) {
+          if (!mongoose.isValidObjectId(p)) {
+            return next(new ErrorHandler(`Invalid category id: ${p}`, 400));
+          }
+          catIds.push(new mongoose.Types.ObjectId(p));
+        }
+
+        if (catIds.length === 1) {
+          // match if category array contains this id
+          match.category = catIds[0];
+        } else if (catIds.length > 1) {
+          // match if category array contains any of the ids
+          match.category = { $in: catIds };
+        }
+      }
+
+      if (Object.keys(match).length > 0) {
+        pipeline.push({ $match: match });
+      }
+
+      // Ensure missing fields treated as 0
+      pipeline.push({
+        $addFields: {
+          totalOrderedQuantity: { $ifNull: ["$totalOrderedQuantity", 0] },
+          totalOrders: { $ifNull: ["$totalOrders", 0] },
+        },
+      });
+
+      // Compute score
+      pipeline.push({
+        $addFields: {
+          score: {
+            $add: [
+              { $multiply: ["$totalOrderedQuantity", qtyWeight] },
+              { $multiply: ["$totalOrders", ordersWeight] },
+            ],
+          },
+        },
+      });
+
+      // sort by score desc
+      pipeline.push({
+        $sort: {
+          score: -1,
+          totalOrderedQuantity: -1,
+          totalOrders: -1,
+        },
+      });
+
+      // pagination
+      if (skip > 0) pipeline.push({ $skip: skip });
+      pipeline.push({ $limit: limit });
+
+      // Populate variants array (keep it as an array)
+      pipeline.push({
+        $lookup: {
+          from: "productvariants",
+          localField: "variants",
+          foreignField: "_id",
+          as: "variants",
+        },
+      });
+
+      // Return useful fields and keep the full variants array (not single variant)
+      pipeline.push({
+        $project: {
+          name: 1,
+          shopId: 1,
+          images: 1,
+          sku: 1,
+          category: 1,
+          totalOrderedQuantity: 1,
+          totalOrders: 1,
+          score: 1,
+          createdAt: 1,
+          variants: 1,
+        },
+      });
+
+      const products = await Product.aggregate(pipeline).allowDiskUse(true);
+
+      return res.status(200).json({
+        success: true,
+        count: products.length,
+        products,
+      });
+    } catch (err) {
+      return next(new ErrorHandler(err.message || err, 500));
+    }
+  })
+);
+
+
+
+
 module.exports = router;
