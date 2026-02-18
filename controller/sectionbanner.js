@@ -34,7 +34,7 @@ router.post(
     { name: "section3_right", maxCount: 1 },
   ]),
   isAuthenticated,
-  hasPermission("uploadImage"),
+  hasPermission("UploadImage"),
     
   async (req, res) => {
     try {
@@ -120,7 +120,7 @@ router.post(
  */
 router.get("/getallsectionbanner",
    isAuthenticated,
-  hasPermission("uploadImage"),
+  hasPermission("UploadImage"),
    
   async (req, res) => {
   try {

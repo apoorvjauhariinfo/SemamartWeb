@@ -83,7 +83,7 @@ router.post("/add", async (req, res) => {
 
 // GET /api/notify-request
 router.get("/", 
-  hasPermission("stockmanagement"),
+  hasPermission("StockManagement"),
     isAuthenticated,
   async (req, res) => {
   try {

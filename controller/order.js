@@ -804,6 +804,7 @@ router.get(
             select: "name images variants manufacturerName ", // fetch product details through variant
           },
         })
+        .populate("review") 
         .populate("shop", "name email businessName")
         .populate("user", "firstName lastName email phoneNumber addresses");
 
@@ -835,6 +836,7 @@ router.get(
             select: "name images manufacturerName",
           },
         })
+        .populate("review")
         .populate("shop", "name email")
         .populate("user", "firstName lastName email phoneNumber addresses");
 
@@ -1003,7 +1005,7 @@ router.put(
 router.get(
   "/admin-all-orders",
    isAuthenticated,
-   hasPermission("allOrders"),
+   hasPermission("AllOrders"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const orders = await Order.find()

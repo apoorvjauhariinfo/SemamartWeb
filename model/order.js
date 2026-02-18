@@ -50,6 +50,10 @@ const orderSchema = new mongoose.Schema({
     ref: "User",
     required: true,
   },
+  review: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Review",
+  },
   totalPrice: {
     type: Number,
     required: true,

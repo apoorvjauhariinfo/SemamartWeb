@@ -20,8 +20,10 @@ const generateUserPdf = require("../utils/generateUserPdf"); // moved here so PD
 const sendSelfVerifyCustomerEmail = require("../utils/emails/selfVerifyCustomer");
 const sendRegistrationCompleteCustomerEmail = require("../utils/emails/registrationCompleteCustomer");
 const sendNewInstituteRegisteredAdminEmail = require("../utils/emails/newInstituteRegisteredAdmin");
-
+const { uploadV2 } = require("../multer");
 const router = express.Router();
+const Review = require("../model/review");
+
 
 // --- add this helper after your imports (generateUserPdf is already imported) ---
 /**
@@ -237,9 +239,9 @@ router.post(
   "/login-user",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const { email, password, role } = req.body;
+      const { email, password } = req.body;
 
-      if (!email || !password || !role) {
+      if (!email || !password) {
         return next(new ErrorHandler("Please provide the all filelds", 400));
       }
       const user = await User.findOne({ email }).select("+password");
@@ -248,9 +250,7 @@ router.post(
       if (!user) {
         return next(new ErrorHandler("User doesn't exist", 400));
       }
-      if (user.role !== role) {
-        return next(new ErrorHandler(`You are not allowed to login as ${role}`, 403));
-      }
+      
       if (!user.isVerified)
         return next(new ErrorHandler("Account not verified", 401));
 
@@ -844,7 +844,7 @@ router.get(
 router.get(
   "/admin-all-users",
   isAuthenticated,
-  hasPermission("allInstitutes"),
+  hasPermission("AllInstitutes"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find().sort({
@@ -1113,5 +1113,104 @@ router.get(
     return res.sendFile(absPath);
   })
 );
+
+router.post("/addReview", uploadV2.array("images", 5), async (req, res) => {
+  try {
+    const { productId, rating, comment,user, orderId } = req.body;
+     
+
+    if (!productId || !rating || !orderId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Product ID, Order ID, and rating are required" });
+    }
+
+     const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    // Optional: Prevent duplicate review for the same order
+    if (order.review) {
+      return res.status(400).json({ success: false, message: "This order already has a review" });
+    }
+
+    const images = (req.files || []).map(f => f.filename);
+
+    const review = await Review.create({
+      user,
+      productId,
+      orderId,
+      rating,
+      comment: comment || "",
+      images,
+    });
+    await Order.findByIdAndUpdate(orderId, { review: review._id });
+    order.review = review._id;
+    await order.save();
+    await Product.findByIdAndUpdate(productId, { $push: { reviews: review._id } });
+
+    res.json({ success: true, review });
+  } catch (err) {
+    console.error("Add review error:", err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// Update review route
+router.put(
+  "/updateReview/:reviewId",
+  uploadV2.array("images", 5), // max 5 images
+  async (req, res) => {
+    try {
+      const { reviewId } = req.params;
+      const { rating, comment, existingImages } = req.body; // <-- get existingImages
+
+      if (!reviewId) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Review ID is required" });
+      }
+
+      // Find existing review
+      const review = await Review.findById(reviewId);
+      if (!review) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Review not found" });
+      }
+
+      // Update rating & comment if provided
+      if (rating) review.rating = rating;
+      if (comment !== undefined) review.comment = comment;
+
+      // Start with images the user wants to keep
+      let updatedImages = [];
+      if (existingImages) {
+        // Parse JSON string from frontend
+        updatedImages = JSON.parse(existingImages);
+      }
+
+      // Add any newly uploaded images
+      if (req.files && req.files.length > 0) {
+        const newImages = req.files.map((f) => f.filename);
+        updatedImages = [...updatedImages, ...newImages];
+      }
+
+      review.images = updatedImages; // overwrite old images with updated list
+
+      await review.save();
+
+      res.json({ success: true, review });
+    } catch (err) {
+      console.error("Update review error:", err);
+      res.status(500).json({ success: false, message: err.message });
+    }
+  }
+);
+
+
+
+
 
 module.exports = router;
