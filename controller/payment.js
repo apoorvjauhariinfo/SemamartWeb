@@ -84,12 +84,12 @@ router.post("/hdfc/webhook", async (req, res) => {
         { "paymentInfo.groupId": orderId, status: "Created" },
         {
           $set: {
-            status: "Paid",
+            status: "Processing",
             paidAt: now,
             "paymentInfo.status": "Paid",
             "paymentInfo.transactionId": payload.id || payload.txn_id || undefined,
           },
-          $push: { statusHistory: { status: "Paid", updatedAt: now } },
+          $push: { statusHistory: { status: "Processing", updatedAt: now } },
         },
       );
     }

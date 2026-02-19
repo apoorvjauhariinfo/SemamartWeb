@@ -81,7 +81,7 @@ async function fetchHdfcOrderStatus(orderId) {
   return hdfcResponse.json();
 }
 
-async function markGroupPaid(orderId, transactionId) {
+async function markGroupProcessing(orderId, transactionId) {
   const now = new Date();
 
   await Order.updateMany(
@@ -91,13 +91,13 @@ async function markGroupPaid(orderId, transactionId) {
     },
     {
       $set: {
-        status: "Paid",
+        status: "Processing",
         paidAt: now,
         "paymentInfo.status": "Paid",
         "paymentInfo.transactionId": transactionId || undefined,
       },
       $push: {
-        statusHistory: { status: "Paid", updatedAt: now },
+        statusHistory: { status: "Processing", updatedAt: now },
       },
     },
   );
@@ -308,13 +308,13 @@ async function syncHdfcPaymentAndOrders(orderId) {
         { _id: { $in: created.orders.map((o) => o._id) } },
         {
           $set: {
-            status: "Paid",
+            status: "Processing",
             paidAt,
             "paymentInfo.status": "Paid",
             "paymentInfo.transactionId": hdfcData?.id,
           },
           $push: {
-            statusHistory: { status: "Paid", updatedAt: paidAt },
+            statusHistory: { status: "Processing", updatedAt: paidAt },
           },
         },
       );
@@ -326,7 +326,7 @@ async function syncHdfcPaymentAndOrders(orderId) {
       await checkoutSession.save();
       await appendPaymentAttemptToGroup(orderId, hdfcData);
     } else {
-      await markGroupPaid(orderId, hdfcData?.id);
+      await markGroupProcessing(orderId, hdfcData?.id);
       await appendPaymentAttemptToGroup(orderId, hdfcData);
     }
   } else if (checkoutSession && checkoutSession.status !== "ORDER_CREATED") {
@@ -688,16 +688,48 @@ router.post(
       customer_phone: customer?.phoneNumber,
     };
 
-    const hdfcResponse = await fetch(`${process.env.BASE_URL}/session`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Basic ${process.env.BASE_64_API}`,
-      },
-      body: JSON.stringify(hdfcPayload),
-    });
+    if (
+      !process.env.BASE_URL ||
+      !process.env.BASE_64_API ||
+      !process.env.HDFC_MERCHANT_ID ||
+      !process.env.HDFC_PAYMENT_PAGE_CLIENT_ID
+    ) {
+      throw new ErrorHandler("Missing HDFC environment configuration", 500);
+    }
 
-    const hdfcResponseData = await hdfcResponse.json();
+    let hdfcResponse;
+    try {
+      hdfcResponse = await fetch(`${process.env.BASE_URL}/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${process.env.BASE_64_API}`,
+        },
+        body: JSON.stringify(hdfcPayload),
+      });
+    } catch (err) {
+      const reason =
+        err?.cause?.code ||
+        err?.cause?.message ||
+        err?.message ||
+        "unknown network error";
+      throw new ErrorHandler(`Failed to reach HDFC session API: ${reason}`, 502);
+    }
+
+    if (!hdfcResponse.ok) {
+      const errorText = await hdfcResponse.text();
+      throw new ErrorHandler(
+        `HDFC session API rejected request (${hdfcResponse.status}): ${errorText?.slice(0, 200) || "no response body"}`,
+        502,
+      );
+    }
+
+    let hdfcResponseData = {};
+    try {
+      hdfcResponseData = await hdfcResponse.json();
+    } catch (err) {
+      throw new ErrorHandler("HDFC session API returned invalid JSON", 502);
+    }
     const paymentSessionId = hdfcResponseData.id;
     const paymentLink = hdfcResponseData?.payment_links?.web;
 
