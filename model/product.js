@@ -335,6 +335,10 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    badge: {
+      type: Boolean,
+      default: false, // <-- default false
+    },
   },
   {
     timestamps: true,

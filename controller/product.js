@@ -155,7 +155,7 @@ router.get(
         .sort({ createdAt: -1 })
         .populate("variants")
         .select(
-          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory",
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory badge",
         );
 
       res.status(200).json({
@@ -432,7 +432,7 @@ router.get(
           path: "variants",
           model: "ProductVariant",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size bulkOrders",
+            "thumbnail originalPrice discountPrice stock colorOption size bulkOrders badge",
         })
         .lean();
 
@@ -642,7 +642,7 @@ router.get(
       })
       .populate("shopId", "businessName")
       .select(
-        "name variants createdAt commission sku visibilityByAdmin visibilityBySeller",
+        "name variants createdAt commission sku visibilityByAdmin visibilityBySeller badge",
       );
 
     res.status(201).json({
@@ -1563,6 +1563,7 @@ router.get(
           variants: 1,
           reviews: "$reviewsDetails",
           avgRating: 1,
+          badge: 1,
         },
       });
 
@@ -1579,6 +1580,28 @@ router.get(
   })
 );
 
+router.put(
+  "/update-badge/:productId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const product = await Product.findById(req.params.productId);
+    if (!product) throw new ErrorHandler("Product not found", 404);
+
+    const updatedProduct = await Product.findByIdAndUpdate(
+      req.params.productId,
+      { $set: { badge: !product.badge } },
+      { new: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: `Badge ${updatedProduct.badge ? "enabled" : "disabled"} for product`,
+      badge: updatedProduct.badge,
+      productId: updatedProduct._id,
+    });
+  })
+);
 
 
 
