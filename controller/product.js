@@ -1524,6 +1524,29 @@ router.get(
           as: "variants",
         },
       });
+      // After your variants lookup
+      pipeline.push({
+        $lookup: {
+          from: "reviews",           // reviews collection
+          localField: "_id",         // product _id
+          foreignField: "productId", // review.productId
+          as: "reviewsDetails",      // array of full reviews
+        },
+      });
+
+      pipeline.push({
+        $addFields: {
+          avgRating: {
+            $cond: [
+              { $gt: [{ $size: "$reviewsDetails" }, 0] }, // if reviews exist
+              { $avg: "$reviewsDetails.rating" },        // compute avg
+              null                                      // else null
+            ]
+          }
+        }
+      });
+
+
 
       // Return useful fields and keep the full variants array (not single variant)
       pipeline.push({
@@ -1538,6 +1561,8 @@ router.get(
           score: 1,
           createdAt: 1,
           variants: 1,
+          reviews: "$reviewsDetails",
+          avgRating: 1,
         },
       });
 
