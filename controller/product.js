@@ -154,19 +154,35 @@ router.get(
       const products = await Product.find({ shopId: req.params.id })
         .sort({ createdAt: -1 })
         .populate("variants")
+        .populate("reviews", "rating") // 🔥 populate only rating
         .select(
-          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory badge",
-        );
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory reviews badge"
+        )
+        .lean();
+
+      const productsWithRatings = products.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        return {
+          ...product,
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
 
       res.status(200).json({
         success: true,
-        products,
+        products: productsWithRatings,
       });
     } catch (error) {
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message, 400));
     }
-  }),
+  })
 );
+
 
 router.get(
   "/getallproducts/outofstock/:id",
@@ -420,37 +436,56 @@ router.get(
   "/get-all-products-updated-random",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const products = await Product.find({
-        visibilityByAdmin: true,
-        visibilityBySeller: true,
-      })
-        // 🔥 random order at DB level
-        .sort({ _id: 1 }) // required for $natural fallback stability
-        .limit(10)
-        .populate("shopId", "name")
-        .populate({
+      const products = await Product.aggregate([
+        {
+          $match: {
+            visibilityByAdmin: true,
+            visibilityBySeller: true,
+          },
+        },
+        { $sample: { size: 10 } }, // ✅ true random selection
+      ]);
+
+      // Populate after aggregation
+      const populatedProducts = await Product.populate(products, [
+        { path: "shopId", select: "name" },
+        {
           path: "variants",
-          model: "ProductVariant",
           select:
             "thumbnail originalPrice discountPrice stock colorOption size bulkOrders badge",
-        })
-        .lean();
+        },
+        {
+          path: "reviews",
+          select: "rating",
+        },
+      ]);
 
-      // 🔁 Fisher–Yates shuffle (server-side, only 10 docs)
-      for (let i = products.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [products[i], products[j]] = [products[j], products[i]];
-      }
+      const finalProducts = populatedProducts.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        const { reviews, ...rest } = product;
+
+        return {
+          ...rest,
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
 
       res.status(200).json({
         success: true,
-        products,
+        products: finalProducts,
       });
+
     } catch (error) {
-      return next(new ErrorHandler(error, 400));
+      return next(new ErrorHandler(error.message, 400));
     }
   })
 );
+
 
 
 /* ------------------ PUBLIC: filtered product lists (by type) ------------------ */
@@ -633,23 +668,40 @@ router.get(
   isAuthenticated,
   hasPermission("AllProducts"),
   catchAsyncErrors(async (req, res, next) => {
+
     const products = await Product.find()
       .sort({ createdAt: -1 })
       .populate({
         path: "variants",
-        model: "ProductVariant",
         select: "thumbnail originalPrice discountPrice stock colorOption size",
       })
       .populate("shopId", "businessName")
+      .populate("reviews", "rating") // 🔥 populate review ratings
       .select(
-        "name variants createdAt commission sku visibilityByAdmin visibilityBySeller badge",
-      );
+        "name variants createdAt commission sku visibilityByAdmin visibilityBySeller badge reviews"
+      )
+      .lean();
 
-    res.status(201).json({
-      success: true,
-      products,
+    const productsWithRatings = products.map((product) => {
+
+      const avgRating =
+        product.reviews && product.reviews.length > 0
+          ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+            product.reviews.length
+          : 0;
+
+      return {
+        ...product,
+        avgRating: parseFloat(avgRating.toFixed(1)),
+      };
     });
-  }),
+
+    res.status(200).json({
+      success: true,
+      products: productsWithRatings,
+    });
+
+  })
 );
 
 /* ------------------ PUBLIC SEARCH (user portal) ------------------ */
@@ -761,12 +813,14 @@ router.get(
         return res.status(400).json({ message: "Invalid subCategoryId" });
       }
 
-      // populate variants & shopId; also try to populate manufacturer directly
       let products = await Product.find({
         subCategory: subCategoryId,
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
+        .select(
+          "name variants shopId manufacturer manufacturerName email phone origin reviews"
+        )
         .populate("shopId")
         .populate({
           path: "manufacturer",
@@ -774,84 +828,54 @@ router.get(
         })
         .populate({
           path: "variants",
-          select: "thumbnail originalPrice discountPrice stock colorOption size",
+          select:
+            "thumbnail originalPrice discountPrice stock colorOption size",
         })
+        .populate("reviews", "rating") // ✅ populate rating only
         .lean();
 
       if (!products || products.length === 0) {
         return res.status(200).json([]);
       }
 
-      // Collect any manufacturer ids that are still raw strings (in case some docs store string)
-      const remainingManufacturerIds = [
-        ...new Set(
-          products
-            .map((p) => p.manufacturer)
-            .filter(
-              (m) =>
-                m &&
-                typeof m === "string" &&
-                mongoose.isValidObjectId(m)
-            )
-        ),
-      ];
-
-      // Batch-fetch Manufacturer docs for those leftover ids (only when needed)
-      let manufacturerMap = {};
-      if (remainingManufacturerIds.length > 0) {
-        const Manufacturer = mongoose.model("Manufacturer");
-        const manufacturers = await Manufacturer.find(
-          { _id: { $in: remainingManufacturerIds } },
-          "manufacturerName email phone origin"
-        ).lean();
-
-        manufacturerMap = manufacturers.reduce((acc, m) => {
-          acc[m._id.toString()] = m;
-          return acc;
-        }, {});
-      }
-
-      // Normalize every product: ensure p.manufacturer is an object with manufacturerName
+      // ✅ Normalize manufacturer safely
       products = products.map((p) => {
-        // If manufacturer is an object (populated) => ok
-        if (p.manufacturer && typeof p.manufacturer === "object") {
-          return p;
-        }
-
-        // If manufacturer is a raw id string and we fetched it, replace with object
-        if (p.manufacturer && typeof p.manufacturer === "string") {
-          const found = manufacturerMap[p.manufacturer];
-          if (found) {
-            p.manufacturer = found;
-            return p;
-          }
-        }
-
-        // If no manufacturer object but top-level manufacturerName exists, inject a manufacturer object
-        if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
+        if (!p.manufacturer || typeof p.manufacturer !== "object") {
           p.manufacturer = {
-            manufacturerName: p.manufacturerName,
-            email: p.email || "",
-            phone: p.phone || "",
-            origin: p.origin || "",
+            manufacturerName: p.manufacturerName ?? "Unknown",
+            email: p.email ?? "",
+            phone: p.phone ?? "",
+            origin: p.origin ?? "",
             _id: null,
           };
-          return p;
-        }
-
-        // final fallback: if manufacturer is still an id or missing, set a safe placeholder
-        if (!p.manufacturer || typeof p.manufacturer !== "object") {
-          p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
         }
         return p;
       });
 
-      return res.status(200).json(products);
+      // ✅ Add avgRating per product
+      const finalProducts = products.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        const { reviews, ...rest } = product;
+
+        return {
+          ...rest,
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
+
+      return res.status(200).json(finalProducts);
+
     } catch (error) {
       next(error);
     }
   })
 );
+
 
 
 /* ------------------ PUBLIC: get-products-by-category (user) ------------------ */
@@ -864,12 +888,14 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       return res.status(400).json({ message: "Invalid CategoryId" });
     }
 
-    // Fetch products and try to populate manufacturer & variants
     let products = await Product.find({
       category: CategoryId,
       visibilityByAdmin: true,
       visibilityBySeller: true,
     })
+      .select(
+        "name variants shopId manufacturer manufacturerName email phone origin reviews createdAt"
+      )
       .populate("shopId")
       .populate({
         path: "manufacturer",
@@ -877,79 +903,50 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       })
       .populate({
         path: "variants",
-        select: "thumbnail originalPrice discountPrice stock colorOption size",
+        select:
+          "thumbnail originalPrice discountPrice stock colorOption size",
       })
+      .populate("reviews", "rating") // ✅ populate ratings
       .lean();
 
     if (!products || products.length === 0) {
       return res.status(200).json([]);
     }
 
-    // Collect any manufacturer values that are still raw ObjectId strings
-    const remainingManufacturerIds = [
-      ...new Set(
-        products
-          .map((p) => p.manufacturer)
-          .filter(
-            (m) => m && typeof m === "string" && mongoose.isValidObjectId(m)
-          )
-      ),
-    ];
-
-    // Batch-load Manufacturer docs for leftover ids (if any)
-    let manufacturerMap = {};
-    if (remainingManufacturerIds.length > 0) {
-      const Manufacturer = mongoose.model("Manufacturer");
-      const manufacturers = await Manufacturer.find(
-        { _id: { $in: remainingManufacturerIds } },
-        "manufacturerName email phone origin"
-      ).lean();
-
-      manufacturerMap = manufacturers.reduce((acc, m) => {
-        acc[m._id.toString()] = m;
-        return acc;
-      }, {});
-    }
-
-    // Normalize every product so `p.manufacturer` is always an object with manufacturerName
-    products = products.map((p) => {
-      // already populated object -> OK
-      if (p.manufacturer && typeof p.manufacturer === "object") return p;
-
-      // manufacturer is a raw id string and we fetched the doc -> replace it
-      if (p.manufacturer && typeof p.manufacturer === "string") {
-        const found = manufacturerMap[p.manufacturer];
-        if (found) {
-          p.manufacturer = found;
-          return p;
-        }
-      }
-
-      // fallback: if top-level manufacturerName exists, inject an object
-      if ((!p.manufacturer || p.manufacturer === null) && p.manufacturerName) {
-        p.manufacturer = {
-          manufacturerName: p.manufacturerName,
-          email: p.email || "",
-          phone: p.phone || "",
-          origin: p.origin || "",
+    const finalProducts = products.map((product) => {
+      // ✅ Normalize manufacturer safely
+      if (!product.manufacturer || typeof product.manufacturer !== "object") {
+        product.manufacturer = {
+          manufacturerName: product.manufacturerName ?? "Unknown",
+          email: product.email ?? "",
+          phone: product.phone ?? "",
+          origin: product.origin ?? "",
           _id: null,
         };
-        return p;
       }
 
-      // final fallback: ensure a predictable shape (avoid exposing raw id)
-      if (!p.manufacturer || typeof p.manufacturer !== "object") {
-        p.manufacturer = { manufacturerName: p.manufacturerName ?? "Unknown", _id: null };
-      }
+      // ✅ Calculate avg rating
+      const avgRating =
+        product.reviews && product.reviews.length > 0
+          ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+            product.reviews.length
+          : 0;
 
-      return p;
+      const { reviews, ...rest } = product;
+
+      return {
+        ...rest,
+        avgRating: parseFloat(avgRating.toFixed(1)),
+      };
     });
 
-    return res.status(200).json(products);
+    return res.status(200).json(finalProducts);
+
   } catch (error) {
     next(error);
   }
 });
+
 
 
 /* ------------------ PUBLIC: speciality package endpoints (user) ------------------ */
@@ -968,20 +965,39 @@ router.get(
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
+        .select("name variants shopId reviews createdAt")
         .populate("shopId")
         .populate({
           path: "variants",
           select:
             "thumbnail originalPrice discountPrice stock colorOption size",
         })
+        .populate("reviews", "rating") // ✅ get only rating
         .lean();
 
-      res.status(200).json(products);
+      const finalProducts = products.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        const { reviews, ...rest } = product;
+
+        return {
+          ...rest,
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
+
+      res.status(200).json(finalProducts);
+
     } catch (error) {
       next(error);
     }
-  }),
+  })
 );
+
 
 router.get(
   "/get-products-by-speciality-package-type/:specialityPackageTypeId",
@@ -1000,20 +1016,39 @@ router.get(
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
+        .select("name variants shopId reviews createdAt")
         .populate("shopId")
         .populate({
           path: "variants",
           select:
             "thumbnail originalPrice discountPrice stock colorOption size",
         })
+        .populate("reviews", "rating") // ✅ populate rating only
         .lean();
 
-      res.status(200).json(products);
+      const finalProducts = products.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        const { reviews, ...rest } = product;
+
+        return {
+          ...rest,
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
+
+      res.status(200).json(finalProducts);
+
     } catch (error) {
       next(error);
     }
-  }),
+  })
 );
+
 
 /* ------------------ UPLOAD / UPDATE helpers (admin/seller) ------------------ */
 router.put(
