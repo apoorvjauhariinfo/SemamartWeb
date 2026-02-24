@@ -103,8 +103,8 @@ router.post("/bulk-order", async (req, res) => {
 });
 
 router.get("/get-bulk-order", 
+  isAuthenticated,
   hasPermission("StockManagement"),
-    isAuthenticated,
   async (req, res) => {
   try {
     // Fetch all bulk orders and populate related fields

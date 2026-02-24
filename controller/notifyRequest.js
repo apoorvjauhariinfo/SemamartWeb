@@ -83,8 +83,8 @@ router.post("/add", async (req, res) => {
 
 // GET /api/notify-request
 router.get("/", 
-  hasPermission("StockManagement"),
-    isAuthenticated,
+  isAuthenticated,
+  hasPermission("StockManagement"), 
   async (req, res) => {
   try {
     const data = await NotifyRequest.find()

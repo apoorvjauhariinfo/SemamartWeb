@@ -356,8 +356,8 @@ router.get(
 
 router.get(
   "/get-out-of-stock-products",
-  hasPermission("StockManagement"),
   isAuthenticated,
+  hasPermission("StockManagement"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
@@ -389,8 +389,9 @@ router.get(
 
 router.get(
   "/get-low-stock-products",
-  hasPermission("StockManagement"),
   isAuthenticated,
+  hasPermission("StockManagement"),
+  
   catchAsyncErrors  (async (req, res, next) => {
     try {
       const products = await Product.find({
