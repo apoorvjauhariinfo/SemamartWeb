@@ -1481,8 +1481,11 @@ router.get(
 
       const pipeline = [];
 
-      // Build a single match object for optional filters (shopId, category)
-      const match = {};
+      // Build match object
+      const match = {
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      };
 
       if (shopId) {
         if (!mongoose.isValidObjectId(String(shopId))) {
@@ -1492,31 +1495,22 @@ router.get(
       }
 
       if (categoryParam) {
-        // categoryParam may be comma-separated list
-        const raw = String(categoryParam);
-        const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
+        const catIds = categoryParam
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((id) => {
+            if (!mongoose.isValidObjectId(id)) {
+              throw new ErrorHandler(`Invalid category id: ${id}`, 400);
+            }
+            return new mongoose.Types.ObjectId(id);
+          });
 
-        // convert to ObjectId array (validate)
-        const catIds = [];
-        for (const p of parts) {
-          if (!mongoose.isValidObjectId(p)) {
-            return next(new ErrorHandler(`Invalid category id: ${p}`, 400));
-          }
-          catIds.push(new mongoose.Types.ObjectId(p));
-        }
-
-        if (catIds.length === 1) {
-          // match if category array contains this id
-          match.category = catIds[0];
-        } else if (catIds.length > 1) {
-          // match if category array contains any of the ids
-          match.category = { $in: catIds };
-        }
+        match.category = catIds.length > 1 ? { $in: catIds } : catIds[0];
       }
 
-      if (Object.keys(match).length > 0) {
-        pipeline.push({ $match: match });
-      }
+      // Add match stage
+      pipeline.push({ $match: match });
 
       // Ensure missing fields treated as 0
       pipeline.push({
@@ -1538,53 +1532,59 @@ router.get(
         },
       });
 
-      // sort by score desc
+      // Sort by score descending
       pipeline.push({
-        $sort: {
-          score: -1,
-          totalOrderedQuantity: -1,
-          totalOrders: -1,
-        },
+        $sort: { score: -1, totalOrderedQuantity: -1, totalOrders: -1 },
       });
 
-      // pagination
+      // Pagination
       if (skip > 0) pipeline.push({ $skip: skip });
       pipeline.push({ $limit: limit });
 
-      // Populate variants array (keep it as an array)
+      // Lookup variants (return only useful fields)
       pipeline.push({
         $lookup: {
           from: "productvariants",
-          localField: "variants",
-          foreignField: "_id",
+          let: { variantIds: "$variants" },
+          pipeline: [
+            { $match: { $expr: { $in: ["$_id", "$$variantIds"] } } },
+            { $project: { size: 1, colorOption: 1, stock: 1, discountPrice: 1, originalPrice: 1, thumbnail: 1 } },
+          ],
           as: "variants",
         },
       });
-      // After your variants lookup
+
+      // Lookup reviews stats efficiently
       pipeline.push({
         $lookup: {
-          from: "reviews",           // reviews collection
-          localField: "_id",         // product _id
-          foreignField: "productId", // review.productId
-          as: "reviewsDetails",      // array of full reviews
+          from: "reviews",
+          let: { productId: "$_id" },
+          pipeline: [
+            { $match: { $expr: { $eq: ["$productId", "$$productId"] } } },
+            { $group: { _id: null, avgRating: { $avg: "$rating" }, totalReviews: { $sum: 1 } } },
+          ],
+          as: "reviewsStats",
         },
       });
 
       pipeline.push({
         $addFields: {
-          avgRating: {
-            $cond: [
-              { $gt: [{ $size: "$reviewsDetails" }, 0] }, // if reviews exist
-              { $avg: "$reviewsDetails.rating" },        // compute avg
-              null                                      // else null
-            ]
-          }
-        }
+          avgRating: { $arrayElemAt: ["$reviewsStats.avgRating", 0] },
+          totalReviews: { $arrayElemAt: ["$reviewsStats.totalReviews", 0] },
+        },
       });
 
+      // Optional: include full reviews if needed
+      pipeline.push({
+        $lookup: {
+          from: "reviews",
+          localField: "_id",
+          foreignField: "productId",
+          as: "reviews",
+        },
+      });
 
-
-      // Return useful fields and keep the full variants array (not single variant)
+      // Project useful fields
       pipeline.push({
         $project: {
           name: 1,
@@ -1597,8 +1597,9 @@ router.get(
           score: 1,
           createdAt: 1,
           variants: 1,
-          reviews: "$reviewsDetails",
+          reviews: 1,
           avgRating: 1,
+          totalReviews: 1,
           badge: 1,
         },
       });
