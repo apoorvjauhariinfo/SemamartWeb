@@ -34,5 +34,7 @@ const reviewSchema = new mongoose.Schema({
 
 // Each user can review the same order only once
 reviewSchema.index({ user: 1, orderId: 1 }, { unique: true });
+// Optimize product review pagination (newest first).
+reviewSchema.index({ productId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Review", reviewSchema);

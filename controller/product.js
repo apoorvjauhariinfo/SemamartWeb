@@ -565,7 +565,9 @@ router.get(
       const product = await Product.findOne({
         _id: id,
         visibilityBySeller: true,
-      }).populate("shopId variants manufacturer");
+      })
+        .select("-reviews")
+        .populate("shopId variants manufacturer");
 
       if (!product) return next(new ErrorHandler("Product not found", 404));
 
@@ -574,25 +576,26 @@ router.get(
       product.brand = product.brand || null;
 
       // 2️⃣ Fetch reviews for this product
-      const reviews = await Review.find({ _id: { $in: product.reviews } })
-        .populate("user", "name") // optional: populate user info
-        .select("rating comment images user")
-        .lean();
+      const reviewStats = await Review.aggregate([
+        { $match: { productId: new mongoose.Types.ObjectId(id) } },
+        {
+          $group: {
+            _id: null,
+            reviewsCount: { $sum: 1 },
+            avgRating: { $avg: "$rating" },
+          },
+        },
+      ]);
 
-      // 3️⃣ Calculate average rating
-      const avgRating =
-        reviews.length > 0
-          ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
-          : 0;
+      const reviewsCount = reviewStats?.[0]?.reviewsCount ?? 0;
+      const avgRatingRaw = reviewStats?.[0]?.avgRating ?? product.ratings ?? 0;
+      const avgRating = Number(Number(avgRatingRaw).toFixed(1));
 
-      // Round to 1 decimal
-      const roundedAvgRating = parseFloat(avgRating.toFixed(1));
-
-      // 4️⃣ Send response
       res.status(200).json({
         ...product.toObject(),
-        avgRating: roundedAvgRating,
-        reviews,
+        avgRating,
+        reviewsCount,
+        reviews: [],
       });
     } catch (error) {
       console.error(error);
@@ -602,6 +605,45 @@ router.get(
 );
 
 
+/* ------------------ PUBLIC: product reviews (paginated) ------------------ */
+router.get(
+  "/get-product-reviews/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    const { id } = req.params;
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "5", 10), 1), 20);
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const skip = (page - 1) * limit;
+
+    if (!mongoose.isValidObjectId(id)) {
+      return next(new ErrorHandler("Invalid product id", 400));
+    }
+
+    const [reviews, total] = await Promise.all([
+      Review.find({ productId: id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("user", "name firstName lastName")
+        .select("rating comment images user createdAt")
+        .lean(),
+      Review.countDocuments({ productId: id }),
+    ]);
+
+    const hasMore = skip + reviews.length < total;
+
+    res.status(200).json({
+      success: true,
+      reviews,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore,
+        nextPage: hasMore ? page + 1 : null,
+      },
+    });
+  })
+);
 /* ------------------ AUTH: create review (user) ------------------ */
 router.put(
   "/create-new-review",
@@ -1643,3 +1685,5 @@ router.put(
 
 
 module.exports = router;
+
+
