@@ -303,6 +303,142 @@ router.put(
   })
 );
 
+// Request email change (seller) - sends confirmation link to old email
+router.post(
+  "/request-email-change",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { newEmail } = req.body;
+      if (!newEmail) return next(new ErrorHandler("New email is required", 400));
+      if (!/\S+@\S+\.\S+/.test(newEmail)) {
+        return next(new ErrorHandler("Please provide a valid email", 400));
+      }
+
+      const seller = await Shop.findById(req.seller._id || req.seller.id);
+      if (!seller) return next(new ErrorHandler("Seller not found", 404));
+
+      const normalizedNewEmail = String(newEmail).trim().toLowerCase();
+      const currentEmail = String(seller.email || "").trim().toLowerCase();
+      if (normalizedNewEmail === currentEmail) {
+        return next(new ErrorHandler("New email cannot be same as current email", 400));
+      }
+
+      const existing = await Shop.findOne({ email: normalizedNewEmail });
+      if (existing) return next(new ErrorHandler("Email is already in use", 400));
+
+      const plainToken = crypto.randomBytes(24).toString("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(plainToken)
+        .digest("hex");
+
+      seller.pendingNewEmail = normalizedNewEmail;
+      seller.emailChangeToken = hashedToken;
+      seller.emailChangeTokenExpire = new Date(Date.now() + 60 * 60 * 1000);
+      await seller.save({ validateBeforeSave: false });
+
+      const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const confirmUrl = `${frontendBaseUrl}/auth/confirm-email-change/seller/${plainToken}`;
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Confirm your seller email change</h3>
+          <p>We received a request to change your Semamart seller email from <strong>${seller.email}</strong> to <strong>${normalizedNewEmail}</strong>.</p>
+          <p>If this was you, please confirm the change using the button below:</p>
+          <a href="${confirmUrl}" style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">Confirm Email Change</a>
+          <p style="margin-top:10px">This link will expire in 1 hour.</p>
+          <p>If you did not request this, you can ignore this email.</p>
+        </div>
+      `;
+
+      await sendMail({
+        email: seller.email,
+        subject: "Semamart Seller Email Change Confirmation",
+        html,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Confirmation link sent to your current email address.",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Confirm email change (seller) - link opens from old email inbox
+router.get(
+  "/confirm-email-change/:token",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { token } = req.params;
+      if (!token) return next(new ErrorHandler("Token is required", 400));
+
+      const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+      const seller = await Shop.findOne({
+        emailChangeToken: hashedToken,
+        emailChangeTokenExpire: { $gt: new Date() },
+      });
+
+      if (!seller || !seller.pendingNewEmail) {
+        return next(new ErrorHandler("Invalid or expired email change link", 400));
+      }
+
+      const oldEmail = seller.email;
+      const newEmail = String(seller.pendingNewEmail).trim().toLowerCase();
+
+      const collision = await Shop.findOne({
+        email: newEmail,
+        _id: { $ne: seller._id },
+      });
+      if (collision) return next(new ErrorHandler("New email is already in use", 400));
+
+      seller.email = newEmail;
+      seller.pendingNewEmail = undefined;
+      seller.emailChangeToken = undefined;
+      seller.emailChangeTokenExpire = undefined;
+      await seller.save();
+
+      const oldEmailHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Seller email changed successfully</h3>
+          <p>Your Semamart seller account email has been changed from <strong>${oldEmail}</strong> to <strong>${newEmail}</strong>.</p>
+          <p>If you did not perform this action, contact support immediately.</p>
+        </div>
+      `;
+      const newEmailHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Your new seller email is now active</h3>
+          <p>This email address (<strong>${newEmail}</strong>) is now linked to your Semamart seller account.</p>
+          <p>You can now use this email for login and account communication.</p>
+        </div>
+      `;
+
+      await Promise.all([
+        sendMail({
+          email: oldEmail,
+          subject: "Semamart Seller Email Changed",
+          html: oldEmailHtml,
+        }),
+        sendMail({
+          email: newEmail,
+          subject: "Semamart Seller Email Change Successful",
+          html: newEmailHtml,
+        }),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        message: "Email changed successfully.",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
 // Forgot password - send reset email (seller)
 router.post(
   "/forgot-password",

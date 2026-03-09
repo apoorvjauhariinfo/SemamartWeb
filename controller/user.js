@@ -415,7 +415,6 @@ router.patch(
       const allowed = [
         "firstName",
         "lastName",
-        "email",
         "phoneNumber",
         "instituteName",
         "name",
@@ -437,6 +436,144 @@ router.patch(
       await regenerateUserRegistrationPdf(user);
 
       res.status(200).json({ success: true, user });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Request email change (user) - sends confirmation link to old email
+router.post(
+  "/request-email-change",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { newEmail } = req.body;
+      if (!newEmail) return next(new ErrorHandler("New email is required", 400));
+      if (!/\S+@\S+\.\S+/.test(newEmail)) {
+        return next(new ErrorHandler("Please provide a valid email", 400));
+      }
+
+      const user = await User.findById(req.user._id || req.user.id);
+      if (!user) return next(new ErrorHandler("User not found", 404));
+
+      const normalizedNewEmail = String(newEmail).trim().toLowerCase();
+      const currentEmail = String(user.email || "").trim().toLowerCase();
+      if (normalizedNewEmail === currentEmail) {
+        return next(new ErrorHandler("New email cannot be same as current email", 400));
+      }
+
+      const existing = await User.findOne({ email: normalizedNewEmail });
+      if (existing) {
+        return next(new ErrorHandler("Email is already in use", 400));
+      }
+
+      const plainToken = crypto.randomBytes(24).toString("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(plainToken)
+        .digest("hex");
+
+      user.pendingNewEmail = normalizedNewEmail;
+      user.emailChangeToken = hashedToken;
+      user.emailChangeTokenExpire = new Date(Date.now() + 60 * 60 * 1000);
+      await user.save({ validateBeforeSave: false });
+
+      const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const confirmUrl = `${frontendBaseUrl}/auth/confirm-email-change/user/${plainToken}`;
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Confirm your email change</h3>
+          <p>We received a request to change your Semamart account email from <strong>${user.email}</strong> to <strong>${normalizedNewEmail}</strong>.</p>
+          <p>If this was you, please confirm the change using the button below:</p>
+          <a href="${confirmUrl}" style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">Confirm Email Change</a>
+          <p style="margin-top:10px">This link will expire in 1 hour.</p>
+          <p>If you did not request this, you can ignore this email.</p>
+        </div>
+      `;
+
+      await sendMail({
+        email: user.email,
+        subject: "Semamart Email Change Confirmation",
+        html,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Confirmation link sent to your current email address.",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Confirm email change (user) - link opens from old email inbox
+router.get(
+  "/confirm-email-change/:token",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { token } = req.params;
+      if (!token) return next(new ErrorHandler("Token is required", 400));
+
+      const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+      const user = await User.findOne({
+        emailChangeToken: hashedToken,
+        emailChangeTokenExpire: { $gt: new Date() },
+      });
+
+      if (!user || !user.pendingNewEmail) {
+        return next(new ErrorHandler("Invalid or expired email change link", 400));
+      }
+
+      const oldEmail = user.email;
+      const newEmail = String(user.pendingNewEmail).trim().toLowerCase();
+
+      const collision = await User.findOne({
+        email: newEmail,
+        _id: { $ne: user._id },
+      });
+      if (collision) return next(new ErrorHandler("New email is already in use", 400));
+
+      user.email = newEmail;
+      user.pendingNewEmail = undefined;
+      user.emailChangeToken = undefined;
+      user.emailChangeTokenExpire = undefined;
+      await user.save();
+
+      const oldEmailHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Email changed successfully</h3>
+          <p>Your Semamart account email has been changed from <strong>${oldEmail}</strong> to <strong>${newEmail}</strong>.</p>
+          <p>If you did not perform this action, contact support immediately.</p>
+        </div>
+      `;
+      const newEmailHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Your new email is now active</h3>
+          <p>This email address (<strong>${newEmail}</strong>) is now linked to your Semamart account.</p>
+          <p>You can now use this email for login and account communication.</p>
+        </div>
+      `;
+
+      await Promise.all([
+        sendMail({
+          email: oldEmail,
+          subject: "Semamart Email Changed",
+          html: oldEmailHtml,
+        }),
+        sendMail({
+          email: newEmail,
+          subject: "Semamart Email Change Successful",
+          html: newEmailHtml,
+        }),
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        message: "Email changed successfully.",
+      });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
