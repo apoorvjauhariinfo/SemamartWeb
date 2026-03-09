@@ -18,6 +18,7 @@ const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendNewSellerAdminVerifyEmail = require("../utils/emails/newSellerAdminVerify");
 const sendSelfVerifySellerEmail = require("../utils/emails/selfVerifySeller");
 const sendRegistrationCompleteSellerEmail = require("../utils/emails/registrationCompleteSeller");
+const crypto = require("crypto");
 
 // --- add this helper after your imports (generateSellerPdf is already imported) ---
 /**
@@ -295,6 +296,118 @@ router.put(
       res.status(200).json({
         success: true,
         message: "Password updated successfully!",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Forgot password - send reset email (seller)
+router.post(
+  "/forgot-password",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      if (!email) return next(new ErrorHandler("Email is required", 400));
+
+      const seller = await Shop.findOne({ email });
+      // Always return success-like message to avoid email enumeration
+      if (!seller) {
+        return res.status(200).json({
+          success: true,
+          message:
+            "If an account with this email exists, a reset link has been sent.",
+        });
+      }
+
+      const resetToken = crypto.randomBytes(20).toString("hex");
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(resetToken)
+        .digest("hex");
+
+      seller.resetPasswordToken = hashedToken;
+      seller.resetPasswordTime = Date.now() + 60 * 60 * 1000; // 1 hour
+      await seller.save({ validateBeforeSave: false });
+
+      const frontendBaseUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+      const resetUrl = `${frontendBaseUrl}/auth/reset-password/seller/${resetToken}`;
+
+      const messageHtml = `
+        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+          <h3>Reset your seller password</h3>
+          <p>If you requested a password reset, click the button below to set a new password. If you didn't request this, please ignore this email.</p>
+          <a href="${resetUrl}" style="display:inline-block;padding:10px 15px;background:#007bff;color:#fff;text-decoration:none;border-radius:5px;">
+            Reset Password
+          </a>
+          <p style="margin-top:10px">This link will expire in 1 hour.</p>
+        </div>
+      `;
+
+      try {
+        await sendMail({
+          email: seller.email,
+          subject: "Semamart Seller Password Reset",
+          html: messageHtml,
+        });
+      } catch (emailErr) {
+        seller.resetPasswordToken = undefined;
+        seller.resetPasswordTime = undefined;
+        await seller.save({ validateBeforeSave: false });
+        console.error("Failed to send seller reset email:", emailErr.message);
+        return next(new ErrorHandler("Failed to send reset email", 500));
+      }
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "If an account with this email exists, a reset link has been sent.",
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+// Reset password using token (seller)
+router.post(
+  "/reset-password",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { token, newPassword, confirmPassword } = req.body;
+      if (!token || !newPassword || !confirmPassword) {
+        return next(
+          new ErrorHandler("Token, newPassword and confirmPassword are required", 400)
+        );
+      }
+      if (newPassword !== confirmPassword) {
+        return next(new ErrorHandler("Passwords do not match", 400));
+      }
+
+      const hashedToken = crypto
+        .createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+      const seller = await Shop.findOne({
+        resetPasswordToken: hashedToken,
+        resetPasswordTime: { $gt: Date.now() },
+      }).select("+password");
+
+      if (!seller) {
+        return next(new ErrorHandler("Invalid or expired token", 400));
+      }
+
+      seller.password = newPassword;
+      seller.resetPasswordToken = undefined;
+      seller.resetPasswordTime = undefined;
+
+      await seller.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Password reset successful",
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));

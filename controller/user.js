@@ -631,7 +631,7 @@ router.post(
       // prepare reset URL
       const frontendBaseUrl =
         process.env.FRONTEND_URL || "http://localhost:5173";
-      const resetUrl = `${frontendBaseUrl}/auth/reset-password/${resetToken}`;
+      const resetUrl = `${frontendBaseUrl}/auth/reset-password/user/${resetToken}`;
 
       const messageHtml = `
         <div style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
@@ -675,11 +675,14 @@ router.post(
   "/reset-password",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const { token, newPassword } = req.body;
-      if (!token || !newPassword) {
+      const { token, newPassword, confirmPassword } = req.body;
+      if (!token || !newPassword || !confirmPassword) {
         return next(
-          new ErrorHandler("Token and newPassword are required", 400)
+          new ErrorHandler("Token, newPassword and confirmPassword are required", 400)
         );
+      }
+      if (newPassword !== confirmPassword) {
+        return next(new ErrorHandler("Passwords do not match", 400));
       }
 
       const hashedToken = crypto
