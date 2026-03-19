@@ -202,7 +202,7 @@ const productSchema = new mongoose.Schema(
       type: String, // TODO: make it a number ?
     },
     warranty: {
-      type: Number, // TODO:
+      type: String,
     },
     enableStockManagement: {
       type: Boolean,
