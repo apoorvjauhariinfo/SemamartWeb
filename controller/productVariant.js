@@ -32,6 +32,15 @@ router.post(
   uploadV2.single("thumbnail"),
   catchAsyncErrors(async (req, res) => {
     const { productId, ...a } = req.body;
+    // If `bulkOrders` is sent as a form field it will be a string (e.g. "[]" or "[{...}]").
+    // Parse it into an array so Mongoose receives the correct type.
+    if (a.bulkOrders && typeof a.bulkOrders === "string") {
+      try {
+        a.bulkOrders = JSON.parse(a.bulkOrders);
+      } catch (e) {
+        // ignore parse errors and leave as-is; validation will catch invalid shapes
+      }
+    }
     const product = await Product.findById(productId);
     if (!product) throw new ErrorHandler("Product not found", 404);
 
@@ -81,7 +90,13 @@ router.put(
       variant.thumbnail = req.file.filename;
     }
 
-    req.body.bulkOrders = JSON.parse(req.body.bulkOrders);
+    if (req.body.bulkOrders && typeof req.body.bulkOrders === "string") {
+      try {
+        req.body.bulkOrders = JSON.parse(req.body.bulkOrders);
+      } catch (e) {
+        // leave as-is; validation will handle incorrect shapes
+      }
+    }
 
     Object.keys(req.body).forEach((k) => {
       variant[k] = req.body[k];
