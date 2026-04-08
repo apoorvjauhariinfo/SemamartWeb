@@ -4,7 +4,7 @@ const mongoose = require("mongoose");
 const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
-const { isAuthenticated, isSeller, isAdmin,hasPermission } = require("../middleware/auth");
+const { isAuthenticated, isSeller, isAdmin,hasPermission, hasSellerPermission } = require("../middleware/auth");
 const Order = require("../model/order");
 const CheckoutSession = require("../model/checkoutSession");
 const Shop = require("../model/shop");
@@ -916,6 +916,7 @@ router.get(
 router.put(
   "/update-order-status/:id",
   isSeller,
+  hasSellerPermission("AllOrders"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const order = await Order.findById(req.params.id).populate("variant");
@@ -997,6 +998,7 @@ router.put(
 router.put(
   "/order-refund-success/:id",
   isSeller,
+  hasSellerPermission("AllOrders"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const order = await Order.findById(req.params.id)

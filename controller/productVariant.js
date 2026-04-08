@@ -26,6 +26,21 @@ const getMinQty = (product) => {
   }
 };
 
+const toFiniteNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeBulkOrders = (bulkOrders) => {
+  if (!Array.isArray(bulkOrders)) return [];
+  return bulkOrders
+    .map((order) => ({
+      qty: toFiniteNumber(order?.qty, 0),
+      price: toFiniteNumber(order?.price, 0),
+    }))
+    .filter((order) => order.qty > 0 && order.price > 0);
+};
+
 router.post(
   "/post-variant",
   isSeller,
@@ -44,14 +59,43 @@ router.post(
     const product = await Product.findById(productId);
     if (!product) throw new ErrorHandler("Product not found", 404);
 
+    const fallbackCommission = toFiniteNumber(product.commission, 0);
+    const nextCommission = toFiniteNumber(
+      a.commission ?? fallbackCommission,
+      fallbackCommission,
+    );
+    const nextVariantPayload = {
+      ...a,
+      originalPrice: toFiniteNumber(a.originalPrice, 0),
+      discountPrice:
+        a.discountPrice === undefined || a.discountPrice === null || a.discountPrice === ""
+          ? undefined
+          : toFiniteNumber(a.discountPrice, 0),
+      stock: toFiniteNumber(a.stock, 0),
+      commission: nextCommission,
+      bulkOrders: normalizeBulkOrders(a.bulkOrders),
+    };
+
     if (req.file) {
       const variant = await ProductVariant.create({
-        ...a,
+        ...nextVariantPayload,
         productId: product._id,
         thumbnail: req.file.filename,
       });
 
       product.variants.push(variant);
+      if (product.variants.length === 1 || !Number.isFinite(Number(product.commission))) {
+        product.commission = variant.commission;
+      }
+      product.commissionHistory = Array.isArray(product.commissionHistory)
+        ? product.commissionHistory
+        : [];
+      if (!product.commissionHistory.length) {
+        product.commissionHistory.push({
+          commission: product.commission,
+          updatedAt: new Date(),
+        });
+      }
       await product.save();
       res.status(201).json({ success: true });
       return;
@@ -66,13 +110,14 @@ router.put(
   uploadV2.single("thumbnail"),
   catchAsyncErrors(async (req, res) => {
     const { variantId } = req.params;
-    const variant =
-      await ProductVariant.findById(variantId).populate("productId");
-
-    const oldStock = variant.stock;
-
+    const variant = await ProductVariant.findById(variantId).populate("productId");
     if (!variant) throw new ErrorHandler("Not found", 404);
-    if (variant.productId.shopId.toString() !== req.seller._id.toString())
+    const oldStock = toFiniteNumber(variant.stock, 0);
+    if (
+      !variant.productId ||
+      !variant.productId.shopId ||
+      variant.productId.shopId.toString() !== req.seller._id.toString()
+    )
       throw new ErrorHandler("Not authorised", 401);
 
     if (req.file) {
@@ -98,9 +143,36 @@ router.put(
       }
     }
 
+    const incomingCommission =
+      req.body.commission === undefined || req.body.commission === ""
+        ? undefined
+        : toFiniteNumber(req.body.commission, toFiniteNumber(variant.commission, 0));
+
     Object.keys(req.body).forEach((k) => {
+      if (k === "commission") return;
+      if (k === "originalPrice" || k === "discountPrice" || k === "stock") {
+        variant[k] = toFiniteNumber(req.body[k], variant[k]);
+        return;
+      }
+      if (k === "bulkOrders" && Array.isArray(req.body.bulkOrders)) {
+        variant.bulkOrders = normalizeBulkOrders(req.body.bulkOrders);
+        return;
+      }
       variant[k] = req.body[k];
     });
+
+    if (incomingCommission !== undefined) {
+      if (!Array.isArray(variant.commissionHistory)) {
+        variant.commissionHistory = [];
+      }
+      if (toFiniteNumber(variant.commission, 0) !== incomingCommission) {
+        variant.commissionHistory.push({
+          commission: incomingCommission,
+          updatedAt: new Date(),
+        });
+      }
+      variant.commission = incomingCommission;
+    }
 
     await variant.save();
     const newStock = variant.stock;

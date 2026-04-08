@@ -12,13 +12,57 @@ const ErrorHandler = require("../utils/ErrorHandler");
 const mongoose = require("mongoose");
 const generateSellerPdf = require("../utils/generateSellerPdf");
 const sendShopToken = require("../utils/shopToken");
-const user = require("../model/user");
+const User = require("../model/user");
 const addActivityLog = require("../utils/activityLogHelper");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendNewSellerAdminVerifyEmail = require("../utils/emails/newSellerAdminVerify");
 const sendSelfVerifySellerEmail = require("../utils/emails/selfVerifySeller");
 const sendRegistrationCompleteSellerEmail = require("../utils/emails/registrationCompleteSeller");
 const crypto = require("crypto");
+
+const SELLER_MEMBER_ROLE = "SellerMember";
+const SELLER_MEMBER_PERMISSION_KEYS = [
+  "Dashboard",
+  "MyAccount",
+  "AddProduct",
+  "AllProducts",
+  "AllOrders",
+  "AllSales",
+  "Support",
+  "StockManagement",
+  "ManageMembers",
+  "MyShop",
+];
+
+function normalizeSellerMemberPermissions(permissions) {
+  const normalized = {};
+  for (const key of SELLER_MEMBER_PERMISSION_KEYS) {
+    normalized[key] = Boolean(permissions && permissions[key]);
+  }
+  return normalized;
+}
+
+function buildSellerResponse(seller, memberUser = null) {
+  const baseSeller = seller.toObject ? seller.toObject() : seller;
+
+  return {
+    ...baseSeller,
+    memberContext: memberUser
+      ? {
+          memberId: memberUser._id,
+          isSubMember: true,
+          permissions: memberUser.permissions || {},
+          email: memberUser.email,
+          firstName: memberUser.firstName,
+          lastName: memberUser.lastName,
+        }
+      : {
+          memberId: seller._id,
+          isSubMember: false,
+          permissions: {},
+        },
+  };
+}
 
 // --- add this helper after your imports (generateSellerPdf is already imported) ---
 /**
@@ -660,10 +704,22 @@ router.post(
         return next(new ErrorHandler("Please provide the all fields!", 400));
       }
 
-      const user = await Shop.findOne({ email }).select("+password");
+      let user = await Shop.findOne({ email }).select("+password");
+      let memberUser = null;
+      let responseSeller = null;
 
       if (!user) {
-        return next(new ErrorHandler("User doesn't exists!", 400));
+        memberUser = await User.findOne({
+          email,
+          accountType: "member",
+          memberScope: "seller",
+        }).select("+password");
+
+        if (!memberUser) {
+          return next(new ErrorHandler("User doesn't exists!", 400));
+        }
+
+        user = memberUser;
       }
 
       if (!user.verified) {
@@ -678,7 +734,17 @@ router.post(
         );
       }
 
-      sendShopToken(user, 200, res);
+      if (memberUser) {
+        const parentSeller = await Shop.findById(memberUser.parentSeller);
+        if (!parentSeller) {
+          return next(new ErrorHandler("Seller account is unavailable", 404));
+        }
+
+        responseSeller = buildSellerResponse(parentSeller, memberUser);
+        return sendShopToken(memberUser, 200, res, responseSeller);
+      }
+
+      sendShopToken(user, 200, res, buildSellerResponse(user));
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -699,7 +765,167 @@ router.get(
 
       res.status(200).json({
         success: true,
-        seller,
+        seller: buildSellerResponse(seller, req.authSeller?._id?.toString() !== seller._id.toString() ? req.authSeller : null),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.get(
+  "/members",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.seller.memberContext?.isSubMember) {
+        return next(new ErrorHandler("Only the main seller can manage members", 403));
+      }
+
+      const members = await User.find({
+        parentSeller: req.seller._id,
+        memberScope: "seller",
+        accountType: "member",
+      }).sort({ createdAt: -1 });
+
+      res.status(200).json({
+        success: true,
+        members,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.post(
+  "/members",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.seller.memberContext?.isSubMember) {
+        return next(new ErrorHandler("Only the main seller can create members", 403));
+      }
+
+      const { firstName, lastName, email, password, permissions = {}, phoneNumber = "" } = req.body;
+      if (!firstName || !lastName || !email || !password) {
+        return next(new ErrorHandler("First name, last name, email and password are required", 400));
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const existing = await User.findOne({ email: normalizedEmail });
+      if (existing) {
+        return next(new ErrorHandler("Email already exists", 400));
+      }
+
+      const member = await User.create({
+        firstName,
+        lastName,
+        email: normalizedEmail,
+        password,
+        phoneNumber,
+        role: SELLER_MEMBER_ROLE,
+        accountType: "member",
+        isSubMember: true,
+        memberScope: "seller",
+        parentSeller: req.seller._id,
+        createdBy: req.seller._id,
+        permissions: normalizeSellerMemberPermissions(permissions),
+        isVerified: true,
+      });
+
+      res.status(201).json({
+        success: true,
+        member,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.put(
+  "/members/:id",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.seller.memberContext?.isSubMember) {
+        return next(new ErrorHandler("Only the main seller can update members", 403));
+      }
+
+      const member = await User.findOne({
+        _id: req.params.id,
+        parentSeller: req.seller._id,
+        memberScope: "seller",
+        accountType: "member",
+      });
+
+      if (!member) {
+        return next(new ErrorHandler("Member not found", 404));
+      }
+
+      const updatableFields = ["firstName", "lastName", "email", "phoneNumber"];
+      for (const field of updatableFields) {
+        if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+          if (field === "email") {
+            const nextEmail = String(req.body[field]).trim().toLowerCase();
+            const existing = await User.findOne({
+              email: nextEmail,
+              _id: { $ne: member._id },
+            });
+            if (existing) {
+              return next(new ErrorHandler("Email already exists", 400));
+            }
+            member.email = nextEmail;
+          } else {
+            member[field] = req.body[field];
+          }
+        }
+      }
+
+      if (req.body.password) {
+        member.password = req.body.password;
+      }
+
+      if (req.body.permissions) {
+        member.permissions = normalizeSellerMemberPermissions(req.body.permissions);
+      }
+
+      await member.save();
+
+      res.status(200).json({
+        success: true,
+        member,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.delete(
+  "/members/:id",
+  isSeller,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.seller.memberContext?.isSubMember) {
+        return next(new ErrorHandler("Only the main seller can delete members", 403));
+      }
+
+      const member = await User.findOneAndDelete({
+        _id: req.params.id,
+        parentSeller: req.seller._id,
+        memberScope: "seller",
+        accountType: "member",
+      });
+
+      if (!member) {
+        return next(new ErrorHandler("Member not found", 404));
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Member deleted successfully",
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -753,6 +979,10 @@ router.put(
   uploadV2.single("image"),
   catchAsyncErrors(async (req, res, next) => {
     try {
+      if (req.sellerAuthSource !== "seller-token") {
+        return next(new ErrorHandler("Only the main seller can update shop details", 403));
+      }
+
       const existsUser = await Shop.findById(req.seller._id);
 
       const existAvatarPath = `uploads/images/${existsUser.avatar}`;
@@ -803,6 +1033,10 @@ router.put(
   isSeller,
   catchAsyncErrors(async (req, res, next) => {
     const { name, description, address, phoneNumber, zipCode } = req.body;
+
+    if (req.sellerAuthSource !== "seller-token") {
+      return next(new ErrorHandler("Only the main seller can update shop details", 403));
+    }
 
     const shop = await Shop.findOne(req.seller._id);
 

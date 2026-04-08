@@ -28,6 +28,14 @@ const variantSchema = new mongoose.Schema({
   discountPrice: {
     type: Number,
   },
+  commission: {
+    type: Number,
+    default: 0,
+  },
+  commissionHistory: {
+    type: [commisionHistorySchema],
+    default: [],
+  },
   stock: {
     type: Number,
     required: [true, "Please enter your product stock!"],
@@ -38,6 +46,14 @@ const variantSchema = new mongoose.Schema({
       price: { type: Number, required: true },
     },
   ],
+  commission: {
+    type: Number,
+    default: null,
+  },
+  commissionHistory: {
+    type: [commisionHistorySchema],
+    default: [],
+  },
 });
 
 const productSchema = new mongoose.Schema(
@@ -326,6 +342,7 @@ const productSchema = new mongoose.Schema(
     },
     commissionHistory: {
       type: [commisionHistorySchema],
+      default: [],
     },
     visibilityByAdmin: {
       type: Boolean,

@@ -1,6 +1,6 @@
 // backend/controller/product.js
 const express = require("express");
-const { isSeller, isAuthenticated, isAdmin, hasPermission } = require("../middleware/auth");
+const { isSeller, isAuthenticated, isAdmin, hasPermission, hasSellerPermission } = require("../middleware/auth");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
@@ -17,8 +17,82 @@ const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
 const Review = require("../model/review");
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getVariantCommissionValue(variant, productCommission = null) {
+  const variantCommission = toNumberOrNull(variant?.commission);
+  if (variantCommission !== null) return variantCommission;
+
+  const fallbackCommission = toNumberOrNull(productCommission);
+  return fallbackCommission !== null ? fallbackCommission : 0;
+}
+
+function withNormalizedVariantCommission(variant, productCommission = null) {
+  if (!variant) return variant;
+
+  if (variant.toObject) {
+    return {
+      ...variant.toObject(),
+      commission: getVariantCommissionValue(variant, productCommission),
+    };
+  }
+
+  return {
+    ...variant,
+    commission: getVariantCommissionValue(variant, productCommission),
+  };
+}
+
+const VARIANT_LIST_SELECT =
+  "thumbnail originalPrice discountPrice stock colorOption size commission bulkOrders";
+
+const toFiniteNumber = (value, fallback = 0) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const normalizeBulkOrders = (bulkOrders) => {
+  if (!Array.isArray(bulkOrders)) return [];
+
+  return bulkOrders
+    .map((bulk) => ({
+      qty: toFiniteNumber(bulk?.qty, 0),
+      price: toFiniteNumber(bulk?.price, 0),
+    }))
+    .filter((bulk) => bulk.qty > 0 && bulk.price > 0);
+};
+
+const normalizeVariantPayload = (variant, fallbackCommission = 0) => {
+  const commission =
+    variant?.commission === undefined || variant?.commission === null || variant?.commission === ""
+      ? fallbackCommission
+      : toFiniteNumber(variant.commission, fallbackCommission);
+
+  return {
+    ...variant,
+    size: variant?.size ?? null,
+    colorOption: variant?.colorOption ?? null,
+    originalPrice: toFiniteNumber(variant?.originalPrice, 0),
+    discountPrice:
+      variant?.discountPrice === undefined ||
+      variant?.discountPrice === null ||
+      variant?.discountPrice === ""
+        ? undefined
+        : toFiniteNumber(variant.discountPrice, 0),
+    stock: toFiniteNumber(variant?.stock, 0),
+    commission,
+    bulkOrders: normalizeBulkOrders(variant?.bulkOrders),
+  };
+};
+
 router.post(
   "/create-product-v2",
+  isSeller,
+  hasSellerPermission("AddProduct"),
   uploadV2.fields([
     { name: "images", maxCount: 5 },
     { name: "thumbnail" },
@@ -63,7 +137,11 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    const variants = JSON.parse(product.variants);
+    const parsedVariants = JSON.parse(product.variants);
+    const fallbackCommission = toFiniteNumber(product.commission, 0);
+    const variants = parsedVariants.map((variant) =>
+      normalizeVariantPayload(variant, fallbackCommission),
+    );
 
     product.variants = []; // will be set after creating variant docs
 
@@ -117,10 +195,24 @@ router.post(
     const savedProduct = await Product.create(product);
 
     const savedVariants = await ProductVariant.insertMany(
-      variants.map((v) => ({ ...v, productId: savedProduct._id })),
+      variants.map((v) => {
+        const commission = getVariantCommissionValue(v, savedProduct.commission);
+        return {
+          ...v,
+          productId: savedProduct._id,
+          commission,
+          commissionHistory: [
+            {
+              commission,
+              updatedAt: new Date(),
+            },
+          ],
+        };
+      }),
     );
 
     savedProduct.variants = savedVariants.map((v) => v._id);
+    savedProduct.commission = savedVariants[0]?.commission ?? savedProduct.commission;
 
     // initial commission history
     savedProduct.commissionHistory = [
@@ -169,6 +261,11 @@ router.get(
 
         return {
           ...product,
+          variants: Array.isArray(product.variants)
+            ? product.variants.map((variant) =>
+                withNormalizedVariantCommission(variant, product.commission),
+              )
+            : [],
           avgRating: parseFloat(avgRating.toFixed(1)),
         };
       });
@@ -193,8 +290,7 @@ router.get(
         .populate({
           path: "variants",
           match: { stock: 0 },
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .select(
           "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory"
@@ -223,7 +319,7 @@ router.get(
         .sort({ createdAt: -1 })
         .populate({
           path: "variants",
-          select: "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .select(
           "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory minmaxrule"
@@ -262,6 +358,7 @@ router.get(
 router.delete(
   "/delete-shop-product/:id",
   isSeller,
+  hasSellerPermission("AllProducts"),
   catchAsyncErrors(async (req, res, next) => {
     try {
       const productId = req.params.id;
@@ -303,15 +400,14 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
-        visibilityByAdmin: true,
+         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
         .populate("shopId", "name")
         .populate({
           path: "variants",
           model: "ProductVariant",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .sort({ createdAt: -1 });
 
@@ -339,8 +435,7 @@ router.get(
         .populate({
           path: "variants",
           model: "ProductVariant",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .sort({ createdAt: -1 });
 
@@ -367,8 +462,7 @@ router.get(
         .populate("shopId", "businessName")
         .populate({
           path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .sort({ createdAt: -1 });
 
@@ -401,8 +495,7 @@ router.get(
         .populate("shopId", "businessName")
         .populate({
           path: "variants",
-          select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+          select: VARIANT_LIST_SELECT,
         })
         .sort({ createdAt: -1 });
 
@@ -453,7 +546,7 @@ router.get(
         {
           path: "variants",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size bulkOrders badge",
+            "thumbnail originalPrice discountPrice stock colorOption size commission bulkOrders badge",
         },
         {
           path: "reviews",
@@ -574,6 +667,12 @@ router.get(
       // Ensure attributes exist (defensive)
       product.attributes = product.attributes || [];
       product.brand = product.brand || null;
+      const normalizedProduct = product.toObject();
+      normalizedProduct.variants = Array.isArray(normalizedProduct.variants)
+        ? normalizedProduct.variants.map((variant) =>
+            withNormalizedVariantCommission(variant, normalizedProduct.commission),
+          )
+        : [];
 
       // 2️⃣ Fetch reviews for this product
       const reviewStats = await Review.aggregate([
@@ -592,7 +691,7 @@ router.get(
       const avgRating = Number(Number(avgRatingRaw).toFixed(1));
 
       res.status(200).json({
-        ...product.toObject(),
+        ...normalizedProduct,
         avgRating,
         reviewsCount,
         reviews: [],
@@ -716,7 +815,7 @@ router.get(
       .sort({ createdAt: -1 })
       .populate({
         path: "variants",
-        select: "thumbnail originalPrice discountPrice stock colorOption size",
+        select: VARIANT_LIST_SELECT,
       })
       .populate("shopId", "businessName")
       .populate("reviews", "rating") // 🔥 populate review ratings
@@ -771,7 +870,7 @@ router.get(
       .populate({
         path: "variants",
         model: "ProductVariant",
-        select: "thumbnail originalPrice discountPrice stock colorOption size",
+        select: VARIANT_LIST_SELECT,
       })
       .lean();
 
@@ -872,7 +971,7 @@ router.get(
         .populate({
           path: "variants",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+            VARIANT_LIST_SELECT,
         })
         .populate("reviews", "rating") // ✅ populate rating only
         .lean();
@@ -947,7 +1046,7 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       .populate({
         path: "variants",
         select:
-          "thumbnail originalPrice discountPrice stock colorOption size",
+          VARIANT_LIST_SELECT,
       })
       .populate("reviews", "rating") // ✅ populate ratings
       .lean();
@@ -1013,7 +1112,7 @@ router.get(
         .populate({
           path: "variants",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+            VARIANT_LIST_SELECT,
         })
         .populate("reviews", "rating") // ✅ get only rating
         .lean();
@@ -1064,7 +1163,7 @@ router.get(
         .populate({
           path: "variants",
           select:
-            "thumbnail originalPrice discountPrice stock colorOption size",
+            VARIANT_LIST_SELECT,
         })
         .populate("reviews", "rating") // ✅ populate rating only
         .lean();
@@ -1097,6 +1196,7 @@ router.get(
 router.put(
   "/upload-doc/:productId",
   isSeller,
+  hasSellerPermission("AllProducts"),
   uploadV2.single("file"),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
@@ -1161,6 +1261,8 @@ router.put(
 
 router.put(
   "/upload-image/:productId",
+  isSeller,
+  hasSellerPermission("AllProducts"),
   uploadV2.single("images"),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
@@ -1214,6 +1316,7 @@ router.put(
 router.put(
   "/update-product/:productId",
   isSeller,
+  hasSellerPermission("AllProducts"),
   uploadV2.none(),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
@@ -1255,24 +1358,51 @@ router.put(
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const product = await Product.findById(req.params.productId).populate("shopId");
+    const product = await Product.findById(req.params.productId)
+      .populate("shopId")
+      .populate("variants");
     if (!product) throw new ErrorHandler("Product not found", 404);
     if (!product.shopId) throw new ErrorHandler("Product shop not found", 404);
-    if (!req.body.commission)
+    if (req.body.commission === undefined || req.body.commission === null || req.body.commission === "")
       throw new ErrorHandler("Commission is required", 403);
+
+    const nextCommission = toFiniteNumber(req.body.commission, product.commission);
+    const previousCommission = toFiniteNumber(product.commission, 0);
+    product.commissionHistory = Array.isArray(product.commissionHistory)
+      ? product.commissionHistory
+      : [];
 
     const metaData = {
       commission: {
-        oldValue: product.commission,
-        newValue: req.body.commission,
+        oldValue: previousCommission,
+        newValue: nextCommission,
       },
     };
 
-    product.commission = req.body.commission;
+    product.commission = nextCommission;
     product.commissionHistory.push({
-      commission: req.body.commission,
+      commission: nextCommission,
       updatedAt: new Date(),
     });
+
+    if (Array.isArray(product.variants) && product.variants.length > 0) {
+      await Promise.all(
+        product.variants.map(async (variant) => {
+          if (!variant) return;
+          variant.commissionHistory = Array.isArray(variant.commissionHistory)
+            ? variant.commissionHistory
+            : [];
+          if (toFiniteNumber(variant.commission, 0) !== nextCommission) {
+            variant.commissionHistory.push({
+              commission: nextCommission,
+              updatedAt: new Date(),
+            });
+          }
+          variant.commission = nextCommission;
+          await variant.save();
+        }),
+      );
+    }
 
     await addActivityLog({
       userId: req.user._id,
@@ -1327,7 +1457,7 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
       .populate("shopId")
       .populate({
         path: "variants",
-        select: "thumbnail originalPrice discountPrice stock colorOption size",
+        select: VARIANT_LIST_SELECT,
       })
       .lean();
 

@@ -106,10 +106,37 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-
   permissions: {
     type: Object,
     default: {},
+  },
+  memberScope: {
+    type: String,
+    enum: ["admin", "user", "seller", null],
+    default: null,
+  },
+  parentUser: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    default: null,
+  },
+  parentSeller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Shop",
+    default: null,
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null,
+  },
+  accountType: {
+    type: String,
+    enum: ["main", "member"],
+    default: "main",
+  },
+  isSubMember: {
+    type: Boolean,
+    default: false,
   },
   avatar: {
     type: String,

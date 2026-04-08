@@ -56,6 +56,53 @@ async function regenerateUserRegistrationPdf(user) {
   }
 }
 
+function getAccountOwnerId(user) {
+  if (!user) return null;
+  if (user.parentUser) {
+    return String(user.parentUser._id || user.parentUser);
+  }
+  return String(user._id);
+}
+
+async function getAccountRootUser(user) {
+  if (!user) return null;
+
+  const parentId = user.parentUser?._id || user.parentUser;
+  if (parentId) {
+    const parent = await User.findById(parentId);
+    if (parent) return parent;
+  }
+
+  return user;
+}
+
+function buildUserResponse(user, authUser) {
+  const baseUser = user.toObject ? user.toObject() : user;
+  const memberUser = authUser && String(authUser._id) !== String(user._id) ? authUser : null;
+
+  return {
+    ...baseUser,
+    parentUser: memberUser ? baseUser._id : baseUser.parentUser || null,
+    accountType: memberUser ? "member" : baseUser.accountType || "main",
+    memberContext: memberUser
+      ? {
+          memberId: memberUser._id,
+          memberScope: memberUser.memberScope,
+          isSubMember: true,
+          email: memberUser.email,
+          firstName: memberUser.firstName,
+          lastName: memberUser.lastName,
+          permissions: memberUser.permissions || {},
+        }
+      : {
+          memberId: user._id,
+          memberScope: user.memberScope || null,
+          isSubMember: false,
+          permissions: user.permissions || {},
+        },
+  };
+}
+
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
@@ -260,6 +307,33 @@ router.post(
       if (!isPasswordValid) {
         return next(new ErrorHandler("User Details Mismatched", 400));
       }
+      if (
+        user.accountType === "member" &&
+        user.memberScope === "user" &&
+        user.parentUser
+      ) {
+        const parentUser = await User.findById(user.parentUser);
+        if (!parentUser) {
+          return next(new ErrorHandler("Parent user account not found", 404));
+        }
+
+        const responseUser = buildUserResponse(parentUser, user);
+        const token = user.getJwtToken();
+        return res
+          .status(201)
+          .cookie("token", token, {
+            expires: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+            httpOnly: true,
+            sameSite: "none",
+            secure: true,
+          })
+          .json({
+            success: true,
+            user: responseUser,
+            token,
+          });
+      }
+
       sendToken(user, 201, res);
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -280,7 +354,7 @@ router.get(
       }
       res.status(200).json({
         success: true,
-        user,
+        user: buildUserResponse(user, req.authUser),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -294,7 +368,10 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const users = await User.find({
-        role: { $nin: ["user", "seller", "Admin"] }
+        role: { $nin: ["user", "seller", "Admin"] },
+        parentUser: null,
+        parentSeller: null,
+        memberScope: { $in: [null, "admin"] },
       });
 
       if (!users || users.length === 0) {
@@ -436,6 +513,117 @@ router.patch(
       await regenerateUserRegistrationPdf(user);
 
       res.status(200).json({ success: true, user });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.get(
+  "/members",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const rootUser = await getAccountRootUser(req.user);
+      if (!rootUser) {
+        return next(new ErrorHandler("User not found", 404));
+      }
+
+      const members = await User.find({
+        $or: [
+          { _id: rootUser._id },
+          { parentUser: rootUser._id },
+        ],
+      })
+        .select("-password")
+        .populate("parentUser", "firstName lastName email phoneNumber instituteName accountType");
+
+      res.status(200).json({
+        success: true,
+        accountOwnerId: String(rootUser._id),
+        members,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.post(
+  "/members",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.user.parentUser) {
+        return next(new ErrorHandler("Only the primary account can add members", 403));
+      }
+
+      const { firstName, lastName, email, password, phoneNumber } = req.body;
+
+      if (!firstName || !lastName || !email || !password) {
+        return next(new ErrorHandler("Please provide all required fields", 400));
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const existing = await User.findOne({ email: normalizedEmail });
+      if (existing) {
+        return next(new ErrorHandler("User already exists", 400));
+      }
+
+      const member = await User.create({
+        firstName,
+        lastName,
+        email: normalizedEmail,
+        password,
+        phoneNumber,
+        role: "user",
+        isVerified: true,
+        parentUser: req.user._id,
+        accountType: "member",
+        instituteName: req.user.instituteName,
+        gstNumber: req.user.gstNumber,
+        addresses: [],
+      });
+
+      const safeMember = await User.findById(member._id)
+        .select("-password")
+        .populate("parentUser", "firstName lastName email phoneNumber instituteName accountType");
+
+      res.status(201).json({
+        success: true,
+        member: safeMember,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  })
+);
+
+router.delete(
+  "/members/:id",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      if (req.user.parentUser) {
+        return next(new ErrorHandler("Only the primary account can remove members", 403));
+      }
+
+      const member = await User.findOne({
+        _id: req.params.id,
+        parentUser: req.user._id,
+        accountType: "member",
+      });
+
+      if (!member) {
+        return next(new ErrorHandler("Member not found", 404));
+      }
+
+      await User.deleteOne({ _id: member._id });
+
+      return res.status(200).json({
+        success: true,
+        message: "Member removed successfully",
+      });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -891,6 +1079,7 @@ router.post("/registerStaff",  async (req, res) => {
       email: email.toLowerCase(),
       password,
       role,
+      memberScope: "admin",
       permissions: permissions || {},
       isVerified: true, // optional
     });
@@ -938,6 +1127,7 @@ router.put("/updateStaff/:id", async (req, res) => {
     user.lastName = lastName;
     user.email = email.toLowerCase();
     user.role = role;
+    user.memberScope = "admin";
     user.permissions = permissions; // use exactly what came from frontend
 
     // 4️⃣ Save changes
@@ -960,6 +1150,162 @@ router.put("/updateStaff/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+router.get(
+  "/members",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res) => {
+    if (req.authUser?.accountType === "member") {
+      throw new ErrorHandler("Only the primary account holder can manage members", 403);
+    }
+
+    const rootUser = await getAccountRootUser(req.authUser || req.user);
+    if (!rootUser) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    const members = await User.find({
+      parentUser: rootUser._id,
+      memberScope: "user",
+      accountType: "member",
+    }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      members: [rootUser, ...members],
+      ownerId: rootUser._id,
+    });
+  })
+);
+
+router.post(
+  "/members",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res) => {
+    if (req.authUser?.accountType === "member") {
+      throw new ErrorHandler("Only the primary account holder can manage members", 403);
+    }
+
+    const rootUser = await getAccountRootUser(req.authUser || req.user);
+    if (!rootUser) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    const { firstName, lastName, email, password } = req.body;
+    if (!firstName || !lastName || !email || !password) {
+      throw new ErrorHandler("All fields are required", 400);
+    }
+
+    const existingUser = await User.findOne({ email: String(email).toLowerCase() });
+    if (existingUser) {
+      throw new ErrorHandler("Email already registered", 409);
+    }
+
+    const member = await User.create({
+      firstName,
+      lastName,
+      email: String(email).toLowerCase(),
+      password,
+      phoneNumber: rootUser.phoneNumber,
+      instituteName: rootUser.instituteName,
+      gstNumber: rootUser.gstNumber,
+      role: "user",
+      accountType: "member",
+      isSubMember: true,
+      memberScope: "user",
+      parentUser: rootUser._id,
+      createdBy: req.authUser?._id || req.user._id,
+      isVerified: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Member created successfully",
+      member,
+    });
+  })
+);
+
+router.put(
+  "/members/:id",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res) => {
+    if (req.authUser?.accountType === "member") {
+      throw new ErrorHandler("Only the primary account holder can manage members", 403);
+    }
+
+    const rootUser = await getAccountRootUser(req.authUser || req.user);
+    if (!rootUser) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    const member = await User.findOne({
+      _id: req.params.id,
+      parentUser: rootUser._id,
+      memberScope: "user",
+      accountType: "member",
+    });
+
+    if (!member) {
+      throw new ErrorHandler("Member not found", 404);
+    }
+
+    const { firstName, lastName, email } = req.body;
+    if (!firstName || !lastName || !email) {
+      throw new ErrorHandler("All fields are required", 400);
+    }
+
+    const existingUser = await User.findOne({
+      email: String(email).toLowerCase(),
+      _id: { $ne: member._id },
+    });
+    if (existingUser) {
+      throw new ErrorHandler("Email already registered", 409);
+    }
+
+    member.firstName = firstName;
+    member.lastName = lastName;
+    member.email = String(email).toLowerCase();
+    await member.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Member updated successfully",
+      member,
+    });
+  })
+);
+
+router.delete(
+  "/members/:id",
+  isAuthenticated,
+  catchAsyncErrors(async (req, res) => {
+    if (req.authUser?.accountType === "member") {
+      throw new ErrorHandler("Only the primary account holder can manage members", 403);
+    }
+
+    const rootUser = await getAccountRootUser(req.authUser || req.user);
+    if (!rootUser) {
+      throw new ErrorHandler("User not found", 404);
+    }
+
+    const member = await User.findOneAndDelete({
+      _id: req.params.id,
+      parentUser: rootUser._id,
+      memberScope: "user",
+      accountType: "member",
+    });
+
+    if (!member) {
+      throw new ErrorHandler("Member not found", 404);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Member deleted successfully",
+    });
+  })
+);
 
 
 router.get(
