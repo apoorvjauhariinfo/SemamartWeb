@@ -48,7 +48,7 @@ function withNormalizedVariantCommission(variant, productCommission = null) {
 }
 
 const VARIANT_LIST_SELECT =
-  "thumbnail images originalPrice discountPrice stock colorOption size commission bulkOrders";
+  "thumbnail images originalPrice discountPrice stock colorOption size commission commissionHistory bulkOrders";
 
 const toFiniteNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -165,9 +165,10 @@ router.post(
     product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
 
     // files -> attach filenames where applicable (defensive checks)
-    if (req.files && req.files.images) {
-      product.images = req.files.images.map((e) => e.filename);
-    }
+    const legacyProductImages =
+      req.files && req.files.images
+        ? req.files.images.map((e) => e.filename)
+        : [];
     if (req.files && req.files.thumbnail) {
       // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
@@ -184,6 +185,11 @@ router.post(
         imageCursor += imageCount;
       });
     }
+    if (legacyProductImages.length > 0 && variants[0]) {
+      const existingImages = Array.isArray(variants[0].images) ? variants[0].images : [];
+      variants[0].images = Array.from(new Set([...existingImages, ...legacyProductImages]));
+    }
+    product.images = Array.isArray(variants[0]?.images) ? variants[0].images : [];
     if (req.files && req.files.shortVideo) {
       product.shortVideo = req.files.shortVideo[0].filename;
     }
