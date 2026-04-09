@@ -17,6 +17,7 @@ const storage = multer.diskStorage({
 const subFolders = {
   images: "images",
   thumbnail: "images",
+  variantImages: "images",
   shortVideo: "videos",
   certificate: "docs",
   oemLetter: "docs",
