@@ -3,7 +3,7 @@ const router = express.Router();
 const ErrorHandler = require("../utils/ErrorHandler");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const { uploadV2 } = require("../multer");
-const { isSeller } = require("../middleware/auth");
+const { isSeller, isAuthenticated, isAdmin } = require("../middleware/auth");
 const { ProductVariant, Product } = require("../model/product");
 const sendProductBelowMOQSellerEmail = require("../utils/emails/productBelowMOQSeller");
 const sendProductOutOfStockSellerEmail = require("../utils/emails/productOutOfStockSeller");
@@ -44,7 +44,10 @@ const normalizeBulkOrders = (bulkOrders) => {
 router.post(
   "/post-variant",
   isSeller,
-  uploadV2.single("thumbnail"),
+  uploadV2.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "images", maxCount: 5 },
+  ]),
   catchAsyncErrors(async (req, res) => {
     const { productId, ...a } = req.body;
     // If `bulkOrders` is sent as a form field it will be a string (e.g. "[]" or "[{...}]").
@@ -60,10 +63,6 @@ router.post(
     if (!product) throw new ErrorHandler("Product not found", 404);
 
     const fallbackCommission = toFiniteNumber(product.commission, 0);
-    const nextCommission = toFiniteNumber(
-      a.commission ?? fallbackCommission,
-      fallbackCommission,
-    );
     const nextVariantPayload = {
       ...a,
       originalPrice: toFiniteNumber(a.originalPrice, 0),
@@ -72,15 +71,19 @@ router.post(
           ? undefined
           : toFiniteNumber(a.discountPrice, 0),
       stock: toFiniteNumber(a.stock, 0),
-      commission: nextCommission,
+      commission: fallbackCommission,
       bulkOrders: normalizeBulkOrders(a.bulkOrders),
     };
 
-    if (req.file) {
+    const thumbnail = req.files?.thumbnail?.[0];
+    const images = req.files?.images?.map((file) => file.filename) || [];
+
+    if (thumbnail) {
       const variant = await ProductVariant.create({
         ...nextVariantPayload,
         productId: product._id,
-        thumbnail: req.file.filename,
+        thumbnail: thumbnail.filename,
+        images,
       });
 
       product.variants.push(variant);
@@ -107,7 +110,10 @@ router.post(
 router.put(
   "/update-variant/:variantId",
   isSeller,
-  uploadV2.single("thumbnail"),
+  uploadV2.fields([
+    { name: "thumbnail", maxCount: 1 },
+    { name: "images", maxCount: 5 },
+  ]),
   catchAsyncErrors(async (req, res) => {
     const { variantId } = req.params;
     const variant = await ProductVariant.findById(variantId).populate("productId");
@@ -120,7 +126,10 @@ router.put(
     )
       throw new ErrorHandler("Not authorised", 401);
 
-    if (req.file) {
+    const nextThumbnail = req.files?.thumbnail?.[0];
+    const nextImages = req.files?.images || [];
+
+    if (nextThumbnail) {
       if (variant.thumbnail) {
         const imgPath = path.join(
           process.cwd(),
@@ -132,7 +141,19 @@ router.put(
           fs.unlinkSync(imgPath);
         }
       }
-      variant.thumbnail = req.file.filename;
+      variant.thumbnail = nextThumbnail.filename;
+    }
+
+    if (nextImages.length > 0) {
+      if (Array.isArray(variant.images)) {
+        variant.images.forEach((imageName) => {
+          const imgPath = path.join(process.cwd(), "uploads", "images", imageName);
+          if (fs.existsSync(imgPath)) {
+            fs.unlinkSync(imgPath);
+          }
+        });
+      }
+      variant.images = nextImages.map((file) => file.filename);
     }
 
     if (req.body.bulkOrders && typeof req.body.bulkOrders === "string") {
@@ -142,11 +163,6 @@ router.put(
         // leave as-is; validation will handle incorrect shapes
       }
     }
-
-    const incomingCommission =
-      req.body.commission === undefined || req.body.commission === ""
-        ? undefined
-        : toFiniteNumber(req.body.commission, toFiniteNumber(variant.commission, 0));
 
     Object.keys(req.body).forEach((k) => {
       if (k === "commission") return;
@@ -160,19 +176,6 @@ router.put(
       }
       variant[k] = req.body[k];
     });
-
-    if (incomingCommission !== undefined) {
-      if (!Array.isArray(variant.commissionHistory)) {
-        variant.commissionHistory = [];
-      }
-      if (toFiniteNumber(variant.commission, 0) !== incomingCommission) {
-        variant.commissionHistory.push({
-          commission: incomingCommission,
-          updatedAt: new Date(),
-        });
-      }
-      variant.commission = incomingCommission;
-    }
 
     await variant.save();
     const newStock = variant.stock;
@@ -213,6 +216,58 @@ router.put(
       await notifyUsers();
     }
     res.json({ success: true });
+  }),
+);
+
+router.put(
+  "/update-commission/:variantId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const { variantId } = req.params;
+    const incomingCommission = toFiniteNumber(req.body.commission, NaN);
+
+    if (!Number.isFinite(incomingCommission)) {
+      throw new ErrorHandler("Commission amount is required", 400);
+    }
+    if (incomingCommission < 0) {
+      throw new ErrorHandler("Commission amount cannot be negative", 400);
+    }
+
+    const variant = await ProductVariant.findById(variantId).populate({
+      path: "productId",
+      select: "name shopId",
+    });
+
+    if (!variant) {
+      throw new ErrorHandler("Variant not found", 404);
+    }
+
+    const previousCommission = toFiniteNumber(variant.commission, 0);
+    if (!Array.isArray(variant.commissionHistory)) {
+      variant.commissionHistory = [];
+    }
+
+    if (previousCommission !== incomingCommission) {
+      variant.commissionHistory.push({
+        commission: incomingCommission,
+        updatedAt: new Date(),
+      });
+    }
+
+    variant.commission = incomingCommission;
+    await variant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Commission amount updated successfully",
+      variantId: variant._id,
+      productId:
+        typeof variant.productId === "object" && variant.productId
+          ? variant.productId._id
+          : variant.productId,
+      commission: variant.commission,
+    });
   }),
 );
 

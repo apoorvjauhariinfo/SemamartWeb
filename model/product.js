@@ -21,20 +21,17 @@ const variantSchema = new mongoose.Schema({
   size: { type: String, required: false, default: null },
   colorOption: { type: String, required: false, default: null },
   thumbnail: { type: String, default: null },
+  images: [
+    {
+      type: String,
+    },
+  ],
   originalPrice: {
     type: Number,
     required: [true, "Please enter your product mrp!"],
   },
   discountPrice: {
     type: Number,
-  },
-  commission: {
-    type: Number,
-    default: 0,
-  },
-  commissionHistory: {
-    type: [commisionHistorySchema],
-    default: [],
   },
   stock: {
     type: Number,
@@ -46,14 +43,6 @@ const variantSchema = new mongoose.Schema({
       price: { type: Number, required: true },
     },
   ],
-  commission: {
-    type: Number,
-    default: null,
-  },
-  commissionHistory: {
-    type: [commisionHistorySchema],
-    default: [],
-  },
 });
 
 const productSchema = new mongoose.Schema(
@@ -116,16 +105,18 @@ const productSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
-    specialityPackage: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SpecialityPackage",
-      // required: true,
-    },
-    specialityPackageType: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "SpecialityPackageType",
-      // required: true,
-    },
+    specialityPackage: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SpecialityPackage",
+      },
+    ],
+    specialityPackageType: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "SpecialityPackageType",
+      },
+    ],
 
     //////
 
@@ -337,7 +328,7 @@ const productSchema = new mongoose.Schema(
     },
     commission: {
       type: Number,
-      default: 100,
+      default: 0,
       required: true,
     },
     commissionHistory: {

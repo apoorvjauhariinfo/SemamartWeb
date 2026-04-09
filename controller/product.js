@@ -48,7 +48,7 @@ function withNormalizedVariantCommission(variant, productCommission = null) {
 }
 
 const VARIANT_LIST_SELECT =
-  "thumbnail originalPrice discountPrice stock colorOption size commission bulkOrders";
+  "thumbnail images originalPrice discountPrice stock colorOption size commission bulkOrders";
 
 const toFiniteNumber = (value, fallback = 0) => {
   const parsed = Number(value);
@@ -64,6 +64,16 @@ const normalizeBulkOrders = (bulkOrders) => {
       price: toFiniteNumber(bulk?.price, 0),
     }))
     .filter((bulk) => bulk.qty > 0 && bulk.price > 0);
+};
+
+const normalizeObjectIdArray = (value) => {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean);
+  }
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return [value];
 };
 
 const normalizeVariantPayload = (variant, fallbackCommission = 0) => {
@@ -96,6 +106,7 @@ router.post(
   uploadV2.fields([
     { name: "images", maxCount: 5 },
     { name: "thumbnail" },
+    { name: "variantImages", maxCount: 50 },
     { name: "shortVideo", maxCount: 1 },
     { name: "certificate", maxCount: 5 },
     { name: "oemLetter", maxCount: 1 },
@@ -147,6 +158,9 @@ router.post(
 
     product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
 
+    product.specialityPackage = normalizeObjectIdArray(req.body.specialityPackage);
+    product.specialityPackageType = normalizeObjectIdArray(req.body.specialityPackageType);
+
     // tags: ensure array
     product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
 
@@ -158,6 +172,16 @@ router.post(
       // thumbnail may be an array; attach to variant thumbnails where appropriate
       req.files.thumbnail.forEach((el, i) => {
         variants[i].thumbnail = el.filename;
+      });
+    }
+    if (req.files && req.files.variantImages) {
+      let imageCursor = 0;
+      variants.forEach((variant, index) => {
+        const imageCount = toFiniteNumber(parsedVariants[index]?.imagesCount, 0);
+        variant.images = req.files.variantImages
+          .slice(imageCursor, imageCursor + imageCount)
+          .map((file) => file.filename);
+        imageCursor += imageCount;
       });
     }
     if (req.files && req.files.shortVideo) {
@@ -1103,7 +1127,7 @@ router.get(
       }
 
       const products = await Product.find({
-        specialityPackage: specialityPackageId,
+        specialityPackage: { $in: [specialityPackageId] },
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
@@ -1154,7 +1178,7 @@ router.get(
       }
 
       const products = await Product.find({
-        specialityPackageType: specialityPackageTypeId,
+        specialityPackageType: { $in: [specialityPackageTypeId] },
         visibilityByAdmin: true,
         visibilityBySeller: true,
       })
@@ -1324,6 +1348,12 @@ router.put(
     if (!product) throw new ErrorHandler("product not found", 404);
 
     const updates = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(updates, "specialityPackage")) {
+      updates.specialityPackage = normalizeObjectIdArray(updates.specialityPackage);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "specialityPackageType")) {
+      updates.specialityPackageType = normalizeObjectIdArray(updates.specialityPackageType);
+    }
     const metaData = {};
     Object.keys(updates).forEach((k) => {
       if (product[k] !== updates[k]) {
@@ -1354,22 +1384,28 @@ router.put(
 
 /* ------------------ COMMISSION (admin) ------------------ */
 router.put(
-  "/update-commission/:productId",
+  "/update-commission/:variantId",
   isAuthenticated,
   isAdmin("Admin"),
   catchAsyncErrors(async (req, res) => {
-    const product = await Product.findById(req.params.productId)
-      .populate("shopId")
-      .populate("variants");
+    const variant = await ProductVariant.findById(req.params.variantId).populate({
+      path: "productId",
+      populate: [{ path: "shopId" }, { path: "variants" }],
+    });
+    if (!variant) throw new ErrorHandler("Variant not found", 404);
+    const product = variant.productId;
     if (!product) throw new ErrorHandler("Product not found", 404);
     if (!product.shopId) throw new ErrorHandler("Product shop not found", 404);
     if (req.body.commission === undefined || req.body.commission === null || req.body.commission === "")
       throw new ErrorHandler("Commission is required", 403);
 
-    const nextCommission = toFiniteNumber(req.body.commission, product.commission);
-    const previousCommission = toFiniteNumber(product.commission, 0);
-    product.commissionHistory = Array.isArray(product.commissionHistory)
-      ? product.commissionHistory
+    const nextCommission = toFiniteNumber(
+      req.body.commission,
+      variant.commission ?? product.commission,
+    );
+    const previousCommission = toFiniteNumber(variant.commission, product.commission ?? 0);
+    variant.commissionHistory = Array.isArray(variant.commissionHistory)
+      ? variant.commissionHistory
       : [];
 
     const metaData = {
@@ -1379,45 +1415,26 @@ router.put(
       },
     };
 
-    product.commission = nextCommission;
-    product.commissionHistory.push({
+    variant.commission = nextCommission;
+    variant.commissionHistory.push({
       commission: nextCommission,
       updatedAt: new Date(),
     });
-
-    if (Array.isArray(product.variants) && product.variants.length > 0) {
-      await Promise.all(
-        product.variants.map(async (variant) => {
-          if (!variant) return;
-          variant.commissionHistory = Array.isArray(variant.commissionHistory)
-            ? variant.commissionHistory
-            : [];
-          if (toFiniteNumber(variant.commission, 0) !== nextCommission) {
-            variant.commissionHistory.push({
-              commission: nextCommission,
-              updatedAt: new Date(),
-            });
-          }
-          variant.commission = nextCommission;
-          await variant.save();
-        }),
-      );
-    }
+    await variant.save();
 
     await addActivityLog({
       userId: req.user._id,
       userType: "User",
       action: "Sema-Commission Update",
-      entityType: "Product",
-      entityId: product._id,
+      entityType: "ProductVariant",
+      entityId: variant._id,
       description:
-        "Admin updated the sema-commission for the product: " + product.name,
+        "Admin updated the sema-commission for the product variant: " + product.name,
       metaData: metaData,
     });
-    await product.save();
 
     const sellerMail = product.shopId.email
-    const emailSubject="Prodcut Commission Update"
+    const emailSubject="Product Commission Update"
     const htmlBody = `
       <div style="font-family: Arial, sans-serif; color: #333; padding: 20px; max-width: 600px; margin: auto;">
         <h2 style="color: #2c3e50;">
@@ -1431,8 +1448,9 @@ router.put(
         </p>
         <div style="margin-top: 20px; padding: 15px; background: #f7f7f7; border-left: 4px solid #f39c12;">
           <p><strong>Product ID:</strong> ${product._id}</p>
+          <p><strong>Variant ID:</strong> ${variant._id}</p>
           <p><strong>Product Name:</strong> ${product.name}</p>
-          <p><strong>Updated Commission:</strong> ${product.commission}%</p>
+          <p><strong>Updated Commission Amount:</strong> ${variant.commission}</p>
         </div>
         <p style="margin-top: 20px; font-size: 14px;">
           This update will apply to all future orders of this product.
@@ -1442,7 +1460,7 @@ router.put(
 
     await sendMail({email:sellerMail,subject:emailSubject,html:htmlBody })
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, commission: variant.commission });
   }),
 );
 
