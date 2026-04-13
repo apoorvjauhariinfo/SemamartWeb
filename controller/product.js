@@ -31,19 +31,69 @@ function getVariantCommissionValue(variant, productCommission = null) {
   return fallbackCommission !== null ? fallbackCommission : 0;
 }
 
+function getBulkOrderCommissionValue(
+  bulkOrder,
+  variantCommission = null,
+  productCommission = null,
+) {
+  const bulkCommission = toNumberOrNull(bulkOrder?.commission);
+  if (bulkCommission !== null) return bulkCommission;
+
+  const variantLevelCommission = toNumberOrNull(variantCommission);
+  if (variantLevelCommission !== null) return variantLevelCommission;
+
+  const productLevelCommission = toNumberOrNull(productCommission);
+  return productLevelCommission !== null ? productLevelCommission : 0;
+}
+
+function normalizeCommissionHistory(history, fallbackCommission) {
+  if (Array.isArray(history) && history.length > 0) {
+    return history
+      .map((entry) => {
+        const commission = toNumberOrNull(entry?.commission);
+        if (commission === null) return null;
+        return {
+          commission,
+          updatedAt: entry?.updatedAt ? new Date(entry.updatedAt) : new Date(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  return [
+    {
+      commission: fallbackCommission,
+      updatedAt: new Date(),
+    },
+  ];
+}
+
 function withNormalizedVariantCommission(variant, productCommission = null) {
   if (!variant) return variant;
 
-  if (variant.toObject) {
-    return {
-      ...variant.toObject(),
-      commission: getVariantCommissionValue(variant, productCommission),
-    };
-  }
+  const normalizedVariantCommission = getVariantCommissionValue(
+    variant,
+    productCommission,
+  );
+  const variantObject = variant.toObject ? variant.toObject() : variant;
+  const bulkOrders = Array.isArray(variantObject?.bulkOrders)
+    ? variantObject.bulkOrders.map((bulkOrder) => ({
+        ...bulkOrder,
+        commission: getBulkOrderCommissionValue(
+          bulkOrder,
+          normalizedVariantCommission,
+          productCommission,
+        ),
+        commissionHistory: Array.isArray(bulkOrder?.commissionHistory)
+          ? bulkOrder.commissionHistory
+          : [],
+      }))
+    : [];
 
   return {
-    ...variant,
-    commission: getVariantCommissionValue(variant, productCommission),
+    ...variantObject,
+    commission: normalizedVariantCommission,
+    bulkOrders,
   };
 }
 
@@ -55,14 +105,40 @@ const toFiniteNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const normalizeBulkOrders = (bulkOrders) => {
+const normalizeBulkOrders = (
+  bulkOrders,
+  variantCommission = 0,
+  productCommission = null,
+  existingBulkOrders = [],
+) => {
   if (!Array.isArray(bulkOrders)) return [];
 
   return bulkOrders
-    .map((bulk) => ({
-      qty: toFiniteNumber(bulk?.qty, 0),
-      price: toFiniteNumber(bulk?.price, 0),
-    }))
+    .map((bulk, index) => {
+      const existingBulkOrder =
+        existingBulkOrders.find(
+          (entry) =>
+            String(entry?._id || "") !== "" &&
+            String(entry?._id) === String(bulk?._id),
+        ) ?? existingBulkOrders[index];
+
+      const commission = getBulkOrderCommissionValue(
+        bulk,
+        variantCommission,
+        productCommission,
+      );
+
+      return {
+        ...(existingBulkOrder?._id ? { _id: existingBulkOrder._id } : {}),
+        qty: toFiniteNumber(bulk?.qty, 0),
+        price: toFiniteNumber(bulk?.price, 0),
+        commission,
+        commissionHistory: normalizeCommissionHistory(
+          bulk?.commissionHistory ?? existingBulkOrder?.commissionHistory,
+          commission,
+        ),
+      };
+    })
     .filter((bulk) => bulk.qty > 0 && bulk.price > 0);
 };
 
@@ -95,7 +171,11 @@ const normalizeVariantPayload = (variant, fallbackCommission = 0) => {
         : toFiniteNumber(variant.discountPrice, 0),
     stock: toFiniteNumber(variant?.stock, 0),
     commission,
-    bulkOrders: normalizeBulkOrders(variant?.bulkOrders),
+    bulkOrders: normalizeBulkOrders(
+      variant?.bulkOrders,
+      commission,
+      fallbackCommission,
+    ),
   };
 };
 
@@ -864,6 +944,11 @@ router.get(
 
       return {
         ...product,
+        variants: Array.isArray(product.variants)
+          ? product.variants.map((variant) =>
+              withNormalizedVariantCommission(variant, product.commission),
+            )
+          : [],
         avgRating: parseFloat(avgRating.toFixed(1)),
       };
     });

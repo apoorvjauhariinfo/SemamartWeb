@@ -31,13 +31,82 @@ const toFiniteNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const normalizeBulkOrders = (bulkOrders) => {
+const toNumberOrNull = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const getBulkOrderCommissionValue = (
+  bulkOrder,
+  variantCommission = null,
+  productCommission = null,
+) => {
+  const direct = toNumberOrNull(bulkOrder?.commission);
+  if (direct !== null) return direct;
+
+  const variantLevel = toNumberOrNull(variantCommission);
+  if (variantLevel !== null) return variantLevel;
+
+  const productLevel = toNumberOrNull(productCommission);
+  return productLevel !== null ? productLevel : 0;
+};
+
+const normalizeCommissionHistory = (history, fallbackCommission) => {
+  if (Array.isArray(history) && history.length > 0) {
+    return history
+      .map((entry) => {
+        const commission = toNumberOrNull(entry?.commission);
+        if (commission === null) return null;
+        return {
+          commission,
+          updatedAt: entry?.updatedAt ? new Date(entry.updatedAt) : new Date(),
+        };
+      })
+      .filter(Boolean);
+  }
+
+  return [
+    {
+      commission: fallbackCommission,
+      updatedAt: new Date(),
+    },
+  ];
+};
+
+const normalizeBulkOrders = (
+  bulkOrders,
+  variantCommission = 0,
+  productCommission = null,
+  existingBulkOrders = [],
+) => {
   if (!Array.isArray(bulkOrders)) return [];
   return bulkOrders
-    .map((order) => ({
-      qty: toFiniteNumber(order?.qty, 0),
-      price: toFiniteNumber(order?.price, 0),
-    }))
+    .map((order, index) => {
+      const existingBulkOrder =
+        existingBulkOrders.find(
+          (entry) =>
+            String(entry?._id || "") !== "" &&
+            String(entry?._id) === String(order?._id),
+        ) ?? existingBulkOrders[index];
+
+      const commission = getBulkOrderCommissionValue(
+        order,
+        variantCommission,
+        productCommission,
+      );
+
+      return {
+        ...(existingBulkOrder?._id ? { _id: existingBulkOrder._id } : {}),
+        qty: toFiniteNumber(order?.qty, 0),
+        price: toFiniteNumber(order?.price, 0),
+        commission,
+        commissionHistory: normalizeCommissionHistory(
+          order?.commissionHistory ?? existingBulkOrder?.commissionHistory,
+          commission,
+        ),
+      };
+    })
     .filter((order) => order.qty > 0 && order.price > 0);
 };
 
@@ -72,7 +141,11 @@ router.post(
           : toFiniteNumber(a.discountPrice, 0),
       stock: toFiniteNumber(a.stock, 0),
       commission: fallbackCommission,
-      bulkOrders: normalizeBulkOrders(a.bulkOrders),
+      bulkOrders: normalizeBulkOrders(
+        a.bulkOrders,
+        fallbackCommission,
+        product.commission,
+      ),
     };
 
     const thumbnail = req.files?.thumbnail?.[0];
@@ -171,7 +244,12 @@ router.put(
         return;
       }
       if (k === "bulkOrders" && Array.isArray(req.body.bulkOrders)) {
-        variant.bulkOrders = normalizeBulkOrders(req.body.bulkOrders);
+        variant.bulkOrders = normalizeBulkOrders(
+          req.body.bulkOrders,
+          variant.commission ?? variant.productId?.commission ?? 0,
+          variant.productId?.commission ?? 0,
+          variant.bulkOrders,
+        );
         return;
       }
       variant[k] = req.body[k];
@@ -267,6 +345,70 @@ router.put(
           ? variant.productId._id
           : variant.productId,
       commission: variant.commission,
+    });
+  }),
+);
+
+router.put(
+  "/update-bulk-order-commission/:variantId/:bulkOrderId",
+  isAuthenticated,
+  isAdmin("Admin"),
+  catchAsyncErrors(async (req, res) => {
+    const { variantId, bulkOrderId } = req.params;
+    const incomingCommission = toFiniteNumber(req.body.commission, NaN);
+
+    if (!Number.isFinite(incomingCommission)) {
+      throw new ErrorHandler("Commission amount is required", 400);
+    }
+    if (incomingCommission < 0) {
+      throw new ErrorHandler("Commission amount cannot be negative", 400);
+    }
+
+    const variant = await ProductVariant.findById(variantId).populate({
+      path: "productId",
+      select: "name shopId",
+    });
+
+    if (!variant) {
+      throw new ErrorHandler("Variant not found", 404);
+    }
+
+    const bulkOrder = Array.isArray(variant.bulkOrders)
+      ? variant.bulkOrders.id(bulkOrderId)
+      : null;
+
+    if (!bulkOrder) {
+      throw new ErrorHandler("Bulk order tier not found", 404);
+    }
+
+    const previousCommission = toFiniteNumber(
+      bulkOrder.commission,
+      variant.commission ?? 0,
+    );
+    if (!Array.isArray(bulkOrder.commissionHistory)) {
+      bulkOrder.commissionHistory = [];
+    }
+
+    if (previousCommission !== incomingCommission) {
+      bulkOrder.commissionHistory.push({
+        commission: incomingCommission,
+        updatedAt: new Date(),
+      });
+    }
+
+    bulkOrder.commission = incomingCommission;
+    await variant.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Bulk order commission amount updated successfully",
+      variantId: variant._id,
+      bulkOrderId: bulkOrder._id,
+      productId:
+        typeof variant.productId === "object" && variant.productId
+          ? variant.productId._id
+          : variant.productId,
+      commission: bulkOrder.commission,
     });
   }),
 );

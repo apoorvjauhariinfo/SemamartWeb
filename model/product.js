@@ -12,6 +12,19 @@ const commisionHistorySchema = new mongoose.Schema({
   },
 });
 
+const bulkOrderSchema = new mongoose.Schema({
+  qty: { type: Number, required: true },
+  price: { type: Number, required: true },
+  commission: {
+    type: Number,
+    default: null,
+  },
+  commissionHistory: {
+    type: [commisionHistorySchema],
+    default: [],
+  },
+});
+
 const variantSchema = new mongoose.Schema({
   productId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -37,12 +50,15 @@ const variantSchema = new mongoose.Schema({
     type: Number,
     required: [true, "Please enter your product stock!"],
   },
-  bulkOrders: [
-    {
-      qty: { type: Number, required: true },
-      price: { type: Number, required: true },
-    },
-  ],
+  commission: {
+    type: Number,
+    default: 0,
+  },
+  commissionHistory: {
+    type: [commisionHistorySchema],
+    default: [],
+  },
+  bulkOrders: [bulkOrderSchema],
 });
 
 const productSchema = new mongoose.Schema(
