@@ -152,6 +152,55 @@ const normalizeObjectIdArray = (value) => {
   return [value];
 };
 
+const normalizeIncomingArray = (value) => {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+  return Array.isArray(value) ? value.filter((entry) => entry !== "") : [value];
+};
+
+const parseJsonValue = (value) => {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  try {
+    return JSON.parse(trimmed);
+  } catch (_error) {
+    return value;
+  }
+};
+
+const normalizeAttributesPayload = (value) => {
+  return normalizeIncomingArray(value)
+    .flatMap((entry) => {
+      const parsed = parseJsonValue(entry);
+      if (Array.isArray(parsed)) return parsed;
+      return parsed === null || parsed === undefined || parsed === "" ? [] : [parsed];
+    })
+    .filter((entry) => entry && typeof entry === "object" && !Array.isArray(entry));
+};
+
+const normalizeVariantsPayload = (value) => {
+  const parsed = parseJsonValue(value);
+  if (Array.isArray(parsed)) return parsed;
+  if (parsed && typeof parsed === "object") return [parsed];
+  return [];
+};
+
+const PRODUCT_UPLOAD_FIELDS = [
+  { name: "images", maxCount: 5 },
+  { name: "thumbnail" },
+  { name: "variantImages", maxCount: 50 },
+  { name: "shortVideo", maxCount: 1 },
+  { name: "certificate", maxCount: 5 },
+  { name: "oemLetter", maxCount: 1 },
+  { name: "productComparisionSheet", maxCount: 1 },
+  { name: "productCompilance", maxCount: 5 },
+  { name: "msds_ifu_leaflet", maxCount: 5 },
+  { name: "amc_cms", maxCount: 1 },
+];
+
 const normalizeVariantPayload = (variant, fallbackCommission = 0) => {
   const commission =
     variant?.commission === undefined || variant?.commission === null || variant?.commission === ""
@@ -183,18 +232,7 @@ router.post(
   "/create-product-v2",
   isSeller,
   hasSellerPermission("AddProduct"),
-  uploadV2.fields([
-    { name: "images", maxCount: 5 },
-    { name: "thumbnail" },
-    { name: "variantImages", maxCount: 50 },
-    { name: "shortVideo", maxCount: 1 },
-    { name: "certificate", maxCount: 5 },
-    { name: "oemLetter", maxCount: 1 },
-    { name: "productComparisionSheet", maxCount: 1 },
-    { name: "productCompilance", maxCount: 5 },
-    { name: "msds_ifu_leaflet", maxCount: 5 },
-    { name: "amc_cms", maxCount: 1 },
-  ]),
+  uploadV2.fields(PRODUCT_UPLOAD_FIELDS),
   catchAsyncErrors(async (req, res, next) => {
     const shopId = req.body.shopId;
     const shop = await Shop.findById(shopId);
@@ -228,7 +266,10 @@ router.post(
 
     product.manufacturer = manufacturer._id;
 
-    const parsedVariants = JSON.parse(product.variants);
+    const parsedVariants = normalizeVariantsPayload(product.variants);
+    if (!parsedVariants.length) {
+      throw new ErrorHandler("At least one valid product variant is required", 400);
+    }
     const fallbackCommission = toFiniteNumber(product.commission, 0);
     const variants = parsedVariants.map((variant) =>
       normalizeVariantPayload(variant, fallbackCommission),
@@ -236,13 +277,14 @@ router.post(
 
     product.variants = []; // will be set after creating variant docs
 
-    product.attributes = req.body?.attributes?.map((v) => JSON.parse(v)) || [];
-
+    product.attributes = normalizeAttributesPayload(req.body?.attributes);
+    product.category = normalizeObjectIdArray(req.body.category);
+    product.subCategory = normalizeObjectIdArray(req.body.subCategory);
     product.specialityPackage = normalizeObjectIdArray(req.body.specialityPackage);
     product.specialityPackageType = normalizeObjectIdArray(req.body.specialityPackageType);
-
-    // tags: ensure array
-    product.tags = Array.isArray(req.body.tags) ? req.body.tags : [];
+    product.tags = normalizeIncomingArray(req.body.tags);
+    product.crosssells = normalizeIncomingArray(req.body.crosssells);
+    product.upsells = normalizeIncomingArray(req.body.upsells);
 
     // files -> attach filenames where applicable (defensive checks)
     const legacyProductImages =
@@ -1432,25 +1474,66 @@ router.put(
   "/update-product/:productId",
   isSeller,
   hasSellerPermission("AllProducts"),
-  uploadV2.none(),
+  uploadV2.fields(PRODUCT_UPLOAD_FIELDS),
   catchAsyncErrors(async (req, res) => {
     const { productId } = req.params;
     const product = await Product.findById(productId);
     if (!product) throw new ErrorHandler("product not found", 404);
 
     const updates = req.body || {};
+    if (Object.prototype.hasOwnProperty.call(updates, "category")) {
+      updates.category = normalizeObjectIdArray(updates.category);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "subCategory")) {
+      updates.subCategory = normalizeObjectIdArray(updates.subCategory);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "tags")) {
+      updates.tags = normalizeIncomingArray(updates.tags);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "crosssells")) {
+      updates.crosssells = normalizeIncomingArray(updates.crosssells);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "upsells")) {
+      updates.upsells = normalizeIncomingArray(updates.upsells);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, "specialityPackage")) {
       updates.specialityPackage = normalizeObjectIdArray(updates.specialityPackage);
     }
     if (Object.prototype.hasOwnProperty.call(updates, "specialityPackageType")) {
       updates.specialityPackageType = normalizeObjectIdArray(updates.specialityPackageType);
     }
+    if (Object.prototype.hasOwnProperty.call(updates, "attributes")) {
+      updates.attributes = normalizeAttributesPayload(updates.attributes);
+    }
+
+    if (req.files?.shortVideo?.[0]) {
+      updates.shortVideo = req.files.shortVideo[0].filename;
+    }
+    if (req.files?.certificate) {
+      updates.certificate = req.files.certificate.map((file) => file.filename);
+    }
+    if (req.files?.oemLetter?.[0]) {
+      updates.oemLetter = req.files.oemLetter[0].filename;
+    }
+    if (req.files?.productComparisionSheet?.[0]) {
+      updates.productComparisionSheet = req.files.productComparisionSheet[0].filename;
+    }
+    if (req.files?.productCompilance) {
+      updates.productCompilance = req.files.productCompilance.map((file) => file.filename);
+    }
+    if (req.files?.msds_ifu_leaflet) {
+      updates.msds_ifu_leaflet = req.files.msds_ifu_leaflet.map((file) => file.filename);
+    }
+    if (req.files?.amc_cms?.[0]) {
+      updates.amc_cms = req.files.amc_cms[0].filename;
+    }
+    if (req.files?.images) {
+      updates.images = req.files.images.map((file) => file.filename);
+    }
+
     const metaData = {};
     Object.keys(updates).forEach((k) => {
       if (product[k] !== updates[k]) {
-        if (k === "attributes") {
-          updates[k] = updates[k].map((v) => JSON.parse(v));
-        }
         metaData[k] = {
           newValue: updates[k],
           oldValue: product[k],
