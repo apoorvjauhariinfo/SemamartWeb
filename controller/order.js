@@ -172,6 +172,17 @@ async function createOrdersForCheckout({
       throw new ErrorHandler(`Variant not found for item: ${item.name}`, 404);
     }
 
+    if (
+      !variant.productId ||
+      variant.productId.visibilityByAdmin !== true ||
+      variant.productId.visibilityBySeller !== true
+    ) {
+      throw new ErrorHandler(
+        `${variant.productId?.name || "This product"} is currently unavailable`,
+        400,
+      );
+    }
+
     const variantLabel = [variant.size, variant.colorOption]
       .filter(Boolean)
       .join(" / ");

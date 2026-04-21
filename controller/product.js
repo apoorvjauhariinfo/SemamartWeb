@@ -433,6 +433,53 @@ router.get(
 );
 
 
+/* ------------------ PUBLIC: get visible products of a shop (user portal) ------------------ */
+router.get(
+  "/get-public-products-shop/:id",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const products = await Product.find({
+        shopId: req.params.id,
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
+        .sort({ createdAt: -1 })
+        .populate("variants")
+        .populate("reviews", "rating")
+        .select(
+          "name variants createdAt commission sku visibilityByAdmin visibilityBySeller commissionHistory reviews badge"
+        )
+        .lean();
+
+      const productsWithRatings = products.map((product) => {
+        const avgRating =
+          product.reviews && product.reviews.length > 0
+            ? product.reviews.reduce((sum, r) => sum + r.rating, 0) /
+              product.reviews.length
+            : 0;
+
+        return {
+          ...product,
+          variants: Array.isArray(product.variants)
+            ? product.variants.map((variant) =>
+                withNormalizedVariantCommission(variant, product.commission),
+              )
+            : [],
+          avgRating: parseFloat(avgRating.toFixed(1)),
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        products: productsWithRatings,
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 400));
+    }
+  })
+);
+
+
 router.get(
   "/getallproducts/outofstock/:id",
   catchAsyncErrors(async (req, res, next) => {
@@ -578,6 +625,8 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const products = await Product.find({
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
       })
         .populate("shopId", "name")
         .populate({
@@ -809,6 +858,7 @@ router.get(
       // 1️⃣ Fetch product and populate basic references
       const product = await Product.findOne({
         _id: id,
+        visibilityByAdmin: true,
         visibilityBySeller: true,
       })
         .select("-reviews")
@@ -867,6 +917,16 @@ router.get(
 
     if (!mongoose.isValidObjectId(id)) {
       return next(new ErrorHandler("Invalid product id", 400));
+    }
+
+    const product = await Product.findOne({
+      _id: id,
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+    }).select("_id");
+
+    if (!product) {
+      return next(new ErrorHandler("Product not found", 404));
     }
 
     const [reviews, total] = await Promise.all([
@@ -1066,7 +1126,11 @@ router.get(
 
     // no query => return all products of shop
     if (!q || String(q).trim().length === 0) {
-      const products = await Product.find({ shopId: String(shopId) })
+      const products = await Product.find({
+        shopId: String(shopId),
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
         .sort({ createdAt: -1 })
         .populate("variants")
         .populate("category", "name")
@@ -1083,6 +1147,8 @@ router.get(
 
     const products = await Product.find({
       shopId: String(shopId),
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
       $or: [{ name: regex }, { manufacturerName: regex }],
     })
       .populate("variants")
@@ -1645,7 +1711,11 @@ router.get("/get-products-by-category/:CategoryId", async (req, res, next) => {
     if (!mongoose.isValidObjectId(CategoryId)) {
       return res.status(400).json({ message: "Invalid CategoryId" });
     }
-    const products = await Product.find({ category: CategoryId })
+    const products = await Product.find({
+      category: CategoryId,
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+    })
       .populate("shopId")
       .populate({
         path: "variants",
@@ -1677,7 +1747,11 @@ router.get(
 
     // if no query, return all products for this shop (sorted newest first)
     if (!q || String(q).trim().length === 0) {
-      const products = await Product.find({ shopId: String(shopId) })
+      const products = await Product.find({
+        shopId: String(shopId),
+        visibilityByAdmin: true,
+        visibilityBySeller: true,
+      })
         .sort({ createdAt: -1 })
         .populate("variants")
         .populate("category", "name")
@@ -1697,6 +1771,8 @@ router.get(
     // ensure we always filter by shopId
     const products = await Product.find({
       shopId: String(shopId),
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
       $or: [
         { name: regex },
         { manufacturerName: regex },

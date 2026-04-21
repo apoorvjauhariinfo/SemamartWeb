@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const BulkOrder = require("../model/bulkOrder");
-const { Product } = require("../model/product");
+const { Product, ProductVariant } = require("../model/product");
 const sendBulkOrderRequestAdminEmail = require("../utils/emails/bulkOrderRequestAdmin");
 const sendBulkOrderRequestCustomerEmail = require("../utils/emails/bulkOrderRequestCustomer");
 const mongoose = require("mongoose"); // Add this
@@ -25,6 +25,42 @@ router.post("/bulk-order", async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Missing required fields" });
+    }
+
+    if (
+      !mongoose.Types.ObjectId.isValid(productId) ||
+      (variantId && !mongoose.Types.ObjectId.isValid(variantId))
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid product or variant ID" });
+    }
+
+    const product = await Product.findOne({
+      _id: productId,
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+    }).select("_id name");
+
+    if (!product) {
+      return res.status(400).json({
+        success: false,
+        message: "This product is currently unavailable for bulk order",
+      });
+    }
+
+    if (variantId) {
+      const variant = await ProductVariant.findOne({
+        _id: variantId,
+        productId,
+      }).select("_id");
+
+      if (!variant) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected variant is currently unavailable",
+        });
+      }
     }
 
     const bulkOrder = new BulkOrder({
