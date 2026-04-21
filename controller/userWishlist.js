@@ -1,6 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const UserWishlist = require("../model/userWishlist"); 
+const { Product, ProductVariant } = require("../model/product");
 
 const router = express.Router();
 
@@ -32,6 +33,33 @@ router.post("/add", async (req, res) => {
 
     variant_id = variant_id || null;
     qty = qty && qty > 0 ? qty : 1;
+
+    const product = await Product.findOne({
+      _id: product_id,
+      visibilityByAdmin: true,
+      visibilityBySeller: true,
+    }).select("_id");
+
+    if (!product) {
+      return res.status(400).json({
+        success: false,
+        message: "This product is currently unavailable",
+      });
+    }
+
+    if (variant_id) {
+      const variant = await ProductVariant.findOne({
+        _id: variant_id,
+        productId: product_id,
+      }).select("_id");
+
+      if (!variant) {
+        return res.status(400).json({
+          success: false,
+          message: "Selected variant is currently unavailable",
+        });
+      }
+    }
 
     // Atomic upsert (no race condition)
     const item = await UserWishlist.findOneAndUpdate(
@@ -71,7 +99,8 @@ router.get("/:userId", async (req, res) => {
     const items = await UserWishlist.find({ user_id: userId })
       .populate({
         path: "product_id",
-        select: "name images brand category subCategory shopId",
+        select:
+          "name images brand category subCategory shopId visibilityByAdmin visibilityBySeller",
       })
       .populate({
         path: "variant_id",
@@ -79,7 +108,25 @@ router.get("/:userId", async (req, res) => {
       })
       .lean();
 
-    res.json({ success: true, data: items });
+    const visibleItems = items.filter(
+      (item) =>
+        item.product_id &&
+        item.product_id.visibilityByAdmin === true &&
+        item.product_id.visibilityBySeller === true,
+    );
+
+    if (visibleItems.length !== items.length) {
+      const visibleIds = new Set(visibleItems.map((item) => String(item._id)));
+      await UserWishlist.deleteMany({
+        _id: {
+          $in: items
+            .filter((item) => !visibleIds.has(String(item._id)))
+            .map((item) => item._id),
+        },
+      });
+    }
+
+    res.json({ success: true, data: visibleItems });
   } catch (err) {
     console.error("Wishlist Fetch Error:", err);
     res.status(500).json({
