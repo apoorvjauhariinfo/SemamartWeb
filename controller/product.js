@@ -856,11 +856,7 @@ router.get(
 
     try {
       // 1️⃣ Fetch product and populate basic references
-      const product = await Product.findOne({
-        _id: id,
-        visibilityByAdmin: true,
-        visibilityBySeller: true,
-      })
+      const product = await Product.findById(id)
         .select("-reviews")
         .populate("shopId variants manufacturer");
 
@@ -870,6 +866,9 @@ router.get(
       product.attributes = product.attributes || [];
       product.brand = product.brand || null;
       const normalizedProduct = product.toObject();
+      normalizedProduct.isAvailableToOrder =
+        normalizedProduct.visibilityByAdmin === true &&
+        normalizedProduct.visibilityBySeller === true;
       normalizedProduct.variants = Array.isArray(normalizedProduct.variants)
         ? normalizedProduct.variants.map((variant) =>
             withNormalizedVariantCommission(variant, normalizedProduct.commission),
@@ -919,11 +918,7 @@ router.get(
       return next(new ErrorHandler("Invalid product id", 400));
     }
 
-    const product = await Product.findOne({
-      _id: id,
-      visibilityByAdmin: true,
-      visibilityBySeller: true,
-    }).select("_id");
+    const product = await Product.findById(id).select("_id");
 
     if (!product) {
       return next(new ErrorHandler("Product not found", 404));
