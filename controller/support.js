@@ -284,8 +284,13 @@ router.patch("/:ticketId/message", async (req, res) => {
       attachments: Array.isArray(req.body?.attachments) ? req.body.attachments : [],
     });
  
-    if (from === "Admin" && ticket.status === "New") {
-      ticket.status = "Open";
+    // Auto-update status based on admin response
+    if (from === "Admin") {
+      if (ticket.status === "New") {
+        ticket.status = "Open";
+      } else if (ticket.status === "Open") {
+        ticket.status = "In Progress";
+      }
     }
  
     await ticket.save();
