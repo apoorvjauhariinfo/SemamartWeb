@@ -383,7 +383,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
           qty: order.qty || 1,
           unitPrice: order.unitPrice || 0,
           discount: order.discounted_amount || 0,
-          totalPrice: (order.discounted_amount) * (order.qty ) 
+          totalPrice: (order.discounted_amount || 0) * (order.qty || 1),
         }
       ];
 

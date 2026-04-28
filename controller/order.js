@@ -270,7 +270,7 @@ async function createOrdersForCheckout({
     itemsForAdmin.push({
       name: variant.productId.name,
       quantity: item.qty,
-      price: item.unitPrice,
+      price: item.discounted_price || item.unitPrice,
     });
   }
 
@@ -1178,7 +1178,7 @@ router.put(
         orderId: order._id,
         productName,
         qty: order.qty,
-        unitPrice: order.unitPrice,
+        unitPrice: order.discounted_amount || order.unitPrice,
         tax: order.tax,
         totalAmount: order.totalPrice,
         frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
@@ -1205,7 +1205,7 @@ router.put(
         {
           name: order.variant?.productId?.name || "Product",
           quantity: order.qty,
-          price: order.unitPrice,
+          price: order.discounted_amount || order.unitPrice,
         },
       ];
 
@@ -1250,7 +1250,7 @@ router.put(
       {
         name: productName,
         quantity: order.qty,
-        price: order.unitPrice,
+        price: order.discounted_amount || order.unitPrice,
         totalPrice: order.totalPrice,
       },
     ];

@@ -105,13 +105,20 @@ function drawBuyerSellerBox(doc, order) {
 }
 
 function drawItemsTable(doc, order) {
+    const chargedPerUnit = Number(order.discounted_amount || order.unitPrice || 0);
+    const subtotal = chargedPerUnit * Number(order.qty || 1);
+    const totalTaxAmount =
+        Number(order.cgst_amount || 0) +
+        Number(order.sgst_amount || 0) +
+        Number(order.igst_amount || 0);
+
     const item = [
         { text: order.variant.productId?.name, font: { size: 11 } },
         { text: order.variant.productId?.hsn, align: { x: "center" } },
         { text: order.tax + " %", align: { x: "center" } },
         { text: order.qty, align: { x: "center" } },
-        { text: order.unitPrice, align: { x: "center" } },
-        { text: order.unitPrice * order.qty, align: { x: "right" } },
+        { text: chargedPerUnit, align: { x: "center" } },
+        { text: subtotal, align: { x: "right" } },
     ];
 
     doc.table({
@@ -132,7 +139,7 @@ function drawItemsTable(doc, order) {
     });
 
     doc.text("GST Output", 205, 320);
-    doc.text(order.totalPrice - order.unitPrice * order.qty, 520, 320);
+    doc.text(totalTaxAmount, 520, 320);
 
     doc.rect(50, 455, 500, 30).stroke();
     doc.fontSize(11).text("Total", 220, 460);
