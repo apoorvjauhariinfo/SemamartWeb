@@ -124,6 +124,7 @@ const bulkOrder = require("./controller/bulkOrder");
 const notifyRequest = require("./controller/notifyRequest");
 const emailTestRoutes = require("./controller/emailTest");
 const review = require("./controller/review");
+const support = require("./controller/support");
 
 
 // end points
@@ -152,6 +153,7 @@ app.use("/api/v2/bulkorder", bulkOrder)
 app.use("/api/v2/notifyRequest", notifyRequest)
 app.use("/api/v2/email-test", emailTestRoutes);
 app.use("/api/v2/review", review);
+app.use("/api/v2/support", support);
 
 
 
