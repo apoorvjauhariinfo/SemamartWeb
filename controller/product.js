@@ -2024,6 +2024,7 @@ router.get(
         $project: {
           name: 1,
           shopId: 1,
+          minmaxrule: 1,
           images: 1,
           sku: 1,
           category: 1,
