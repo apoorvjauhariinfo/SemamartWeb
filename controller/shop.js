@@ -28,6 +28,7 @@ const SELLER_MEMBER_PERMISSION_KEYS = [
   "AllProducts",
   "AllOrders",
   "AllSales",
+  "Requests",
   "Support",
   "StockManagement",
   "ManageMembers",

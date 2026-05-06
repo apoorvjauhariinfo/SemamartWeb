@@ -25,6 +25,88 @@ const orderStatusHistorySchema = new mongoose.Schema({
   },
 });
 
+const orderRequestSchema = new mongoose.Schema(
+  {
+    requestType: {
+      type: String,
+      enum: ["Cancel", "Return", "Replace"],
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: [
+        "Requested",
+        "Sent To Seller",
+        "Admin Rejected",
+        "Seller Rejected",
+        "Completed",
+      ],
+      default: "Requested",
+      required: true,
+    },
+    reason: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    evidenceFiles: [
+      {
+        type: String,
+      },
+    ],
+    resolutionType: {
+      type: String,
+      enum: ["Pending", "Cancelled", "Refund", "Replacement"],
+      default: "Pending",
+    },
+    requestedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    requestedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    adminReviewedAt: {
+      type: Date,
+      default: null,
+    },
+    adminDecisionNote: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    sentToSellerAt: {
+      type: Date,
+      default: null,
+    },
+    sellerReviewedAt: {
+      type: Date,
+      default: null,
+    },
+    sellerDecisionNote: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    completedAt: {
+      type: Date,
+      default: null,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true },
+);
+
 const orderSchema = new mongoose.Schema({
   shop: {
     type: mongoose.Schema.Types.ObjectId,
@@ -182,6 +264,10 @@ const orderSchema = new mongoose.Schema({
   discounted_amount: {
     type: Number,
     default: 0,
+  },
+  requestLog: {
+    type: [orderRequestSchema],
+    default: [],
   },
 
 

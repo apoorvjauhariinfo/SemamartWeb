@@ -32,6 +32,90 @@ const fs = require("fs");
 const { generateInvoice } = require("../utils/pdfGeneration");
 //console.log("generateOrderPdf type:", typeof generateOrderPdf);
 
+const ORDER_REQUEST_TYPES = ["Cancel", "Return", "Replace"];
+const ORDER_REQUEST_STATUSES = {
+  REQUESTED: "Requested",
+  SENT_TO_SELLER: "Sent To Seller",
+  ADMIN_REJECTED: "Admin Rejected",
+  SELLER_REJECTED: "Seller Rejected",
+  COMPLETED: "Completed",
+};
+const ORDER_REQUEST_RESOLUTIONS = {
+  PENDING: "Pending",
+  CANCELLED: "Cancelled",
+  REFUND: "Refund",
+  REPLACEMENT: "Replacement",
+};
+const ORDER_REQUEST_WINDOW_DAYS = 7;
+
+function getLatestRequest(order) {
+  if (!order?.requestLog?.length) return null;
+  return order.requestLog[order.requestLog.length - 1];
+}
+
+function getActiveRequest(order) {
+  if (!order?.requestLog?.length) return null;
+  for (let i = order.requestLog.length - 1; i >= 0; i -= 1) {
+    if (order.requestLog[i]?.isActive) return order.requestLog[i];
+  }
+  return null;
+}
+
+function isOrderOwnedByUser(order, user) {
+  if (!order?.user || !user?._id) return false;
+  return String(order.user) === String(user._id);
+}
+
+function getEligibleRequestTypes(order) {
+  const currentStatus = order?.status || "";
+  const activeRequest = getActiveRequest(order);
+  const latestRequest = getLatestRequest(order);
+  if (activeRequest) return [];
+  if (latestRequest?.status === ORDER_REQUEST_STATUSES.COMPLETED) return [];
+
+  if (["Created", "Paid", "Processing", "Packed"].includes(currentStatus)) {
+    return ["Cancel"];
+  }
+
+  if (currentStatus === "Delivered" && order?.deliveredAt) {
+    const deliveredAt = new Date(order.deliveredAt);
+    const ageInMs = Date.now() - deliveredAt.getTime();
+    const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+    if (ageInDays <= ORDER_REQUEST_WINDOW_DAYS) {
+      return ["Return", "Replace"];
+    }
+  }
+
+  return [];
+}
+
+function buildRequestSummary(order) {
+  const activeRequest = getActiveRequest(order);
+  const latestRequest = getLatestRequest(order);
+  return {
+    hasActiveRequest: Boolean(activeRequest),
+    activeRequest,
+    latestRequest,
+    eligibleRequestTypes: getEligibleRequestTypes(order),
+    requestWindowDays: ORDER_REQUEST_WINDOW_DAYS,
+  };
+}
+
+async function restoreVariantStock(variantId, qty) {
+  if (!variantId || !qty) return;
+  const variant = await ProductVariant.findById(variantId);
+  if (!variant) return;
+  variant.stock += qty;
+  await variant.save({ validateBeforeSave: false });
+}
+
+function applyOrderRequestSummary(orderDoc) {
+  if (!orderDoc) return orderDoc;
+  const orderObject = orderDoc.toObject ? orderDoc.toObject() : orderDoc;
+  orderObject.requestSummary = buildRequestSummary(orderObject);
+  return orderObject;
+}
+
 function getMonthDateRange(year, monthIndex) {
   const start = new Date(year, monthIndex, 1);
   const end = new Date(year, monthIndex + 1, 0, 23, 59, 59, 999);
@@ -827,7 +911,7 @@ router.get(
       res.status(404).send("Order not Found");
     }
 
-    res.json(order);
+    res.json(applyOrderRequestSummary(order));
   }),
 );
 
@@ -851,7 +935,10 @@ router.get(
         .populate("shop", "name email businessName")
         .populate("user", "firstName lastName email phoneNumber addresses");
 
-      res.status(200).json({ success: true, orders });
+      res.status(200).json({
+        success: true,
+        orders: orders.map((order) => applyOrderRequestSummary(order)),
+      });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -892,7 +979,317 @@ router.get(
 
       res.status(200).json({
         success: true,
-        order,
+        order: applyOrderRequestSummary(order),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.get(
+  "/user-order-details/:orderId",
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const order = await Order.findById(req.params.orderId)
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName",
+          },
+        })
+        .populate("review")
+        .populate("shop", "name email businessName")
+        .populate("user", "firstName lastName email phoneNumber addresses");
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        order: applyOrderRequestSummary(order),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.post(
+  "/request/:id",
+  isAuthenticated,
+  uploadV2.array("request_files", 5),
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { requestType, reason = "", description = "" } = req.body;
+      const order = await Order.findById(req.params.id);
+
+      if (!order) {
+        return next(new ErrorHandler("Order not found", 404));
+      }
+
+      if (!isOrderOwnedByUser(order, req.user)) {
+        return next(new ErrorHandler("You can raise a request only for your own order", 403));
+      }
+
+      if (!ORDER_REQUEST_TYPES.includes(requestType)) {
+        return next(new ErrorHandler("Invalid request type", 400));
+      }
+
+      const eligibleRequestTypes = getEligibleRequestTypes(order);
+      if (!eligibleRequestTypes.includes(requestType)) {
+        return next(
+          new ErrorHandler(
+            `This order is not eligible for ${requestType.toLowerCase()} request at the current stage`,
+            400,
+          ),
+        );
+      }
+
+      if (!reason.trim()) {
+        return next(new ErrorHandler("Reason is required", 400));
+      }
+
+      const evidenceFiles = Array.isArray(req.files)
+        ? req.files.map((file) => file.filename)
+        : [];
+
+      order.requestLog.push({
+        requestType,
+        status: ORDER_REQUEST_STATUSES.REQUESTED,
+        reason: reason.trim(),
+        description: String(description || "").trim(),
+        evidenceFiles,
+        requestedBy: req.user._id,
+        requestedAt: new Date(),
+        resolutionType: ORDER_REQUEST_RESOLUTIONS.PENDING,
+        isActive: true,
+      });
+
+      await order.save({ validateBeforeSave: false });
+
+      return res.status(201).json({
+        success: true,
+        message: `${requestType} request raised successfully`,
+        order: applyOrderRequestSummary(order),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.get(
+  "/admin-order-requests",
+  isAuthenticated,
+  hasPermission("Requests"),
+  catchAsyncErrors(async (_req, res, next) => {
+    try {
+      const orders = await Order.find({ requestLog: { $exists: true, $ne: [] } })
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("shop", "name email businessName")
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName commission",
+          },
+        })
+        .sort({ "requestLog.requestedAt": -1, createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        orders: orders.map((order) => applyOrderRequestSummary(order)),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.put(
+  "/admin-order-request/:id",
+  isAuthenticated,
+  hasPermission("Requests"),
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { action, note = "" } = req.body;
+      const order = await Order.findById(req.params.id)
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("shop", "name email businessName")
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName commission",
+          },
+        });
+
+      if (!order) {
+        return next(new ErrorHandler("Order not found", 404));
+      }
+
+      const activeRequest = getActiveRequest(order);
+      if (!activeRequest) {
+        return next(new ErrorHandler("No active request found for this order", 400));
+      }
+
+      if (activeRequest.status !== ORDER_REQUEST_STATUSES.REQUESTED) {
+        return next(new ErrorHandler("This request has already been reviewed by admin", 400));
+      }
+
+      if (action === "forward_to_seller") {
+        activeRequest.status = ORDER_REQUEST_STATUSES.SENT_TO_SELLER;
+        activeRequest.adminReviewedAt = new Date();
+        activeRequest.sentToSellerAt = new Date();
+        activeRequest.adminDecisionNote = String(note || "").trim();
+      } else if (action === "reject") {
+        activeRequest.status = ORDER_REQUEST_STATUSES.ADMIN_REJECTED;
+        activeRequest.adminReviewedAt = new Date();
+        activeRequest.adminDecisionNote = String(note || "").trim();
+        activeRequest.isActive = false;
+        activeRequest.completedAt = new Date();
+      } else {
+        return next(new ErrorHandler("Invalid admin request action", 400));
+      }
+
+      await order.save({ validateBeforeSave: false });
+
+      return res.status(200).json({
+        success: true,
+        message:
+          action === "reject"
+            ? "Request rejected by admin"
+            : "Request sent to seller successfully",
+        order: applyOrderRequestSummary(order),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.get(
+  "/seller-order-requests",
+  isSeller,
+  hasSellerPermission("Requests", "AllOrders"),
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const orders = await Order.find({
+        shop: req.seller._id,
+        requestLog: { $exists: true, $ne: [] },
+      })
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("shop", "name email businessName")
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName commission",
+          },
+        })
+        .sort({ "requestLog.requestedAt": -1, createdAt: -1 });
+
+      return res.status(200).json({
+        success: true,
+        orders: orders.map((order) => applyOrderRequestSummary(order)),
+      });
+    } catch (error) {
+      return next(new ErrorHandler(error.message, 500));
+    }
+  }),
+);
+
+router.put(
+  "/seller-order-request/:id",
+  isSeller,
+  hasSellerPermission("Requests", "AllOrders"),
+  catchAsyncErrors(async (req, res, next) => {
+    try {
+      const { action, note = "", resolutionType } = req.body;
+      const order = await Order.findById(req.params.id)
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("shop", "name email businessName")
+        .populate({
+          path: "variant",
+          populate: {
+            path: "productId",
+            select: "name images manufacturerName commission",
+          },
+        });
+
+      if (!order) {
+        return next(new ErrorHandler("Order not found", 404));
+      }
+
+      if (String(order.shop?._id || order.shop) !== String(req.seller._id)) {
+        return next(new ErrorHandler("You can only manage requests for your own orders", 403));
+      }
+
+      const activeRequest = getActiveRequest(order);
+      if (!activeRequest) {
+        return next(new ErrorHandler("No active request found for this order", 400));
+      }
+
+      if (activeRequest.status !== ORDER_REQUEST_STATUSES.SENT_TO_SELLER) {
+        return next(new ErrorHandler("This request is not pending with seller", 400));
+      }
+
+      if (action === "reject") {
+        activeRequest.status = ORDER_REQUEST_STATUSES.SELLER_REJECTED;
+        activeRequest.sellerReviewedAt = new Date();
+        activeRequest.sellerDecisionNote = String(note || "").trim();
+        activeRequest.isActive = false;
+        activeRequest.completedAt = new Date();
+      } else if (action === "complete") {
+        const finalResolution =
+          resolutionType ||
+          (activeRequest.requestType === "Cancel"
+            ? ORDER_REQUEST_RESOLUTIONS.CANCELLED
+            : activeRequest.requestType === "Return"
+              ? ORDER_REQUEST_RESOLUTIONS.REFUND
+              : ORDER_REQUEST_RESOLUTIONS.REPLACEMENT);
+
+        activeRequest.status = ORDER_REQUEST_STATUSES.COMPLETED;
+        activeRequest.resolutionType = finalResolution;
+        activeRequest.sellerReviewedAt = new Date();
+        activeRequest.sellerDecisionNote = String(note || "").trim();
+        activeRequest.completedAt = new Date();
+        activeRequest.isActive = false;
+
+        if (activeRequest.requestType === "Cancel") {
+          order.status = "Cancelled";
+          order.statusHistory.push({
+            status: "Cancelled",
+            updatedAt: new Date(),
+          });
+          await restoreVariantStock(order.variant?._id || order.variant, order.qty);
+        }
+
+        if (
+          activeRequest.requestType === "Return" &&
+          finalResolution === ORDER_REQUEST_RESOLUTIONS.REFUND
+        ) {
+          await restoreVariantStock(order.variant?._id || order.variant, order.qty);
+        }
+      } else {
+        return next(new ErrorHandler("Invalid seller request action", 400));
+      }
+
+      await order.save({ validateBeforeSave: false });
+
+      return res.status(200).json({
+        success: true,
+        message:
+          action === "reject"
+            ? "Request rejected by seller"
+            : "Request completed successfully",
+        order: applyOrderRequestSummary(order),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -916,7 +1313,10 @@ router.get(
         })
         .sort({ createdAt: -1 });
 
-      res.status(200).json({ success: true, orders });
+      res.status(200).json({
+        success: true,
+        orders: orders.map((order) => applyOrderRequestSummary(order)),
+      });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -1066,7 +1466,10 @@ router.get(
         })
         .sort({ createdAt: -1 });
 
-      res.status(200).json({ success: true, orders });
+      res.status(200).json({
+        success: true,
+        orders: orders.map((order) => applyOrderRequestSummary(order)),
+      });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -1090,7 +1493,7 @@ router.get(
       res.status(404).send("Order not Found");
     }
 
-    res.json(order);
+    res.json(applyOrderRequestSummary(order));
   }),
 );
 

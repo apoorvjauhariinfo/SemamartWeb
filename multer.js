@@ -30,6 +30,7 @@ const subFolders = {
   banner: "images",
   image: "images",
   payment_file:"payment-docs",
+  request_files:"payment-docs",
   heroImages: "images",
   tracking_file:"payment-docs",
 };
