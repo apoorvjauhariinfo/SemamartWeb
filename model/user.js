@@ -110,6 +110,33 @@ const userSchema = new mongoose.Schema({
     type: Object,
     default: {},
   },
+  refundBankDetails: {
+    accountHolderName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    accountNumber: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    ifsc: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    bankName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    updatedAt: {
+      type: Date,
+      default: null,
+    },
+  },
   memberScope: {
     type: String,
     enum: ["admin", "user", "seller", null],

@@ -103,6 +103,25 @@ function buildUserResponse(user, authUser) {
   };
 }
 
+function normalizeRefundBankDetails(details = {}) {
+  return {
+    accountHolderName: String(details.accountHolderName || "").trim(),
+    accountNumber: String(details.accountNumber || "").trim(),
+    ifsc: String(details.ifsc || "").trim().toUpperCase(),
+    bankName: String(details.bankName || "").trim(),
+    updatedAt: new Date(),
+  };
+}
+
+function hasCompleteRefundBankDetails(details = {}) {
+  return Boolean(
+    details.accountHolderName &&
+      details.accountNumber &&
+      details.ifsc &&
+      details.bankName
+  );
+}
+
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
@@ -499,6 +518,17 @@ router.patch(
       const updates = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+
+      if (req.body.refundBankDetails !== undefined) {
+        const refundBankDetails = normalizeRefundBankDetails(req.body.refundBankDetails);
+        if (!hasCompleteRefundBankDetails(refundBankDetails)) {
+          return next(new ErrorHandler("Complete refund bank details are required", 400));
+        }
+        if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(refundBankDetails.ifsc)) {
+          return next(new ErrorHandler("Invalid IFSC code", 400));
+        }
+        updates.refundBankDetails = refundBankDetails;
       }
 
       const user = await User.findByIdAndUpdate(
@@ -1045,7 +1075,9 @@ router.get(
   "/user-info/:id",
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const user = await User.findById(req.params.id);
+      const user = await User.findById(req.params.id).select(
+        "firstName lastName email phoneNumber instituteName addresses avatar createdAt role",
+      );
 
       res.status(201).json({
         success: true,

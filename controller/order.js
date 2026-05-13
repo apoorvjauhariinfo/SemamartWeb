@@ -47,10 +47,52 @@ const ORDER_REQUEST_RESOLUTIONS = {
   REPLACEMENT: "Replacement",
 };
 const ORDER_REQUEST_WINDOW_DAYS = 7;
+const MAIN_ORDER_FLOW = [
+  "Created",
+  "Paid",
+  "Processing",
+  "Packed",
+  "Shipped",
+  "Delivered",
+];
+const CANCELLABLE_ORDER_STATUSES = new Set([
+  "Created",
+  "Paid",
+  "Processing",
+  "Packed",
+]);
 
 function getLatestRequest(order) {
   if (!order?.requestLog?.length) return null;
   return order.requestLog[order.requestLog.length - 1];
+}
+
+function normalizeRefundBankDetails(details = {}) {
+  return {
+    accountHolderName: String(details.accountHolderName || "").trim(),
+    accountNumber: String(details.accountNumber || "").trim(),
+    ifsc: String(details.ifsc || "").trim().toUpperCase(),
+    bankName: String(details.bankName || "").trim(),
+  };
+}
+
+function hasCompleteRefundBankDetails(details = {}) {
+  return Boolean(
+    details.accountHolderName &&
+      details.accountNumber &&
+      details.ifsc &&
+      details.bankName
+  );
+}
+
+function sanitizeRequestForRole(request, role) {
+  if (!request) return request;
+  const plain = request.toObject ? request.toObject() : { ...request };
+  if (role === "seller" && plain.refundBankDetails) {
+    plain.refundBankDetails = undefined;
+    plain.refundBankDetailsAvailable = plain.refundMethod === "Bank Transfer";
+  }
+  return plain;
 }
 
 function getActiveRequest(order) {
@@ -59,6 +101,30 @@ function getActiveRequest(order) {
     if (order.requestLog[i]?.isActive) return order.requestLog[i];
   }
   return null;
+}
+
+function isAllowedOrderStatusTransition(currentStatus, nextStatus) {
+  if (!currentStatus || !nextStatus) return false;
+  if (currentStatus === nextStatus) return true;
+
+  if (nextStatus === "Cancelled") {
+    return CANCELLABLE_ORDER_STATUSES.has(currentStatus);
+  }
+
+  if (currentStatus === "Delivered" && nextStatus === "Refund Requested") {
+    return true;
+  }
+
+  if (currentStatus === "Refund Requested" && nextStatus === "Refund Success") {
+    return true;
+  }
+
+  const currentIndex = MAIN_ORDER_FLOW.indexOf(currentStatus);
+  const nextIndex = MAIN_ORDER_FLOW.indexOf(nextStatus);
+
+  if (currentIndex === -1 || nextIndex === -1) return false;
+
+  return nextIndex === currentIndex + 1;
 }
 
 function isOrderOwnedByUser(order, user) {
@@ -89,9 +155,9 @@ function getEligibleRequestTypes(order) {
   return [];
 }
 
-function buildRequestSummary(order) {
-  const activeRequest = getActiveRequest(order);
-  const latestRequest = getLatestRequest(order);
+function buildRequestSummary(order, role = "public") {
+  const activeRequest = sanitizeRequestForRole(getActiveRequest(order), role);
+  const latestRequest = sanitizeRequestForRole(getLatestRequest(order), role);
   return {
     hasActiveRequest: Boolean(activeRequest),
     activeRequest,
@@ -109,10 +175,15 @@ async function restoreVariantStock(variantId, qty) {
   await variant.save({ validateBeforeSave: false });
 }
 
-function applyOrderRequestSummary(orderDoc) {
+function applyOrderRequestSummary(orderDoc, role = "public") {
   if (!orderDoc) return orderDoc;
   const orderObject = orderDoc.toObject ? orderDoc.toObject() : orderDoc;
-  orderObject.requestSummary = buildRequestSummary(orderObject);
+  if (Array.isArray(orderObject.requestLog)) {
+    orderObject.requestLog = orderObject.requestLog.map((request) =>
+      sanitizeRequestForRole(request, role),
+    );
+  }
+  orderObject.requestSummary = buildRequestSummary(orderObject, role);
   return orderObject;
 }
 
@@ -911,15 +982,20 @@ router.get(
       res.status(404).send("Order not Found");
     }
 
-    res.json(applyOrderRequestSummary(order));
+    res.json(applyOrderRequestSummary(order, "seller"));
   }),
 );
 
 // ✅ Get all orders of a user
 router.get(
   "/get-all-orders/:userId",
+  isAuthenticated,
   catchAsyncErrors(async (req, res, next) => {
     try {
+      if (String(req.user._id) !== String(req.params.userId)) {
+        return next(new ErrorHandler("You can access only your own orders", 403));
+      }
+
       const userId = new mongoose.Types.ObjectId(req.params.userId);
 
       const orders = await Order.find({ user: userId })
@@ -933,11 +1009,11 @@ router.get(
         })
         .populate("review") 
         .populate("shop", "name email businessName")
-        .populate("user", "firstName lastName email phoneNumber addresses");
+        .populate("user", "firstName lastName email phoneNumber addresses refundBankDetails");
 
       res.status(200).json({
         success: true,
-        orders: orders.map((order) => applyOrderRequestSummary(order)),
+        orders: orders.map((order) => applyOrderRequestSummary(order, "user")),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -947,6 +1023,7 @@ router.get(
 
 router.get(
   "/get-order/:id",
+  isAuthenticated,
   catchAsyncErrors(async (req, res, next) => {
     try {
       const { id } = req.params;
@@ -968,7 +1045,7 @@ router.get(
         })
         .populate("review")
         .populate("shop", "name email")
-        .populate("user", "firstName lastName email phoneNumber addresses");
+        .populate("user", "firstName lastName email phoneNumber addresses refundBankDetails");
 
       if (!order) {
         return res.status(404).json({
@@ -977,9 +1054,16 @@ router.get(
         });
       }
 
+      if (String(order.user?._id || order.user) !== String(req.user._id)) {
+        return res.status(403).json({
+          success: false,
+          message: "You can access only your own order",
+        });
+      }
+
       res.status(200).json({
         success: true,
-        order: applyOrderRequestSummary(order),
+        order: applyOrderRequestSummary(order, "user"),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -989,6 +1073,7 @@ router.get(
 
 router.get(
   "/user-order-details/:orderId",
+  isAuthenticated,
   catchAsyncErrors(async (req, res, next) => {
     try {
       const order = await Order.findById(req.params.orderId)
@@ -1001,7 +1086,7 @@ router.get(
         })
         .populate("review")
         .populate("shop", "name email businessName")
-        .populate("user", "firstName lastName email phoneNumber addresses");
+        .populate("user", "firstName lastName email phoneNumber addresses refundBankDetails");
 
       if (!order) {
         return res.status(404).json({
@@ -1010,9 +1095,16 @@ router.get(
         });
       }
 
+      if (String(order.user?._id || order.user) !== String(req.user._id)) {
+        return res.status(403).json({
+          success: false,
+          message: "You can access only your own order",
+        });
+      }
+
       return res.status(200).json({
         success: true,
-        order: applyOrderRequestSummary(order),
+        order: applyOrderRequestSummary(order, "user"),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1028,9 +1120,14 @@ router.post(
     try {
       const { requestType, reason = "", description = "" } = req.body;
       const order = await Order.findById(req.params.id);
+      const user = await User.findById(req.user._id);
 
       if (!order) {
         return next(new ErrorHandler("Order not found", 404));
+      }
+
+      if (!user) {
+        return next(new ErrorHandler("User not found", 404));
       }
 
       if (!isOrderOwnedByUser(order, req.user)) {
@@ -1055,6 +1152,53 @@ router.post(
         return next(new ErrorHandler("Reason is required", 400));
       }
 
+      let refundMethod = "Not Required";
+      let refundBankDetails = {
+        accountHolderName: "",
+        accountNumber: "",
+        ifsc: "",
+        bankName: "",
+      };
+
+      if (requestType === "Return") {
+        const submittedRefundDetails = normalizeRefundBankDetails({
+          accountHolderName: req.body.accountHolderName,
+          accountNumber: req.body.accountNumber,
+          ifsc: req.body.ifsc,
+          bankName: req.body.bankName,
+        });
+
+        const profileRefundDetails = normalizeRefundBankDetails(
+          user.refundBankDetails || {},
+        );
+
+        const finalRefundDetails = hasCompleteRefundBankDetails(submittedRefundDetails)
+          ? submittedRefundDetails
+          : profileRefundDetails;
+
+        if (!hasCompleteRefundBankDetails(finalRefundDetails)) {
+          return next(
+            new ErrorHandler(
+              "Refund bank details are required for return request",
+              400,
+            ),
+          );
+        }
+
+        if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(finalRefundDetails.ifsc)) {
+          return next(new ErrorHandler("Invalid IFSC code", 400));
+        }
+
+        refundMethod = "Bank Transfer";
+        refundBankDetails = finalRefundDetails;
+
+        user.refundBankDetails = {
+          ...finalRefundDetails,
+          updatedAt: new Date(),
+        };
+        await user.save({ validateBeforeSave: false });
+      }
+
       const evidenceFiles = Array.isArray(req.files)
         ? req.files.map((file) => file.filename)
         : [];
@@ -1068,6 +1212,8 @@ router.post(
         requestedBy: req.user._id,
         requestedAt: new Date(),
         resolutionType: ORDER_REQUEST_RESOLUTIONS.PENDING,
+        refundMethod,
+        refundBankDetails,
         isActive: true,
       });
 
@@ -1076,7 +1222,7 @@ router.post(
       return res.status(201).json({
         success: true,
         message: `${requestType} request raised successfully`,
-        order: applyOrderRequestSummary(order),
+        order: applyOrderRequestSummary(order, "user"),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1091,7 +1237,7 @@ router.get(
   catchAsyncErrors(async (_req, res, next) => {
     try {
       const orders = await Order.find({ requestLog: { $exists: true, $ne: [] } })
-        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses refundBankDetails")
         .populate("shop", "name email businessName")
         .populate({
           path: "variant",
@@ -1104,7 +1250,7 @@ router.get(
 
       return res.status(200).json({
         success: true,
-        orders: orders.map((order) => applyOrderRequestSummary(order)),
+        orders: orders.map((order) => applyOrderRequestSummary(order, "admin")),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1120,7 +1266,7 @@ router.put(
     try {
       const { action, note = "" } = req.body;
       const order = await Order.findById(req.params.id)
-        .populate("user", "firstName lastName instituteName email phoneNumber addresses")
+        .populate("user", "firstName lastName instituteName email phoneNumber addresses refundBankDetails")
         .populate("shop", "name email businessName")
         .populate({
           path: "variant",
@@ -1166,7 +1312,7 @@ router.put(
           action === "reject"
             ? "Request rejected by admin"
             : "Request sent to seller successfully",
-        order: applyOrderRequestSummary(order),
+        order: applyOrderRequestSummary(order, "admin"),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1197,7 +1343,7 @@ router.get(
 
       return res.status(200).json({
         success: true,
-        orders: orders.map((order) => applyOrderRequestSummary(order)),
+        orders: orders.map((order) => applyOrderRequestSummary(order, "seller")),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1264,6 +1410,7 @@ router.put(
 
         if (activeRequest.requestType === "Cancel") {
           order.status = "Cancelled";
+          order.$locals.skipStatusValidation = true;
           order.statusHistory.push({
             status: "Cancelled",
             updatedAt: new Date(),
@@ -1289,7 +1436,7 @@ router.put(
           action === "reject"
             ? "Request rejected by seller"
             : "Request completed successfully",
-        order: applyOrderRequestSummary(order),
+        order: applyOrderRequestSummary(order, "seller"),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1315,7 +1462,7 @@ router.get(
 
       res.status(200).json({
         success: true,
-        orders: orders.map((order) => applyOrderRequestSummary(order)),
+        orders: orders.map((order) => applyOrderRequestSummary(order, "seller")),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1336,11 +1483,31 @@ router.put(
         return next(new ErrorHandler("Order not found with this id", 400));
       }
 
+      const activeRequest = getActiveRequest(order);
+      if (activeRequest) {
+        return next(
+          new ErrorHandler(
+            "This order has an active request. Please resolve the request before changing the order status.",
+            400,
+          ),
+        );
+      }
+
+      if (!isAllowedOrderStatusTransition(order.status, req.body.status)) {
+        return next(
+          new ErrorHandler(
+            `Invalid order status change from ${order.status} to ${req.body.status}`,
+            400,
+          ),
+        );
+      }
+
       if (req.body.status === "Transferred to delivery partner") {
         await updateStock(order.variant.productId, order.qty);
       }
 
       order.status = req.body.status;
+      order.$locals.skipStatusValidation = true;
       order.statusHistory.push({
         status: req.body.status,
         updatedAt: new Date(),
@@ -1420,7 +1587,17 @@ router.put(
         return next(new ErrorHandler("Order not found with this id", 400));
       }
 
+      if (!isAllowedOrderStatusTransition(order.status, req.body.status)) {
+        return next(
+          new ErrorHandler(
+            `Invalid order status change from ${order.status} to ${req.body.status}`,
+            400,
+          ),
+        );
+      }
+
       order.status = req.body.status;
+      order.$locals.skipStatusValidation = true;
       await order.save();
 
       res.status(200).json({
@@ -1468,7 +1645,7 @@ router.get(
 
       res.status(200).json({
         success: true,
-        orders: orders.map((order) => applyOrderRequestSummary(order)),
+        orders: orders.map((order) => applyOrderRequestSummary(order, "admin")),
       });
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
@@ -1493,7 +1670,7 @@ router.get(
       res.status(404).send("Order not Found");
     }
 
-    res.json(applyOrderRequestSummary(order));
+    res.json(applyOrderRequestSummary(order, "admin"));
   }),
 );
 
@@ -1527,11 +1704,27 @@ router.put(
       throw new ErrorHandler("Invalid order", 404);
     }
 
+    const activeRequest = getActiveRequest(order);
+    if (activeRequest) {
+      throw new ErrorHandler(
+        "This order has an active request. Please resolve the request before changing the order status.",
+        400,
+      );
+    }
+
+    if (!isAllowedOrderStatusTransition(order.status, status)) {
+      throw new ErrorHandler(
+        `Invalid order status change from ${order.status} to ${status}`,
+        400,
+      );
+    }
+
     // Keep old status to avoid double-counting
     const prevStatus = order.status;
 
     // Update status & history
     order.status = status;
+    order.$locals.skipStatusValidation = true;
     order.statusHistory.push({
       status,
       updatedAt: new Date(),

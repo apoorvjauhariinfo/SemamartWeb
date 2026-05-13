@@ -64,6 +64,34 @@ const orderRequestSchema = new mongoose.Schema(
       enum: ["Pending", "Cancelled", "Refund", "Replacement"],
       default: "Pending",
     },
+    refundMethod: {
+      type: String,
+      enum: ["Not Required", "Bank Transfer"],
+      default: "Not Required",
+    },
+    refundBankDetails: {
+      accountHolderName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      accountNumber: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      ifsc: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: "",
+      },
+      bankName: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+    },
     requestedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -282,8 +310,27 @@ const MAIN_FLOW = [
   "Delivered",
 ];
 
+const CANCELLABLE_FLOW = new Set([
+  "Created",
+  "Paid",
+  "Processing",
+  "Packed",
+]);
+
 function isValidStatusChange(current, next) {
   if (current === next) return true;
+
+  if (next === "Cancelled") {
+    return CANCELLABLE_FLOW.has(current);
+  }
+
+  if (current === "Delivered" && next === "Refund Requested") {
+    return true;
+  }
+
+  if (current === "Refund Requested" && next === "Refund Success") {
+    return true;
+  }
 
   const currentIndex = MAIN_FLOW.indexOf(current);
   const nextIndex = MAIN_FLOW.indexOf(next);
@@ -293,6 +340,7 @@ function isValidStatusChange(current, next) {
 }
 
 orderSchema.pre("save", async function (next) {
+  if (this.$locals?.skipStatusValidation) return next();
   if (!this.isModified("status")) return next();
   if (this.isNew) return next();
 
