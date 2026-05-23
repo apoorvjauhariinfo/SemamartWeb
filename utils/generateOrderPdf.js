@@ -341,18 +341,32 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
       const tableLeft = margin;
       const tableWidth = usableW;
 
-      const colSno = 25;      // was 28
-      const colQty = 20;      // was 36
+      const totalTaxAmount =
+        Number(order.cgst_amount || 0) +
+        Number(order.sgst_amount || 0) +
+        Number(order.igst_amount || 0);
+      const totalTaxRate =
+        Number(order.tax || 0) ||
+        Number(order.cgst_rate || 0) +
+          Number(order.sgst_rate || 0) +
+          Number(order.igst_rate || 0);
 
-      const descFraction = 0.30; // was 0.36 (big win here)
-      const hsnFraction = 0.13;  // was 0.12
-      const unitFraction = 0.15; // was 0.18
+      const colSno = 22;
+      const colQty = 22;
+
+      const descFraction = 0.25;
+      const hsnFraction = 0.11;
+      const rateFraction = 0.12;
+      const taxRateFraction = 0.09;
+      const taxAmountFraction = 0.14;
 
       const colDesc = Math.round(tableWidth * descFraction);
       const colHsn = Math.round(tableWidth * hsnFraction);
-      const colUnit = Math.round(tableWidth * unitFraction);
-      const colDiscount = Math.round(tableWidth * 0.15); // was 0.12
-      const colSumBeforeLast = colSno + colDesc + colHsn + colQty + colUnit + colDiscount;
+      const colRate = Math.round(tableWidth * rateFraction);
+      const colTaxRate = Math.round(tableWidth * taxRateFraction);
+      const colTaxAmount = Math.round(tableWidth * taxAmountFraction);
+      const colSumBeforeLast =
+        colSno + colDesc + colHsn + colQty + colRate + colTaxRate + colTaxAmount;
       const colTotal = tableWidth - colSumBeforeLast;
 
       const cols = [
@@ -360,17 +374,18 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         { key: "desc", width: colDesc },
         { key: "hsn", width: colHsn },
         { key: "qty", width: colQty },
-        { key: "unitPrice", width: colUnit },
-        { key: "discount", width: colDiscount },
+        { key: "rate", width: colRate },
+        { key: "taxRate", width: colTaxRate },
+        { key: "taxAmount", width: colTaxAmount },
         { key: "totalPrice", width: colTotal },
       ];
 
       try { doc.rect(tableLeft, tableTop, tableWidth, 22).fill("#f7fbff").strokeColor("#dbeefb").lineWidth(0.6).stroke(); } catch (e) {}
       doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(7);
       let x = tableLeft + 6;
-      const titles = ["S.No", "Description of Goods", "HSN", "Qty", "Unit Price", "Discounted Price", "Total Price"];
+      const titles = ["S.No", "Description", "HSN", "Qty", "Rate", "GST %", "GST Amt", "Total"];
       for (let i = 0; i < cols.length; i++) {
-        const rightAlign = ["qty", "unitPrice", "discount",  "totalPrice"].includes(cols[i].key);
+        const rightAlign = ["qty", "rate", "taxRate", "taxAmount", "totalPrice"].includes(cols[i].key);
         doc.text(titles[i], x, tableTop + 6, { width: cols[i].width - 8, align: rightAlign ? "right" : "left" });
         x += cols[i].width;
       }
@@ -381,9 +396,10 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
           name: (product && product.name) || "Item",
           hsn: (product && (product.hsn || product.hsnCode)) || "",
           qty: order.qty || 1,
-          unitPrice: order.unitPrice || 0,
-          discount: order.discounted_amount || 0,
-          totalPrice: (order.discounted_amount || 0) * (order.qty || 1),
+          rate: order.discounted_amount || order.unitPrice || 0,
+          taxRate: totalTaxRate,
+          taxAmount: totalTaxAmount,
+          totalPrice: Number(order.totalPrice || 0),
         }
       ];
 
@@ -395,8 +411,9 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         const desc = String(it.name || "");
         const hsn = String(it.hsn || "");
         const qty = String(it.qty == null ? 1 : it.qty);
-        const unitPrice = Number(it.unitPrice || 0);
-        const discount = Number(it.discount || 0);
+        const rate = Number(it.rate || 0);
+        const taxRate = Number(it.taxRate || 0);
+        const taxAmount = Number(it.taxAmount || 0);
         const totalPrice = Number(it.totalPrice || 0);
 
         const descWidth = cols[1].width - 8;
@@ -410,7 +427,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
           doc.fillColor("#333").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").fontSize(9);
           let xx = tableLeft + 6;
           for (let i = 0; i < cols.length; i++) {
-            const rightAlign = ["qty", "unitPrice", "discount", "totalPrice"].includes(cols[i].key);
+        const rightAlign = ["qty", "rate", "taxRate", "taxAmount", "totalPrice"].includes(cols[i].key);
             doc.text(titles[i], xx, newTop + 6, { width: cols[i].width - 8, align: rightAlign ? "right" : "left" });
             xx += cols[i].width;
           }
@@ -435,13 +452,16 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         doc.text(qty, cx, cursorY, { width: cols[3].width - 8, align: "right" });
         cx += cols[3].width;
 
-        doc.text(formatCurrency(unitPrice), cx, cursorY, { width: cols[4].width - 8, align: "right" });
+        doc.text(formatCurrency(rate), cx, cursorY, { width: cols[4].width - 8, align: "right" });
         cx += cols[4].width;
 
-        doc.text(formatCurrency(discount), cx, cursorY, { width: cols[5].width - 8, align: "right" });
+        doc.text(`${taxRate.toFixed(2)}%`, cx, cursorY, { width: cols[5].width - 8, align: "right" });
         cx += cols[5].width;
 
-        doc.text(formatCurrency(totalPrice), cx, cursorY, { width: cols[6].width - 8, align: "right" });
+        doc.text(formatCurrency(taxAmount), cx, cursorY, { width: cols[6].width - 8, align: "right" });
+        cx += cols[6].width;
+
+        doc.text(formatCurrency(totalPrice), cx, cursorY, { width: cols[7].width - 8, align: "right" });
 
         const rowBottom = cursorY + cellHeight;
         try {
@@ -472,9 +492,9 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
 
         // Column widths
         const colTaxType = Math.round(gstTableWidth * 0.25);
-        const colRate = Math.round(gstTableWidth * 0.15);
+        const gstColRate = Math.round(gstTableWidth * 0.15);
         const colAmount = Math.round(gstTableWidth * 0.25);
-        const colTotalTax = gstTableWidth - colTaxType - colRate - colAmount;
+        const colTotalTax = gstTableWidth - colTaxType - gstColRate - colAmount;
 
         // GST rows
         const gstRows = [
@@ -484,7 +504,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         ].filter(r => Number(r.amount) > 0);
 
         // Total tax amount (CGST + SGST + IGST)
-        const totalTaxAmount = gstRows.reduce(
+        const totalTaxAmountFromRows = gstRows.reduce(
           (sum, r) => sum + Number(r.amount || 0),
           0
         );
@@ -507,10 +527,10 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
 
         doc.text("Tax Type", margin + 6, gstTableTop + 5);
         doc.text("Rate (%)", margin + colTaxType + 6, gstTableTop + 5);
-        doc.text("Amount", margin + colTaxType + colRate + 6, gstTableTop + 5);
+        doc.text("Amount", margin + colTaxType + gstColRate + 6, gstTableTop + 5);
         doc.text(
           "Total Tax Amount",
-          margin + colTaxType + colRate + colAmount + 6,
+          margin + colTaxType + gstColRate + colAmount + 6,
           gstTableTop + 5,
           { width: colTotalTax - 12, align: "right" }
         );
@@ -519,7 +539,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         let vx = margin;
         [
           colTaxType,
-          colRate,
+          gstColRate,
           colAmount
         ].forEach(w => {
           vx += w;
@@ -546,7 +566,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
           doc.text(`${row.rate || 0}%`, margin + colTaxType + 6, rowY + 5);
           doc.text(
             formatCurrency(row.amount || 0),
-            margin + colTaxType + colRate + 6,
+            margin + colTaxType + gstColRate + 6,
             rowY + 5
           );
 
@@ -554,8 +574,8 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
           if (index === 0) {
             doc.font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold");
             doc.text(
-              formatCurrency(totalTaxAmount),
-              margin + colTaxType + colRate + colAmount + 6,
+              formatCurrency(totalTaxAmountFromRows),
+              margin + colTaxType + gstColRate + colAmount + 6,
               rowY + 5,
               { width: colTotalTax - 12, align: "right" }
             );
@@ -576,7 +596,10 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
 
 
       // compute totals
-      const subtotal = itemsArr.reduce((s, it) => s + (Number(it.discount || 0) * Number(it.qty || 1)), 0);
+      const subtotal = itemsArr.reduce(
+        (s, it) => s + Number(it.rate || 0) * Number(it.qty || 1),
+        0,
+      );
       const grandTotal = Number((order.totalPrice).toFixed(2));
 
       // totals block
@@ -584,7 +607,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
       let ty = cursorY + 10;
 
       ty += 12;
-      doc.fontSize(9).fillColor("#555").text("Total Price:", totalsX, ty);
+      doc.fontSize(9).fillColor("#555").text("Taxable Amount:", totalsX, ty);
       doc.fillColor("#000").text(formatCurrency(subtotal), totalsX + 84, ty, { align: "right" });
 
       ty += 12;

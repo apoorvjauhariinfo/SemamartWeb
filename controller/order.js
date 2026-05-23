@@ -103,6 +103,40 @@ function getActiveRequest(order) {
   return null;
 }
 
+function hasCompletedReturnRefund(order) {
+  if (!order?.requestLog?.length) return false;
+  return order.requestLog.some(
+    (request) =>
+      request?.requestType === "Return" &&
+      request?.status === ORDER_REQUEST_STATUSES.COMPLETED &&
+      request?.resolutionType === ORDER_REQUEST_RESOLUTIONS.REFUND,
+  );
+}
+
+function isNetDeliveredOrder(order) {
+  if (!order) return false;
+  if (order.status !== "Delivered") return false;
+  return !hasCompletedReturnRefund(order);
+}
+
+async function decrementDeliveredProductCounters(order) {
+  try {
+    const productId =
+      order?.variant?.productId?._id || order?.variant?.productId || null;
+
+    if (!productId) return;
+
+    await Product.findByIdAndUpdate(productId, {
+      $inc: {
+        totalOrderedQuantity: -(order.qty || 0),
+        totalOrders: -1,
+      },
+    }).exec();
+  } catch (error) {
+    console.error("Failed to decrement product order counters:", error);
+  }
+}
+
 function isAllowedOrderStatusTransition(currentStatus, nextStatus) {
   if (!currentStatus || !nextStatus) return false;
   if (currentStatus === nextStatus) return true;
@@ -1422,7 +1456,17 @@ router.put(
           activeRequest.requestType === "Return" &&
           finalResolution === ORDER_REQUEST_RESOLUTIONS.REFUND
         ) {
+          const previousStatus = order.status;
+          order.status = "Refund Success";
+          order.$locals.skipStatusValidation = true;
+          order.statusHistory.push({
+            status: "Refund Success",
+            updatedAt: new Date(),
+          });
           await restoreVariantStock(order.variant?._id || order.variant, order.qty);
+          if (previousStatus === "Delivered") {
+            await decrementDeliveredProductCounters(order);
+          }
         }
       } else {
         return next(new ErrorHandler("Invalid seller request action", 400));
@@ -1580,8 +1624,10 @@ router.put(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const order = await Order.findById(req.params.id)
-        .populate("product")
-        .populate("variant");
+        .populate({
+          path: "variant",
+          populate: { path: "productId" },
+        });
 
       if (!order) {
         return next(new ErrorHandler("Order not found with this id", 400));
@@ -1596,8 +1642,13 @@ router.put(
         );
       }
 
+      const previousStatus = order.status;
       order.status = req.body.status;
       order.$locals.skipStatusValidation = true;
+      order.statusHistory.push({
+        status: req.body.status,
+        updatedAt: new Date(),
+      });
       await order.save();
 
       res.status(200).json({
@@ -1606,15 +1657,9 @@ router.put(
       });
 
       if (req.body.status === "Refund Success") {
-        await restoreStock(order.product._id, order.qty);
-      }
-
-      async function restoreStock(productId, qty) {
-        const product = await Product.findById(productId);
-        if (product) {
-          product.stock += qty;
-          product.sold_out -= qty;
-          await product.save({ validateBeforeSave: false });
+        await restoreVariantStock(order.variant?._id || order.variant, order.qty);
+        if (previousStatus === "Delivered") {
+          await decrementDeliveredProductCounters(order);
         }
       }
     } catch (error) {
@@ -2263,21 +2308,21 @@ router.get(
   catchAsyncErrors(async (req, res, next) => {
     const shopId = req.seller._id;
 
-    const result = await Order.aggregate([
-      { $match: { shop: shopId, status: "Delivered" } },
-      {
-        $group: {
-          _id: null,
-          totalSales: { $sum: "$totalPrice" },
-          deliveredOrders: { $sum: 1 },
-        },
+    const orders = await Order.find({ shop: shopId }).select(
+      "status totalPrice requestLog qty variant",
+    );
+    const deliveredOrders = orders.filter((order) => isNetDeliveredOrder(order));
+    const stats = deliveredOrders.reduce(
+      (acc, order) => {
+        acc.totalSales += Number(order.totalPrice || 0);
+        acc.deliveredOrders += 1;
+        return acc;
       },
-    ]);
-
-    const stats = result[0] || {
-      totalSales: 0,
-      deliveredOrders: 0,
-    };
+      {
+        totalSales: 0,
+        deliveredOrders: 0,
+      },
+    );
 
     res.status(200).json({
       success: true,
@@ -2295,7 +2340,6 @@ router.get(
 
     const orders = await Order.find({
       shop: shopId,
-      status: "Delivered",
     })
       .select("-shippingAddress -paymentInfo")
       .populate("user", "firstName lastName instituteName")
@@ -2307,7 +2351,7 @@ router.get(
 
     res.status(200).json({
       success: true,
-      orders,
+      orders: orders.filter((order) => isNetDeliveredOrder(order)),
     });
   }),
 );
