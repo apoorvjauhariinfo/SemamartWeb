@@ -2142,6 +2142,13 @@ router.get("/invoice/:orderId", async (req, res) => {
   const { orderId } = req.params;
 
   try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+      "Surrogate-Control": "no-store",
+    });
+
     const order = await Order.findById(orderId)
       .populate({
         path: "variant",
@@ -2166,7 +2173,7 @@ router.get("/invoice/:orderId", async (req, res) => {
       relativePath
     );
 
-    // 🔥 Send file as download
+    // 🔥 Send freshly generated file as download
     return res.download(
       absolutePath,
       `invoice-${orderId}.pdf`

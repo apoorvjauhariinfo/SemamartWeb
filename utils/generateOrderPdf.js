@@ -350,6 +350,10 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         Number(order.cgst_rate || 0) +
           Number(order.sgst_rate || 0) +
           Number(order.igst_rate || 0);
+      const unitRateExcludingTax = Number(order.discounted_amount || order.unitPrice || 0);
+      const orderQty = Number(order.qty || 1);
+      const taxableAmount = Number((unitRateExcludingTax * orderQty).toFixed(2));
+      const computedGrandTotal = Number((taxableAmount + totalTaxAmount).toFixed(2));
 
       const colSno = 22;
       const colQty = 22;
@@ -395,11 +399,11 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         {
           name: (product && product.name) || "Item",
           hsn: (product && (product.hsn || product.hsnCode)) || "",
-          qty: order.qty || 1,
-          rate: order.discounted_amount || order.unitPrice || 0,
+          qty: orderQty,
+          rate: unitRateExcludingTax,
           taxRate: totalTaxRate,
           taxAmount: totalTaxAmount,
-          totalPrice: Number(order.totalPrice || 0),
+          totalPrice: computedGrandTotal,
         }
       ];
 
@@ -496,17 +500,19 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         const colAmount = Math.round(gstTableWidth * 0.25);
         const colTotalTax = gstTableWidth - colTaxType - gstColRate - colAmount;
 
-        // GST rows
+        // For now, show the applied tax regime as a single GST/Tax row.
+        // Later this can be expanded back into CGST/SGST/IGST breakup.
         const gstRows = [
-          { label: "CGST", rate: order.cgst_rate, amount: order.cgst_amount },
-          { label: "SGST", rate: order.sgst_rate, amount: order.sgst_amount },
-          { label: "IGST", rate: order.igst_rate, amount: order.igst_amount }
-        ].filter(r => Number(r.amount) > 0);
+          {
+            label: "GST / Other Tax",
+            rate: totalTaxRate,
+            amount: totalTaxAmount,
+          },
+        ].filter((r) => Number(r.amount) > 0);
 
-        // Total tax amount (CGST + SGST + IGST)
         const totalTaxAmountFromRows = gstRows.reduce(
           (sum, r) => sum + Number(r.amount || 0),
-          0
+          0,
         );
 
         // Table height
@@ -600,7 +606,13 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
         (s, it) => s + Number(it.rate || 0) * Number(it.qty || 1),
         0,
       );
-      const grandTotal = Number((order.totalPrice).toFixed(2));
+      const grandTotal = Number(
+        (
+          Number.isFinite(Number(order.totalPrice))
+            ? Number(order.totalPrice)
+            : computedGrandTotal
+        ).toFixed(2),
+      );
 
       // totals block
       const totalsX = tableLeft + tableWidth * 0.52;
@@ -611,7 +623,7 @@ doc.text(`Place of Delivery: ${placeOfDelivery}`, margin + usableW * 0.52, invoi
       doc.fillColor("#000").text(formatCurrency(subtotal), totalsX + 84, ty, { align: "right" });
 
       ty += 12;
-      doc.fontSize(9).fillColor("#555").text("Tax Amount:", totalsX, ty);
+      doc.fontSize(9).fillColor("#555").text(`GST (${totalTaxRate.toFixed(2)}%):`, totalsX, ty);
       doc.fillColor("#000").text(formatCurrency(totalTaxAmount), totalsX + 84, ty, { align: "right" });
 
      
