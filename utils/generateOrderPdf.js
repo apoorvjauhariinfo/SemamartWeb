@@ -7,7 +7,17 @@ const crypto = require("crypto");
 let currencySymbol = "Rs."; // fallback
 
 function fmtDate(d) {
-  try { return new Date(d).toLocaleString("en-IN"); } catch (e) { return ""; }
+  try {
+    return new Date(d).toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  } catch (e) { return ""; }
 }
 function formatCurrency(n) {
   if (n == null || Number.isNaN(Number(n))) return `${currencySymbol}0.00`;
@@ -229,7 +239,7 @@ async function generateOrderPdf(order) {
       // Invoice meta
      // --- Invoice meta ---
 // --- Invoice meta ---
-const invDateObj = order.verifiedAt || new Date();
+const invDateObj = order.paidAt || order.createdAt || new Date();
 const invoiceYear = invDateObj ? new Date(invDateObj).getFullYear() : new Date().getFullYear();
 const invoiceNo = `SM/${invoiceYear}/${orderCount}`;
 

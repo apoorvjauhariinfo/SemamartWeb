@@ -5,7 +5,7 @@ const { Product, ProductVariant } = require("../model/product");
 const sendBulkOrderRequestAdminEmail = require("../utils/emails/bulkOrderRequestAdmin");
 const sendBulkOrderRequestCustomerEmail = require("../utils/emails/bulkOrderRequestCustomer");
 const mongoose = require("mongoose"); // Add this
-const { isAuthenticated,hasPermission } = require("../middleware/auth");
+const { isAuthenticated, hasPermission, isSeller, hasSellerPermission } = require("../middleware/auth");
 
 const ALLOWED_STATUSES = ["NEW", "CONTACTED", "APPROVED", "REJECTED", "CLOSED"];
 
@@ -188,13 +188,40 @@ router.get("/bulk-orders/user/:userId", async (req, res) => {
   }
 });
 
+router.get(
+  "/seller-bulk-orders",
+  isSeller,
+  hasSellerPermission("Requests", "AllOrders"),
+  async (req, res) => {
+    try {
+      const sellerProductIds = await Product.find({ shopId: req.seller._id }).distinct("_id");
+
+      const bulkOrders = await BulkOrder.find({
+        product_id: { $in: sellerProductIds },
+      })
+        .populate({
+          path: "user_id",
+          select: "firstName lastName phoneNumber email instituteName",
+        })
+        .populate({ path: "product_id", select: "name shopId" })
+        .populate({ path: "variant_id", select: "discountPrice thumbnail" })
+        .sort({ createdAt: -1 });
+
+      return res.status(200).json({ success: true, bulkOrders });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+  },
+);
+
 /* -------------------- UPDATE BULK ORDER STATUS -------------------- */
 /**
  * PATCH /api/v2/bulkorder/update-status/:id
  * body: { status: "PENDING" }
  */
 
-router.patch("/update-status/:id", async (req, res) => {
+router.patch("/update-status/:id", isAuthenticated, hasPermission("StockManagement"), async (req, res) => {
   try {
     const { id } = req.params;
     const { status, note, adminId } = req.body;
@@ -250,5 +277,72 @@ router.patch("/update-status/:id", async (req, res) => {
     });
   }
 });
+
+router.patch(
+  "/seller-update-status/:id",
+  isSeller,
+  hasSellerPermission("Requests", "AllOrders"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, note } = req.body;
+
+      if (!["APPROVED", "REJECTED"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Seller can only approve or reject bulk requests",
+        });
+      }
+
+      const bulkOrder = await BulkOrder.findById(id)
+        .populate({ path: "product_id", select: "shopId" });
+
+      if (!bulkOrder) {
+        return res.status(404).json({
+          success: false,
+          message: "Bulk order not found",
+        });
+      }
+
+      if (String(bulkOrder.product_id?.shopId || "") !== String(req.seller._id)) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update your own bulk requests",
+        });
+      }
+
+      if (bulkOrder.status !== "CONTACTED") {
+        return res.status(400).json({
+          success: false,
+          message: "Seller action is allowed only after admin sends the request to seller",
+        });
+      }
+
+      bulkOrder.status = status;
+
+      if (note && note.trim()) {
+        bulkOrder.adminNotes.push({
+          note: `Seller: ${note.trim()}`,
+          status,
+          createdAt: new Date(),
+        });
+      }
+
+      await bulkOrder.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Bulk request updated successfully",
+        bulkOrder,
+      });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        success: false,
+        message: "Server error",
+      });
+    }
+  },
+);
 
 module.exports = router;

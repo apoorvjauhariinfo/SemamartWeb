@@ -62,6 +62,32 @@ const CANCELLABLE_ORDER_STATUSES = new Set([
   "Packed",
 ]);
 
+function isOnlinePaymentOrder(order) {
+  const paymentMethod = String(order?.paymentInfo?.method || "").toLowerCase();
+  const paymentStatus = String(order?.paymentInfo?.status || "").toLowerCase();
+  return (
+    ["hdfc", "online", "razorpay"].includes(paymentMethod) ||
+    paymentStatus === "paid"
+  );
+}
+
+function isProductReplaceable(order) {
+  const product = order?.variant?.productId || order?.variant || {};
+  const productType = String(product?.productType || "").toLowerCase();
+  const rmaPolicy = String(product?.rma || "").toLowerCase();
+
+  if (productType === "replaceable") return true;
+  if (productType === "non-replaceable") return false;
+
+  // Compatibility for older catalog records that may not carry productType consistently.
+  if (rmaPolicy.includes("non-replace")) return false;
+  if (rmaPolicy.includes("replace")) return true;
+
+  if (product?.singleUse === true || product?.sterile === true) return false;
+
+  return false;
+}
+
 function getLatestRequest(order) {
   if (!order?.requestLog?.length) return null;
   return order.requestLog[order.requestLog.length - 1];
@@ -182,7 +208,11 @@ function getEligibleRequestTypes(order) {
     const ageInMs = Date.now() - deliveredAt.getTime();
     const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
     if (ageInDays <= ORDER_REQUEST_WINDOW_DAYS) {
-      return ["Return", "Replace"];
+      const requestTypes = ["Return"];
+      if (isProductReplaceable(order)) {
+        requestTypes.push("Replace");
+      }
+      return requestTypes;
     }
   }
 
@@ -219,6 +249,39 @@ function applyOrderRequestSummary(orderDoc, role = "public") {
   }
   orderObject.requestSummary = buildRequestSummary(orderObject, role);
   return orderObject;
+}
+
+function isAllowedSellerOrderStatusTransition(currentStatus, nextStatus) {
+  if (!currentStatus || !nextStatus) return false;
+  if (currentStatus === nextStatus) return true;
+
+  return (
+    (currentStatus === "Processing" && nextStatus === "Packed") ||
+    (currentStatus === "Packed" && nextStatus === "Shipped") ||
+    (currentStatus === "Refund Requested" && nextStatus === "Refund Success")
+  );
+}
+
+function isAllowedAdminOrderStatusTransition(order, nextStatus) {
+  const currentStatus = order?.status || "";
+  if (!currentStatus || !nextStatus) return false;
+  if (currentStatus === nextStatus) return true;
+
+  if (nextStatus === "Processing") {
+    if (currentStatus === "Created") return true;
+    if (currentStatus === "Paid") return true;
+    return false;
+  }
+
+  if (currentStatus === "Shipped" && nextStatus === "Delivered") {
+    return true;
+  }
+
+  if (currentStatus === "Refund Requested" && nextStatus === "Refund Success") {
+    return true;
+  }
+
+  return false;
 }
 
 function getMonthDateRange(year, monthIndex) {
@@ -1038,7 +1101,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images variants manufacturerName ", // fetch product details through variant
+            select: "name images variants manufacturerName productType commission", // fetch product details through variant
           },
         })
         .populate("review") 
@@ -1074,7 +1137,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName",
+            select: "name images manufacturerName productType commission",
           },
         })
         .populate("review")
@@ -1115,7 +1178,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName",
+            select: "name images manufacturerName productType commission",
           },
         })
         .populate("review")
@@ -1153,7 +1216,13 @@ router.post(
   catchAsyncErrors(async (req, res, next) => {
     try {
       const { requestType, reason = "", description = "" } = req.body;
-      const order = await Order.findById(req.params.id);
+      const order = await Order.findById(req.params.id).populate({
+        path: "variant",
+        populate: {
+          path: "productId",
+          select: "name images manufacturerName productType commission",
+        },
+      });
       const user = await User.findById(req.user._id);
 
       if (!order) {
@@ -1277,7 +1346,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName commission",
+            select: "name images manufacturerName commission productType",
           },
         })
         .sort({ "requestLog.requestedAt": -1, createdAt: -1 });
@@ -1306,7 +1375,7 @@ router.put(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName commission",
+            select: "name images manufacturerName commission productType",
           },
         });
 
@@ -1370,7 +1439,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName commission",
+            select: "name images manufacturerName commission productType",
           },
         })
         .sort({ "requestLog.requestedAt": -1, createdAt: -1 });
@@ -1399,7 +1468,7 @@ router.put(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name images manufacturerName commission",
+            select: "name images manufacturerName commission productType",
           },
         });
 
@@ -1500,7 +1569,7 @@ router.get(
         .populate("user", "firstName lastName instituteName")
         .populate({
           path: "variant",
-          populate: { path: "productId", select: "name commission" },
+          populate: { path: "productId", select: "name commission productType" },
         })
         .sort({ createdAt: -1 });
 
@@ -1537,17 +1606,13 @@ router.put(
         );
       }
 
-      if (!isAllowedOrderStatusTransition(order.status, req.body.status)) {
+      if (!isAllowedSellerOrderStatusTransition(order.status, req.body.status)) {
         return next(
           new ErrorHandler(
             `Invalid order status change from ${order.status} to ${req.body.status}`,
             400,
           ),
         );
-      }
-
-      if (req.body.status === "Transferred to delivery partner") {
-        await updateStock(order.variant.productId, order.qty);
       }
 
       order.status = req.body.status;
@@ -1557,34 +1622,9 @@ router.put(
         updatedAt: new Date(),
       });
 
-      if (req.body.status === "Delivered") {
-        order.deliveredAt = Date.now();
-        order.paymentInfo.status = "Succeeded";
-
-        const serviceCharge = order.totalPrice * 0.1;
-        await updateSellerInfo(order.shop, order.totalPrice - serviceCharge);
-      }
-
       await order.save({ validateBeforeSave: false });
 
       res.status(200).json({ success: true, order });
-
-      async function updateStock(productId, qty) {
-        const product = await Product.findById(productId);
-        if (product) {
-          product.stock -= qty;
-          product.sold_out += qty;
-          await product.save({ validateBeforeSave: false });
-        }
-      }
-
-      async function updateSellerInfo(shopId, amount) {
-        const seller = await Shop.findById(shopId);
-        if (seller) {
-          seller.availableBalance = (seller.availableBalance || 0) + amount;
-          await seller.save();
-        }
-      }
     } catch (error) {
       return next(new ErrorHandler(error.message, 500));
     }
@@ -1683,7 +1723,7 @@ router.get(
           path: "variant",
           populate: {
             path: "productId",
-            select: "name commission",
+            select: "name commission productType",
           },
         })
         .sort({ createdAt: -1 });
@@ -1757,7 +1797,7 @@ router.put(
       );
     }
 
-    if (!isAllowedOrderStatusTransition(order.status, status)) {
+    if (!isAllowedAdminOrderStatusTransition(order, status)) {
       throw new ErrorHandler(
         `Invalid order status change from ${order.status} to ${status}`,
         400,
@@ -2352,7 +2392,7 @@ router.get(
       .populate("user", "firstName lastName instituteName")
       .populate({
         path: "variant",
-        populate: { path: "productId", select: "name commission" },
+        populate: { path: "productId", select: "name commission productType" },
       })
       .sort({ deliveredAt: -1 });
 

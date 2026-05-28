@@ -1365,7 +1365,7 @@ router.get(
   hasPermission("AllInstitutes"),
   catchAsyncErrors(async (req, res, next) => {
     try {
-      const users = await User.find().sort({
+      const users = await User.find({ role: "user" }).sort({
         createdAt: -1,
       });
       res.status(201).json({
