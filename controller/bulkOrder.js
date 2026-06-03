@@ -9,6 +9,17 @@ const { isAuthenticated, hasPermission, isSeller, hasSellerPermission } = requir
 
 const ALLOWED_STATUSES = ["NEW", "CONTACTED", "APPROVED", "REJECTED", "CLOSED"];
 
+function getSellerShopIdFromRequest(req) {
+  return (
+    req?.seller?._id ||
+    req?.authSeller?.parentSeller ||
+    req?.authSeller?.shopId ||
+    req?.sellerMember?.parentSeller ||
+    req?.sellerMember?.shopId ||
+    null
+  );
+}
+
 router.post("/bulk-order", async (req, res) => {
   try {
     const {
@@ -194,7 +205,16 @@ router.get(
   hasSellerPermission("Requests", "AllOrders"),
   async (req, res) => {
     try {
-      const sellerProductIds = await Product.find({ shopId: req.seller._id }).distinct("_id");
+      const sellerShopId = getSellerShopIdFromRequest(req);
+      if (!sellerShopId) {
+        return res.status(200).json({ success: true, bulkOrders: [] });
+      }
+
+      const sellerProductIds = await Product.find({ shopId: sellerShopId }).distinct("_id");
+
+      if (!sellerProductIds.length) {
+        return res.status(200).json({ success: true, bulkOrders: [] });
+      }
 
       const bulkOrders = await BulkOrder.find({
         product_id: { $in: sellerProductIds },
@@ -286,6 +306,7 @@ router.patch(
     try {
       const { id } = req.params;
       const { status, note } = req.body;
+      const sellerShopId = getSellerShopIdFromRequest(req);
 
       if (!["APPROVED", "REJECTED"].includes(status)) {
         return res.status(400).json({
@@ -304,7 +325,7 @@ router.patch(
         });
       }
 
-      if (String(bulkOrder.product_id?.shopId || "") !== String(req.seller._id)) {
+      if (String(bulkOrder.product_id?.shopId || "") !== String(sellerShopId || "")) {
         return res.status(403).json({
           success: false,
           message: "You can only update your own bulk requests",

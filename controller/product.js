@@ -6,6 +6,8 @@ const router = express.Router();
 const { Product, ProductVariant } = require("../model/product");
 const Order = require("../model/order");
 const Shop = require("../model/shop");
+const Category = require("../model/category");
+const Subcategory = require("../model/subcategory");
 const { uploadV2 } = require("../multer");
 const ErrorHandler = require("../utils/ErrorHandler");
 const fs = require("fs");
@@ -16,6 +18,224 @@ const addActivityLog = require("../utils/activityLogHelper");
 const sentMailToAdmin = require("../utils/mailToAdmin");
 const sendMail = require("../utils/sendMail");
 const Review = require("../model/review");
+
+function escapeRegex(value = "") {
+  return String(value).replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+}
+
+function normalizeSearchTerm(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function buildSearchTokens(value = "") {
+  const normalized = normalizeSearchTerm(value);
+  if (!normalized) return [];
+  return [...new Set(normalized.split(/\s+/).filter(Boolean))];
+}
+
+function buildSearchRegexes(value = "") {
+  const normalized = normalizeSearchTerm(value);
+  if (!normalized) return [];
+  return [...new Set([normalized, ...buildSearchTokens(normalized)])].map(
+    (part) => new RegExp(escapeRegex(part), "i"),
+  );
+}
+
+function toSearchableTextArray(input) {
+  if (!input) return [];
+
+  if (Array.isArray(input)) {
+    return input
+      .flatMap((entry) => toSearchableTextArray(entry))
+      .filter(Boolean);
+  }
+
+  if (typeof input === "object") {
+    const name = typeof input.name === "string" ? input.name : "";
+    const tags = Array.isArray(input.tags) ? input.tags : [];
+    return [name, ...tags].filter(Boolean);
+  }
+
+  return [String(input)];
+}
+
+function scoreTextMatch(value, normalizedTerm, tokens, weights) {
+  if (!value) return 0;
+
+  const text = String(value).trim().toLowerCase();
+  if (!text) return 0;
+
+  let score = 0;
+  if (text === normalizedTerm) score = Math.max(score, weights.exact);
+  else if (text.startsWith(normalizedTerm)) score = Math.max(score, weights.prefix);
+  else if (text.includes(normalizedTerm)) score = Math.max(score, weights.contains);
+
+  const matchedTokens = tokens.filter((token) => text.includes(token)).length;
+  if (matchedTokens > 0) {
+    score = Math.max(
+      score,
+      Math.min(weights.contains, matchedTokens * weights.token),
+    );
+  }
+
+  return score;
+}
+
+function calculateProductSearchScore(product, searchTerm) {
+  const normalizedTerm = normalizeSearchTerm(searchTerm);
+  if (!normalizedTerm) return 0;
+
+  const tokens = buildSearchTokens(normalizedTerm);
+  const tags = toSearchableTextArray(product?.tags);
+  const categories = toSearchableTextArray(product?.category);
+  const subcategories = toSearchableTextArray(product?.subCategory);
+
+  return Math.max(
+    scoreTextMatch(product?.name, normalizedTerm, tokens, {
+      exact: 150,
+      prefix: 120,
+      contains: 90,
+      token: 25,
+    }),
+    scoreTextMatch(product?.brand, normalizedTerm, tokens, {
+      exact: 85,
+      prefix: 72,
+      contains: 60,
+      token: 16,
+    }),
+    scoreTextMatch(product?.manufacturerName, normalizedTerm, tokens, {
+      exact: 80,
+      prefix: 68,
+      contains: 56,
+      token: 15,
+    }),
+    scoreTextMatch(product?.productType, normalizedTerm, tokens, {
+      exact: 74,
+      prefix: 64,
+      contains: 52,
+      token: 14,
+    }),
+    scoreTextMatch(product?.intendedUse, normalizedTerm, tokens, {
+      exact: 70,
+      prefix: 58,
+      contains: 48,
+      token: 12,
+    }),
+    scoreTextMatch(product?.sku, normalizedTerm, tokens, {
+      exact: 66,
+      prefix: 54,
+      contains: 40,
+      token: 10,
+    }),
+    scoreTextMatch(product?.hsn, normalizedTerm, tokens, {
+      exact: 56,
+      prefix: 44,
+      contains: 34,
+      token: 8,
+    }),
+    ...tags.map((tag) =>
+      scoreTextMatch(tag, normalizedTerm, tokens, {
+        exact: 96,
+        prefix: 82,
+        contains: 68,
+        token: 18,
+      }),
+    ),
+    ...categories.map((category) =>
+      scoreTextMatch(category, normalizedTerm, tokens, {
+        exact: 92,
+        prefix: 76,
+        contains: 62,
+        token: 16,
+      }),
+    ),
+    ...subcategories.map((subcategory) =>
+      scoreTextMatch(subcategory, normalizedTerm, tokens, {
+        exact: 88,
+        prefix: 72,
+        contains: 58,
+        token: 15,
+      }),
+    ),
+  );
+}
+
+async function searchProductsByCatalog(searchTerm, options = {}) {
+  const normalizedTerm = normalizeSearchTerm(searchTerm);
+  if (!normalizedTerm) return [];
+
+  const regexes = buildSearchRegexes(normalizedTerm);
+  const visibilityFilter = {
+    visibilityByAdmin: true,
+    visibilityBySeller: true,
+  };
+
+  if (options.shopId) {
+    visibilityFilter.shopId = String(options.shopId);
+  }
+
+  const [matchingCategories, matchingSubcategories] = await Promise.all([
+    Category.find({
+      $or: regexes.map((regex) => ({ name: regex })),
+    })
+      .select("_id")
+      .lean(),
+    Subcategory.find({
+      $or: regexes.flatMap((regex) => [{ name: regex }, { tags: regex }]),
+    })
+      .select("_id")
+      .lean(),
+  ]);
+
+  const categoryIds = matchingCategories.map((item) => item._id);
+  const subCategoryIds = matchingSubcategories.map((item) => item._id);
+
+  const searchableClauses = regexes.flatMap((regex) => [
+    { name: regex },
+    { manufacturerName: regex },
+    { brand: regex },
+    { productType: regex },
+    { intendedUse: regex },
+    { sku: regex },
+    { hsn: regex },
+    { tags: regex },
+  ]);
+
+  if (categoryIds.length > 0) {
+    searchableClauses.push({ category: { $in: categoryIds } });
+  }
+
+  if (subCategoryIds.length > 0) {
+    searchableClauses.push({ subCategory: { $in: subCategoryIds } });
+  }
+
+  const products = await Product.find({
+    ...visibilityFilter,
+    $or: searchableClauses,
+  })
+    .populate("category", "name")
+    .populate("subCategory", "name tags")
+    .populate({
+      path: "variants",
+      model: "ProductVariant",
+      select: VARIANT_LIST_SELECT,
+    })
+    .lean();
+
+  return products
+    .map((product) => ({
+      ...product,
+      _searchScore: calculateProductSearchScore(product, normalizedTerm),
+    }))
+    .filter((product) => product._searchScore > 0)
+    .sort((a, b) => {
+      if (b._searchScore !== a._searchScore) {
+        return b._searchScore - a._searchScore;
+      }
+      return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    })
+    .map(({ _searchScore, ...product }) => product);
+}
 
 function toNumberOrNull(value) {
   if (value === null || value === undefined || value === "") return null;
@@ -1067,41 +1287,7 @@ router.get(
       return res.status(200).json({ success: true, products: [] });
     }
 
-    const term = String(q).trim();
-    const regex = new RegExp(
-      term.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i",
-    );
-
-    const products = await Product.find({
-      visibilityByAdmin: true,
-      visibilityBySeller: true,
-      $or: [{ name: regex }, { manufacturerName: regex }],
-    })
-      .populate("category", "name")
-      .populate({
-        path: "variants",
-        model: "ProductVariant",
-        select: VARIANT_LIST_SELECT,
-      })
-      .lean();
-
-    // additionally filter by category name if needed (case where category is populated)
-    const finalProducts = products.filter((p) => {
-      if (!p) return false;
-      if (regex.test(p.name || "")) return true;
-      if (p.manufacturerName && regex.test(p.manufacturerName)) return true;
-      if (Array.isArray(p.category)) {
-        if (p.category.some((c) => c && regex.test(String(c.name || ""))))
-          return true;
-      } else if (
-        p.category &&
-        p.category.name &&
-        regex.test(String(p.category.name))
-      )
-        return true;
-      return false;
-    });
+    const finalProducts = await searchProductsByCatalog(q);
 
     return res.status(200).json({ success: true, products: finalProducts });
   }),
@@ -1127,36 +1313,19 @@ router.get(
         visibilityBySeller: true,
       })
         .sort({ createdAt: -1 })
-        .populate("variants")
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select: VARIANT_LIST_SELECT,
+        })
         .populate("category", "name")
+        .populate("subCategory", "name tags")
         .lean();
 
       return res.status(200).json({ success: true, products });
     }
 
-    const qStr = String(q);
-    const regex = new RegExp(
-      qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i",
-    );
-
-    const products = await Product.find({
-      shopId: String(shopId),
-      visibilityByAdmin: true,
-      visibilityBySeller: true,
-      $or: [{ name: regex }, { manufacturerName: regex }],
-    })
-      .populate("variants")
-      .populate("category", "name")
-      .lean();
-
-    // final in-memory filter covering category.name
-    const finalProducts = products.filter((p) => {
-      const catName =
-        p.category && p.category.name ? String(p.category.name) : "";
-      if (regex.test(catName)) return true;
-      return true; // keep product if already matched name/manufacturer
-    });
+    const finalProducts = await searchProductsByCatalog(q, { shopId });
 
     return res.status(200).json({ success: true, products: finalProducts });
   }),
@@ -1748,51 +1917,19 @@ router.get(
         visibilityBySeller: true,
       })
         .sort({ createdAt: -1 })
-        .populate("variants")
+        .populate({
+          path: "variants",
+          model: "ProductVariant",
+          select: VARIANT_LIST_SELECT,
+        })
         .populate("category", "name")
+        .populate("subCategory", "name tags")
         .lean();
 
       return res.status(200).json({ success: true, products });
     }
 
-    // safe-escape q to a case-insensitive regex
-    const qStr = String(q);
-    const regex = new RegExp(
-      qStr.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&"),
-      "i",
-    );
-
-    // search by name, manufacturerName, category.name
-    // ensure we always filter by shopId
-    const products = await Product.find({
-      shopId: String(shopId),
-      visibilityByAdmin: true,
-      visibilityBySeller: true,
-      $or: [
-        { name: regex },
-        { manufacturerName: regex },
-        // category might be a ref — use populate after or query by populated field using $lookup-like approach.
-        // However, mongoose allows querying on populated field if you store category name in document
-        // For reliability, we attempt to match category.name after populating below by using aggregation fallback.
-      ],
-    })
-      .populate("variants")
-      .populate("category", "name")
-      .lean();
-
-    // If you need strict category.name search that works even if category is a ref,
-    // the populate above will pull category.name and the regex on category.name in the initial query
-    // may not match — that's why we do an in-memory filter on populated category.name as well:
-    const finalProducts = products.filter((p) => {
-      // check populated category.name
-      const catName =
-        p.category && p.category.name ? String(p.category.name) : "";
-      if (regex.test(catName)) return true;
-
-      // already matched name/manufacturer via DB $or
-      // but safe return true (product included)
-      return true;
-    });
+    const finalProducts = await searchProductsByCatalog(q, { shopId });
 
     return res.status(200).json({ success: true, products: finalProducts });
   }),
