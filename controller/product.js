@@ -41,6 +41,30 @@ function buildSearchRegexes(value = "") {
   );
 }
 
+function levenshteinDistance(left = "", right = "") {
+  const a = String(left);
+  const b = String(right);
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const dp = Array.from({ length: rows }, () => new Array(cols).fill(0));
+
+  for (let i = 0; i < rows; i += 1) dp[i][0] = i;
+  for (let j = 0; j < cols; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost,
+      );
+    }
+  }
+
+  return dp[a.length][b.length];
+}
+
 function toSearchableTextArray(input) {
   if (!input) return [];
 
@@ -57,6 +81,13 @@ function toSearchableTextArray(input) {
   }
 
   return [String(input)];
+}
+
+function tokenizeSearchableText(input) {
+  return toSearchableTextArray(input)
+    .flatMap((item) => String(item).toLowerCase().split(/[^a-z0-9]+/i))
+    .map((token) => token.trim())
+    .filter(Boolean);
 }
 
 function scoreTextMatch(value, normalizedTerm, tokens, weights) {
@@ -160,6 +191,38 @@ function calculateProductSearchScore(product, searchTerm) {
   );
 }
 
+function calculateFuzzyTokenScore(product, searchTerm) {
+  const normalizedTerm = normalizeSearchTerm(searchTerm);
+  if (!normalizedTerm || normalizedTerm.length < 3) return 0;
+
+  const searchableTokens = [
+    ...tokenizeSearchableText(product?.name),
+    ...tokenizeSearchableText(product?.brand),
+    ...tokenizeSearchableText(product?.manufacturerName),
+    ...tokenizeSearchableText(product?.productType),
+    ...tokenizeSearchableText(product?.intendedUse),
+    ...tokenizeSearchableText(product?.sku),
+    ...tokenizeSearchableText(product?.hsn),
+    ...tokenizeSearchableText(product?.tags),
+    ...tokenizeSearchableText(product?.category),
+    ...tokenizeSearchableText(product?.subCategory),
+  ];
+
+  let bestScore = 0;
+  for (const token of searchableTokens) {
+    if (!token) continue;
+    const distance = levenshteinDistance(normalizedTerm, token);
+    const allowedDistance =
+      normalizedTerm.length >= 9 ? 3 : normalizedTerm.length >= 6 ? 2 : 1;
+    if (distance > allowedDistance) continue;
+
+    const tokenScore = Math.max(0, 60 - distance * 18 - Math.abs(token.length - normalizedTerm.length) * 4);
+    if (tokenScore > bestScore) bestScore = tokenScore;
+  }
+
+  return bestScore;
+}
+
 async function searchProductsByCatalog(searchTerm, options = {}) {
   const normalizedTerm = normalizeSearchTerm(searchTerm);
   if (!normalizedTerm) return [];
@@ -209,7 +272,7 @@ async function searchProductsByCatalog(searchTerm, options = {}) {
     searchableClauses.push({ subCategory: { $in: subCategoryIds } });
   }
 
-  const products = await Product.find({
+  let products = await Product.find({
     ...visibilityFilter,
     $or: searchableClauses,
   })
@@ -222,10 +285,40 @@ async function searchProductsByCatalog(searchTerm, options = {}) {
     })
     .lean();
 
+  if (products.length === 0 && normalizedTerm.length >= 3) {
+    const fallbackProducts = await Product.find(visibilityFilter)
+      .select(
+        "name brand manufacturerName productType intendedUse sku hsn tags category subCategory variants shopId ratings reviews createdAt visibilityByAdmin visibilityBySeller",
+      )
+      .populate("category", "name")
+      .populate("subCategory", "name tags")
+      .populate({
+        path: "variants",
+        model: "ProductVariant",
+        select: VARIANT_LIST_SELECT,
+      })
+      .lean();
+
+    products = fallbackProducts
+      .map((product) => ({
+        ...product,
+        _searchScore: calculateFuzzyTokenScore(product, normalizedTerm),
+      }))
+      .filter((product) => product._searchScore >= 28)
+      .sort((a, b) => b._searchScore - a._searchScore)
+      .slice(0, 40)
+      .map(({ _searchScore, ...product }) => product);
+  }
+
   return products
     .map((product) => ({
       ...product,
-      _searchScore: calculateProductSearchScore(product, normalizedTerm),
+      categoryNames: toSearchableTextArray(product?.category),
+      subCategoryNames: toSearchableTextArray(product?.subCategory),
+      _searchScore: Math.max(
+        calculateProductSearchScore(product, normalizedTerm),
+        calculateFuzzyTokenScore(product, normalizedTerm),
+      ),
     }))
     .filter((product) => product._searchScore > 0)
     .sort((a, b) => {

@@ -3,9 +3,30 @@ const mongoose = require("mongoose");
 const Review = require("../model/review");
 const { uploadV2 } = require("../multer");
 const Order = require("../model/order");
-const Product = require("../model/product");
+const { Product } = require("../model/product");
 
 const router = express.Router();
+
+async function refreshProductRatings(productId) {
+  if (!productId || !mongoose.Types.ObjectId.isValid(String(productId))) return;
+
+  const stats = await Review.aggregate([
+    {
+      $match: {
+        productId: new mongoose.Types.ObjectId(String(productId)),
+      },
+    },
+    {
+      $group: {
+        _id: "$productId",
+        avgRating: { $avg: "$rating" },
+      },
+    },
+  ]);
+
+  const avgRating = stats[0]?.avgRating ? Number(stats[0].avgRating.toFixed(1)) : 0;
+  await Product.findByIdAndUpdate(productId, { ratings: avgRating });
+}
 
 router.post("/addReview", uploadV2.array("images", 5), async (req, res) => {
   try {
@@ -42,6 +63,7 @@ router.post("/addReview", uploadV2.array("images", 5), async (req, res) => {
     order.review = review._id;
     await order.save();
     await Product.findByIdAndUpdate(productId, { $push: { reviews: review._id } });
+    await refreshProductRatings(productId);
 
     res.json({ success: true, review });
   } catch (err) {
@@ -93,6 +115,7 @@ router.put(
       review.images = updatedImages; // overwrite old images with updated list
 
       await review.save();
+      await refreshProductRatings(review.productId);
 
       res.json({ success: true, review });
     } catch (err) {
