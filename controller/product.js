@@ -595,6 +595,12 @@ router.post(
     product.subCategory = normalizeObjectIdArray(req.body.subCategory);
     product.specialityPackage = normalizeObjectIdArray(req.body.specialityPackage);
     product.specialityPackageType = normalizeObjectIdArray(req.body.specialityPackageType);
+    if (!product.specialityPackage.length) {
+      throw new ErrorHandler("At least one speciality package is required", 400);
+    }
+    if (!product.specialityPackageType.length) {
+      throw new ErrorHandler("At least one speciality package type is required", 400);
+    }
     product.tags = normalizeIncomingArray(req.body.tags);
     product.crosssells = normalizeIncomingArray(req.body.crosssells);
     product.upsells = normalizeIncomingArray(req.body.upsells);
@@ -1821,9 +1827,15 @@ router.put(
     }
     if (Object.prototype.hasOwnProperty.call(updates, "specialityPackage")) {
       updates.specialityPackage = normalizeObjectIdArray(updates.specialityPackage);
+      if (!updates.specialityPackage.length) {
+        throw new ErrorHandler("At least one speciality package is required", 400);
+      }
     }
     if (Object.prototype.hasOwnProperty.call(updates, "specialityPackageType")) {
       updates.specialityPackageType = normalizeObjectIdArray(updates.specialityPackageType);
+      if (!updates.specialityPackageType.length) {
+        throw new ErrorHandler("At least one speciality package type is required", 400);
+      }
     }
     if (Object.prototype.hasOwnProperty.call(updates, "attributes")) {
       updates.attributes = normalizeAttributesPayload(updates.attributes);
