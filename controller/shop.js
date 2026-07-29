@@ -106,10 +106,12 @@ router.post(
   async (req, res, next) => {
     try {
       const { email } = req.body;
-      const existingSeller = await Shop.findOne({ email });
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const existingSeller = await Shop.findOne({ email: normalizedEmail })
+        .collation({ locale: "en", strength: 2 })
+        .select("+password");
 
       if (existingSeller) {
-        // Delete uploaded files if duplicate
         if (req.files && req.files["profilePic"]) {
           try {
             fs.unlinkSync(
@@ -126,7 +128,35 @@ router.post(
             /* ignore */
           }
         }
-        return next(new ErrorHandler("Seller already exists", 400));
+
+        if (existingSeller.verified) {
+          return next(new ErrorHandler("Seller already exists", 400));
+        }
+
+        existingSeller.firstName = req.body.firstName;
+        existingSeller.lastName = req.body.lastName;
+        existingSeller.businessName = req.body.businessName;
+        existingSeller.gstNumber = req.body.gstNumber;
+        existingSeller.businessType = req.body.businessType;
+        existingSeller.email = normalizedEmail;
+        existingSeller.password = req.body.password;
+        existingSeller.phoneNumber = req.body.phoneNumber;
+        existingSeller.state = req.body.state;
+        existingSeller.district = req.body.district;
+        await existingSeller.save();
+
+        const activationToken = createActivationToken({ email: normalizedEmail });
+        await sendSelfVerifySellerEmail({
+          sellerEmail: existingSeller.email,
+          sellerName: existingSeller.firstName,
+          verificationToken: activationToken,
+        });
+
+        return res.status(201).json({
+          success: true,
+          message: `A fresh verification email has been sent to ${existingSeller.email}. Please verify your seller email.`,
+          sellerId: existingSeller._id,
+        });
       }
 
       const files = req.files || {};
@@ -141,7 +171,7 @@ router.post(
         businessName: req.body.businessName,
         gstNumber: req.body.gstNumber,
         businessType: req.body.businessType,
-        email,
+        email: normalizedEmail,
         password: req.body.password,
         phoneNumber: req.body.phoneNumber,
         state: req.body.state,
@@ -182,7 +212,7 @@ router.post(
       // ---------- END PDF GENERATION ----------
 
       // ✅ Generate activation token (we keep the token payload minimal)
-      const activationToken = createActivationToken({ email });
+      const activationToken = createActivationToken({ email: normalizedEmail });
 
       // ✅ Dynamic base URL detection
       const frontendBaseUrl =
@@ -222,7 +252,7 @@ router.post(
 
       res.status(201).json({
         success: true,
-        message: `Verification email sent to ${email}. Please check your inbox.`,
+        message: `Verification email sent to ${normalizedEmail}. Please check your inbox.`,
         sellerId: seller._id,
       });
     } catch (error) {
@@ -628,8 +658,21 @@ router.post(
       } = decodedSeller;
 
       // ✅ Check again safely
-      const existingSeller = await Shop.findOne({ email });
+      const existingSeller = await Shop.findOne({ email })
+        .collation({ locale: "en", strength: 2 });
       if (existingSeller) {
+        if (!existingSeller.verified) {
+          await sendNewSellerAdminVerifyEmail({
+            sellerName: existingSeller.businessName,
+            sellerEmail: existingSeller.email,
+          });
+
+          return res.status(200).json({
+            success: true,
+            message: "Seller email verified. Your account is pending SEMAMART approval.",
+          });
+        }
+
         console.log("⚠️ Seller already activated:", email);
         return res.status(200).json({
           success: true,

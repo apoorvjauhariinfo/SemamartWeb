@@ -301,6 +301,10 @@ const orderSchema = new mongoose.Schema({
 
 });
 
+orderSchema.index({ user: 1, createdAt: -1 });
+orderSchema.index({ shop: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+
 const MAIN_FLOW = [
   "Created",
   "Paid",

@@ -1064,19 +1064,25 @@ router.all(
 
 router.get(
   "/get-order-details-seller/:orderId",
+  isSeller,
+  hasSellerPermission("AllOrders"),
   catchAsyncErrors(async (req, res) => {
     const order = await Order.findById(req.params.orderId)
       .populate({
         path: "variant",
         populate: {
           path: "productId",
-          select: "name",
+          select: "name images manufacturerName productType commission",
         },
       })
       .select("-shippingAddress");
 
     if (!order) {
-      res.status(404).send("Order not Found");
+      throw new ErrorHandler("Order not found", 404);
+    }
+
+    if (String(order.shop?._id || order.shop) !== String(req.seller._id)) {
+      throw new ErrorHandler("You can access only your own orders", 403);
     }
 
     res.json(applyOrderRequestSummary(order, "seller"));
@@ -1106,7 +1112,8 @@ router.get(
         })
         .populate("review") 
         .populate("shop", "name email businessName")
-        .populate("user", "firstName lastName email phoneNumber addresses refundBankDetails");
+        .populate("user", "firstName lastName email phoneNumber addresses refundBankDetails")
+        .lean();
 
       res.status(200).json({
         success: true,
@@ -2060,14 +2067,15 @@ router.put(
 router.put(
   "/update-tracking-details/:id",
   isSeller,
+  hasSellerPermission("AllOrders"),
   uploadV2.single("tracking_file"),
   catchAsyncErrors(async (req, res) => {
     const { id } = req.params;
     const { logisticPartner, trackingNumber, pickupPerson, pickupPersonPhone } =
       req.body;
 
-    if (!logisticPartner || !trackingNumber) {
-      throw new ErrorHandler("Bad Request", 402);
+    if (!logisticPartner || !trackingNumber || !pickupPerson || !pickupPersonPhone) {
+      throw new ErrorHandler("All tracking details are required", 400);
     }
 
     const order = await Order.findById(id)
@@ -2083,8 +2091,22 @@ router.put(
     if (!order.user) {
       throw new ErrorHandler("Order not valid", 404);
     }
+    if (String(order.shop?._id || order.shop) !== String(req.seller._id)) {
+      throw new ErrorHandler("You can update tracking only for your own order", 403);
+    }
+    if (!["Packed", "Shipped"].includes(order.status)) {
+      throw new ErrorHandler(
+        `Tracking details can be added only when order is Packed or Shipped. Current status is ${order.status}`,
+        400,
+      );
+    }
 
     const trackingFile = req.file ? req.file.filename : undefined;
+    const existingTrackingDocument = order.trackingDetails?.trackingDocument;
+    if (!trackingFile && !existingTrackingDocument) {
+      throw new ErrorHandler("Tracking document is required", 400);
+    }
+    const shouldMarkShipped = order.status === "Packed";
 
     order.trackingDetails = {
       ...order.trackingDetails,
@@ -2107,6 +2129,15 @@ router.put(
         }
       }
       order.trackingDetails.trackingDocument = trackingFile;
+    }
+
+    if (shouldMarkShipped) {
+      order.status = "Shipped";
+      order.$locals.skipStatusValidation = true;
+      order.statusHistory.push({
+        status: "Shipped",
+        updatedAt: new Date(),
+      });
     }
 
     await order.save();

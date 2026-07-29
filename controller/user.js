@@ -122,18 +122,37 @@ function hasCompleteRefundBankDetails(details = {}) {
   );
 }
 
+function normalizeRegistrationAddresses(addresses = []) {
+  const incoming = Array.isArray(addresses) ? addresses : [];
+  return incoming.map((addr) => ({
+    reciever_name: addr.reciever_name,
+    instituteAddress1: addr.instituteAddress1,
+    instituteAddress2: addr.instituteAddress2 || "",
+    landmark: addr.landmark || "",
+    pincode: addr.pincode,
+    district: addr.district,
+    state: addr.state,
+    phone: addr.phone,
+    alternatePhone: addr.alternatePhone || "",
+    addressType: addr.addressType || "Home",
+  }));
+}
+
 
 router.post("/create-user", upload.none(), async (req, res, next) => {
   try {
     const { firstName, lastName, phoneNumber, email, instituteName, password, gstNumber } =
       req.body;
 
-    const userEmail = await User.findOne({ email });
-    if (userEmail) {
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const userEmail = await User.findOne({ email: normalizedEmail })
+      .collation({ locale: "en", strength: 2 })
+      .select("+password");
+    if (userEmail && userEmail.isVerified) {
       return next(new ErrorHandler("User already exists", 400));
     }
 
-    const userTokenData = { email };
+    const userTokenData = { email: normalizedEmail };
     const activationToken = createActivationToken(userTokenData);
 
     // With this cleaner one:
@@ -141,28 +160,31 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
     const activationUrl = `${frontendBaseUrl}/user/activation/${activationToken}`;
 
     // ✅ Create new user document
-    const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      password,
-      phoneNumber,
-      instituteName,
-      gstNumber,
-      role: "user",
-      addresses: (req.body.addresses || []).map((addr) => ({
-        reciever_name: addr.reciever_name,
-        instituteAddress1: addr.instituteAddress1,
-        instituteAddress2: addr.instituteAddress2 || "",
-        landmark: addr.landmark || "",
-        pincode: addr.pincode,
-        district: addr.district,
-        state: addr.state,
-        phone: addr.phone,
-        alternatePhone: addr.alternatePhone || "",
-        addressType: addr.addressType || "Home",
-      })),
-    });
+    let user = userEmail;
+    if (user) {
+      user.firstName = firstName;
+      user.lastName = lastName;
+      user.email = normalizedEmail;
+      user.password = password;
+      user.phoneNumber = phoneNumber;
+      user.instituteName = instituteName;
+      user.gstNumber = gstNumber;
+      user.role = "user";
+      user.addresses = normalizeRegistrationAddresses(req.body.addresses);
+      await user.save();
+    } else {
+      user = await User.create({
+        firstName,
+        lastName,
+        email: normalizedEmail,
+        password,
+        phoneNumber,
+        instituteName,
+        gstNumber,
+        role: "user",
+        addresses: normalizeRegistrationAddresses(req.body.addresses),
+      });
+    }
 
     // ---------- GENERATE REGISTRATION PDF FOR USER IMMEDIATELY ----------
     try {
@@ -218,7 +240,9 @@ router.post("/create-user", upload.none(), async (req, res, next) => {
 
       res.status(201).json({
         success: true,
-        message: `Please check your email (${user.email}) to activate your account.`,
+        message: userEmail
+          ? `A fresh verification email has been sent to ${user.email}. Please activate your account from that email.`
+          : `Please check your email (${user.email}) to activate your account.`,
       });
     } catch (emailErr) {
       console.error("❌ Failed to send activation email:", emailErr.message);
@@ -255,10 +279,20 @@ router.post(
       }
       const { email } = newUser;
 
-      let user = await User.findOne({ email });
+      let user = await User.findOne({ email })
+        .collation({ locale: "en", strength: 2 });
 
       if (user && user.isVerified) {
-        return next(new ErrorHandler("User already exists", 400));
+        return sendToken(user, 200, res);
+      }
+
+      if (!user) {
+        return next(
+          new ErrorHandler(
+            "Registration details not found. Please register again to receive a fresh verification email.",
+            404,
+          ),
+        );
       }
 
       user.isVerified = true;

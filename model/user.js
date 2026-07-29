@@ -189,13 +189,16 @@ const userSchema = new mongoose.Schema({
   },
 });
 
+userSchema.index({ email: 1 }, { unique: true });
+
 //  Hash password
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) {
-    next();
+    return next();
   }
 
   this.password = await bcrypt.hash(this.password, 10);
+  next();
 });
 
 // jwt token
