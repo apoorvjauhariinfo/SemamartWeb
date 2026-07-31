@@ -51,8 +51,8 @@ function isUsableLogo(filePath) {
   try {
     if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
     const dims = getPngDimensions(filePath);
-    // Guard against ultra-wide/high-res PNGs that bloat PDF size.
-    if (dims && (dims.width > 6000 || dims.height > 6000)) return false;
+    // Prefer small invoice assets, but allow existing large brand PNGs as a fallback.
+    if (dims && (dims.width > 30000 || dims.height > 30000)) return false;
     return true;
   } catch (e) {
     return false;
@@ -60,7 +60,7 @@ function isUsableLogo(filePath) {
 }
 
 function getInvoiceLogoPath() {
-  const logoNames = ["Logo-imag.png", "logo-comp-small.png", "logo-comp.png", "logo.png"];
+  const logoNames = ["invoice-logo.png", "Logo-imag.png", "logo-comp-small.png", "logo-comp.png", "logo.png"];
   const logoDirs = [
     path.join(process.cwd(), "assets"),
     path.join(process.cwd(), "backend", "assets"),
