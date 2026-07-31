@@ -47,6 +47,53 @@ function getPngDimensions(filePath) {
   }
 }
 
+function isUsableLogo(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return false;
+    const dims = getPngDimensions(filePath);
+    // Guard against ultra-wide/high-res PNGs that bloat PDF size.
+    if (dims && (dims.width > 6000 || dims.height > 6000)) return false;
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function getInvoiceLogoPath() {
+  const logoNames = ["Logo-imag.png", "logo-comp-small.png", "logo-comp.png", "logo.png"];
+  const logoDirs = [
+    path.join(process.cwd(), "assets"),
+    path.join(process.cwd(), "backend", "assets"),
+    path.join(process.cwd(), "public"),
+    path.join(process.cwd(), "frontend", "public"),
+    path.join(__dirname, "..", "assets"),
+    path.join(__dirname, "..", "..", "backend", "assets"),
+    path.join(__dirname, "..", "..", "frontend", "public"),
+  ];
+
+  for (const dir of logoDirs) {
+    for (const name of logoNames) {
+      const candidate = path.join(dir, name);
+      if (isUsableLogo(candidate)) return candidate;
+    }
+  }
+
+  return null;
+}
+
+function drawInvoiceLogoFallback(doc, x, y, width) {
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(22)
+    .fillColor("#0b5560")
+    .text("SEMAMART", x, y + 18, { width, align: "left" });
+  doc
+    .font("Helvetica")
+    .fontSize(8)
+    .fillColor("#f59e0b")
+    .text("Healthcare Marketplace", x + 2, y + 43, { width, align: "left" });
+}
+
 function amountToWords(num) {
   if (num == null) return "";
   const a = ["","One","Two","Three","Four","Five","Six","Seven","Eight","Nine","Ten",
@@ -179,27 +226,26 @@ async function generateOrderPdf(order) {
 
       // ===== header: logo + company =====
       let logoPath = null;
+      let logoRendered = false;
       const logoW = 150;
       const logoH = 80;
       try {
-        const possibleLogos = [
-          // Prefer a reasonably sized logo asset for PDF weight/performance.
-          path.join(process.cwd(), "assets", "Logo-imag.png"),
-          path.join(__dirname, "..", "assets", "Logo-imag.png"),
-          path.join(process.cwd(), "assets", "logo-comp-small.png"),
-          path.join(__dirname, "..", "assets", "logo-comp-small.png"),
-          path.join(process.cwd(), "assets", "logo-comp.png"),
-          path.join(process.cwd(), "public", "logo-comp.png"),
-          path.join(__dirname, "..", "assets", "logo-comp.png")
-        ];
-        logoPath =
-          possibleLogos.find((p) => {
-            if (!p || !fs.existsSync(p)) return false;
-            const dims = getPngDimensions(p);
-            // Guard against ultra-wide/high-res PNGs that bloat PDF size.
-            if (dims && (dims.width > 6000 || dims.height > 6000)) return false;
-            return true;
-          }) || null;
+        logoPath = getInvoiceLogoPath();
+        if (logoPath) {
+          try {
+            doc.image(logoPath, margin, margin, { fit: [logoW, logoH] });
+            logoRendered = true;
+          } catch (e) {
+            console.error("Logo image load failed:", e && e.message ? e.message : e);
+            drawInvoiceLogoFallback(doc, margin, margin, logoW);
+            logoRendered = true;
+          }
+        } else {
+          drawInvoiceLogoFallback(doc, margin, margin, logoW);
+          logoRendered = true;
+        }
+        // Keep the legacy inline renderer below from running a second time.
+        logoPath = null;
         if (logoPath) {
           try { doc.image(logoPath, margin, margin, { fit: [logoW, logoH] }); } catch (e) { console.error("⚠️ Logo image load failed:", e && e.message ? e.message : e); }
         }
@@ -232,7 +278,7 @@ async function generateOrderPdf(order) {
       });
 
       // Title & separator
-      const invoiceY = margin + Math.max(logoPath ? logoH : 0, (cy - margin)) + 6;
+      const invoiceY = margin + Math.max(logoRendered ? logoH : 0, (cy - margin)) + 6;
       try { doc.moveTo(margin, invoiceY + 22).lineTo(pageW - margin, invoiceY + 22).strokeColor("#e6eef6").lineWidth(1).stroke(); } catch (e) {}
       doc.fontSize(14).fillColor("#0b5560").font("Main" in doc._fontFamilies ? "Main" : "Helvetica-Bold").text("TAX INVOICE", margin, invoiceY);
 
