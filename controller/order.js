@@ -2141,48 +2141,51 @@ router.put(
     }
 
     await order.save();
-    // 3. Prepare placeholders
-    const productName = order.variant?.productId?.name || "Product";
-    const customerName = order.user?.firstName || "Customer";
-    const sellerName = order.shop?.businessName || order.shop?.name || "Seller";
-
-    // To SELLER (Their Confirmation)
-    await sendOrderShippedSellerEmail({
-      sellerEmail: order.shop?.email,
-      sellerName,
-      orderId: order._id,
-      productName,
-      qty: order.qty,
-      totalAmount: order.totalPrice,
-      logisticPartner,
-      trackingNumber,
-    }).catch(e => console.log("Seller Mail Error:", e));
-
-    // To Customer (Includes Tracking Info)
-    await sendOrderShippedCustomerEmail({
-      customerEmail: order.user.email,
-      customerName: customerName,
-      orderId: order._id,
-      productName,
-      qty: order.qty,
-      totalAmount: order.totalPrice,
-      logisticPartner, // Pass these to your email template!
-      trackingNumber,
-    }).catch(e => console.log("Mail Error:", e));
-
-    // To Admin
-    await sendOrderShippedAdminEmail({
-      orderId: order._id,
-      instituteName: order.user?.instituteName || "Client",
-      trackingNumber: trackingNumber, // From req.body
-      carrierName: logisticPartner,   // From req.body
-    }).catch(e => console.log("Mail Error:", e));
 
     res.status(200).json({
       success: true,
       message: "Order marked as Shipped and tracking updated",
       order,
     });
+
+    // Send notification emails after responding so the seller UI does not hang on SMTP latency.
+    (async () => {
+      const productName = order.variant?.productId?.name || "Product";
+      const customerName = order.user?.firstName || "Customer";
+      const sellerName = order.shop?.businessName || order.shop?.name || "Seller";
+
+      // To SELLER (Their Confirmation)
+      await sendOrderShippedSellerEmail({
+        sellerEmail: order.shop?.email,
+        sellerName,
+        orderId: order._id,
+        productName,
+        qty: order.qty,
+        totalAmount: order.totalPrice,
+        logisticPartner,
+        trackingNumber,
+      }).catch(e => console.log("Seller Mail Error:", e));
+
+      // To Customer (Includes Tracking Info)
+      await sendOrderShippedCustomerEmail({
+        customerEmail: order.user.email,
+        customerName: customerName,
+        orderId: order._id,
+        productName,
+        qty: order.qty,
+        totalAmount: order.totalPrice,
+        logisticPartner, // Pass these to your email template!
+        trackingNumber,
+      }).catch(e => console.log("Mail Error:", e));
+
+      // To Admin
+      await sendOrderShippedAdminEmail({
+        orderId: order._id,
+        instituteName: order.user?.instituteName || "Client",
+        trackingNumber: trackingNumber, // From req.body
+        carrierName: logisticPartner,   // From req.body
+      }).catch(e => console.log("Mail Error:", e));
+    })().catch(e => console.log("Shipment notification error:", e));
   })
   //   const mailSubject = "Order tracking details added";
   //   const htmlBody = `
